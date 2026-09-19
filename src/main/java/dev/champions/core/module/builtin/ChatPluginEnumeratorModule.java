@@ -82,7 +82,7 @@ public final class ChatPluginEnumeratorModule implements ActiveResearchModule {
 
 	private ModuleResult silentResult(List<CommandDescriptor> candidates, int filtered, int total) {
 		List<Finding> findings = new ArrayList<>();
-		findings.add(new Finding(Finding.Severity.INFO, "Mode", "SILENT — no command was sent.",
+		findings.add(new Finding(Finding.Severity.INFO, "Mode", "SILENT - no command was sent.",
 			"Switch to aggressive only for an explicitly authorized target and account."));
 		findings.add(new Finding(Finding.Severity.INFO, "Default filtering",
 			filtered + " of " + total + " advertised root(s) filtered or outside the configured candidate limit.",
@@ -132,7 +132,7 @@ public final class ChatPluginEnumeratorModule implements ActiveResearchModule {
 	private ModuleResult aggressiveResult(List<CommandDescriptor> candidates, int filtered, List<ChatTranscript> transcripts, boolean includeRaw) {
 		List<Finding> findings = new ArrayList<>();
 		findings.add(new Finding(Finding.Severity.INFO, "Mode",
-			"AGGRESSIVE — " + transcripts.size() + " bounded probe(s) completed sequentially across " + candidates.size() + " candidate root(s).",
+			"AGGRESSIVE - " + transcripts.size() + " bounded probe(s) completed sequentially across " + candidates.size() + " candidate root(s).",
 			"Probes are rate-limited by the client runtime and remain visible to the server."));
 		findings.add(new Finding(Finding.Severity.INFO, "Default filtering", filtered + " advertised/default root(s) excluded.",
 			"Only non-default roots from the current advertised command tree were considered."));

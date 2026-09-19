@@ -119,7 +119,7 @@ public final class ChampionConsole {
 		switch (args.get(1).toLowerCase(Locale.ROOT)) {
 			case "modules" -> {
 				add(ConsoleLine.accent("Available modules"));
-				for (ResearchModule module : registry.all()) add(ConsoleLine.info("  " + module.id() + "  -  " + module.name()));
+				for (ResearchModule module : registry.all()) add(ConsoleLine.info("  " + module.id() + " - " + module.name()));
 			}
 			case "options" -> showOptions();
 			case "targets" -> {
@@ -137,7 +137,7 @@ public final class ChampionConsole {
 		int count = 0;
 		for (ResearchModule module : registry.all()) {
 			if ((module.id() + " " + module.name() + " " + module.description()).toLowerCase(Locale.ROOT).contains(query)) {
-				add(ConsoleLine.info("  " + module.id() + "  -  " + module.name()));
+				add(ConsoleLine.info("  " + module.id() + " - " + module.name()));
 				count++;
 			}
 		}

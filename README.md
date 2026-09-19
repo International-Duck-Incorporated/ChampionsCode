@@ -6,7 +6,7 @@ A **client-side Fabric mod for Minecraft Java Edition 26.3** that provides an
 msfconsole-inspired workflow for authorized, defensive server/plugin research,
 plus a bounded Volt-style runtime called **ChampionScript**.
 
-> **Status:** `0.1.0-alpha.6` — working foundation. The project builds, tests,
+> **Status:** `0.1.0-alpha.7` - working foundation. The project builds, tests,
 > and produces an installable Fabric JAR. It now includes packet-flow, metadata
 > replay, inventory-integrity, passive transaction-flow, client-resilience, and
 > passive motion foundations.
@@ -124,7 +124,7 @@ or companion process. It runs alongside other compatible Fabric mods.
 
 1. Install Fabric Loader for Minecraft 26.3.
 2. Put Fabric API for 26.3 in the instance's `mods` folder.
-3. Put `champions-mod-0.1.0-alpha.6.jar` in the same folder.
+3. Put `champions-mod-0.1.0-alpha.7.jar` in the same folder.
 4. Start Minecraft and press **F8**.
 
 ## First authorized run
@@ -215,6 +215,12 @@ Generated files:
 The mod and source JARs are written to `build/libs/`. Tests cover command
 parsing, authorization, bounded telemetry/transaction correlation, and
 ChampionScript capability boundaries.
+
+The `Fabric 26.3 build` GitHub Actions workflow runs on pushes to `main`, pull
+requests targeting `main`, and manual dispatch. It uses Java 25, verifies the
+configured Fabric 26.3 dependency versions, runs the clean build and test suite,
+checks the packaged `fabric.mod.json` and client mixin configuration, generates
+SHA-256 sums, and uploads both JARs as a workflow artifact.
 
 ## Project layout
 

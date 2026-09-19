@@ -1,30 +1,117 @@
-# Automatically build the project and run any configured tests for every push
-# and submitted pull request. This can help catch issues that only occur on
-# certain platforms or Java versions, and provides a first line of defence
-# against bad commits.
+name: Fabric 26.3 build
 
-name: build
-on: [pull_request, push]
+"on":
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fabric-26.3-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MINECRAFT_VERSION: "26.3"
+  JAVA_VERSION: "25"
 
 jobs:
   build:
+    name: Build Champions Mod for Minecraft 26.3
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
     steps:
-      - name: checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v6
-      - name: validate gradle wrapper
+
+      - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v6
-      - name: setup jdk
+
+      - name: Set up Java 25
         uses: actions/setup-java@v5
         with:
-          java-version: '25'
-          distribution: 'microsoft'
-      - name: make gradle wrapper executable
+          distribution: microsoft
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
-      - name: build
-        run: ./gradlew build
-      - name: capture build artifacts
+
+      - name: Verify configured Fabric target
+        shell: bash
+        run: |
+          grep -Fxq "minecraft_version=${MINECRAFT_VERSION}" gradle.properties
+          grep -Fxq "loader_version=0.19.5" gradle.properties
+          grep -Fxq "fabric_api_version=0.161.0+26.3" gradle.properties
+          grep -Fq 'minecraft "com.mojang:minecraft:${project.minecraft_version}"' build.gradle
+          grep -Fq 'implementation "net.fabricmc:fabric-loader:${project.loader_version}"' build.gradle
+          grep -Fq 'implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"' build.gradle
+
+      - name: Clean, test, and build Fabric mod
+        run: ./gradlew clean build --no-daemon --stacktrace
+
+      - name: Verify built mod metadata
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import zipfile
+
+          libs = pathlib.Path("build/libs")
+          jars = sorted(path for path in libs.glob("champions-mod-*.jar") if not path.name.endswith("-sources.jar"))
+          if len(jars) != 1:
+              raise SystemExit(f"Expected one mod JAR, found: {[path.name for path in jars]}")
+
+          properties = {}
+          for line in pathlib.Path("gradle.properties").read_text(encoding="utf-8").splitlines():
+              if "=" in line and not line.lstrip().startswith("#"):
+                  key, value = line.split("=", 1)
+                  properties[key.strip()] = value.strip()
+
+          with zipfile.ZipFile(jars[0]) as archive:
+              metadata = json.loads(archive.read("fabric.mod.json"))
+              names = set(archive.namelist())
+
+          expected = {
+              "minecraft": "~26.3",
+              "fabricloader": ">=0.19.5",
+              "fabric-api": ">=0.161.0",
+              "java": ">=25",
+          }
+          if metadata.get("version") != properties.get("version"):
+              raise SystemExit(f"Version mismatch: {metadata.get('version')} != {properties.get('version')}")
+          for dependency, requirement in expected.items():
+              actual = metadata.get("depends", {}).get(dependency)
+              if actual != requirement:
+                  raise SystemExit(f"Unexpected {dependency} requirement: {actual!r}")
+          if metadata.get("environment") != "client":
+              raise SystemExit("Mod must remain client-only")
+          if "champions.client.mixins.json" not in names:
+              raise SystemExit("Client mixin configuration is missing from the built JAR")
+
+          print(f"Verified {jars[0].name} for Fabric Minecraft 26.3")
+          PY
+
+      - name: Generate artifact checksums
+        shell: bash
+        run: |
+          cd build/libs
+          sha256sum *.jar | sort -k2 > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload Fabric mod artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: Artifacts
-          path: build/libs/
+          name: champions-mod-mc26.3-${{ github.sha }}
+          path: |
+            build/libs/champions-mod-*.jar
+            build/libs/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
