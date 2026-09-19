@@ -13,7 +13,11 @@ class AuthorizationPolicyTest {
 
 	@Test void requiresConnectionAllowlistMatchAndOneRunPhrase() throws Exception {
 		AuthorizationPolicy policy = new AuthorizationPolicy(temp);
-		assertFalse(policy.authorize(true, "example.org:25565", "CURRENT", AuthorizationPolicy.CONFIRMATION_PHRASE).allowed());
+		AuthorizationPolicy.AuthorizationDecision denied = policy.authorize(
+			true, "example.org:25565", "CURRENT", AuthorizationPolicy.CONFIRMATION_PHRASE);
+		assertFalse(denied.allowed());
+		assertEquals("Target is not allowlisted.", denied.reason());
+		assertFalse(denied.reason().contains(temp.toString()));
 		Files.writeString(policy.allowlistFile(), "example.org\n");
 		policy.reload();
 		assertFalse(policy.authorize(true, "example.org:25565", "other.org", AuthorizationPolicy.CONFIRMATION_PHRASE).allowed());

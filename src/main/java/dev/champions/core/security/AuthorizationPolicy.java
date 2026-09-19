@@ -48,7 +48,7 @@ public final class AuthorizationPolicy {
 			return AuthorizationDecision.denied("RHOST must be CURRENT or exactly match the connected server. No third-party probing is supported.");
 		}
 		if (!allowedTargets.contains(current)) {
-			return AuthorizationDecision.denied("Target is not allowlisted. Add the exact host to " + allowlistFile + " and run reload.");
+			return AuthorizationDecision.denied("Target is not allowlisted.");
 		}
 		return AuthorizationDecision.allowed(current);
 	}

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.0-alpha.10 - 2026-09-20
+
+- Fixed terminal and ClickGUI title-bar dragging by explicitly maintaining the
+  Minecraft drag state.
+- Added bottom-right resize handles and remembered window dimensions to both
+  interfaces.
+- Added mouse text selection, selection highlighting, Ctrl+C support, and a
+  Copy button to the terminal output.
+- Sorted ClickGUI modules by category and identifier and labeled each row with
+  its category.
+- Added persistent ClickGUI idle/running state and visible run-result feedback.
+- Shortened non-allowlisted target denials so local filesystem paths are no
+  longer printed in the terminal or ClickGUI.
+
 ## 0.1.0-alpha.9 - 2026-09-20
 
 - Changed the F8 terminal from a full-screen overlay into a movable floating

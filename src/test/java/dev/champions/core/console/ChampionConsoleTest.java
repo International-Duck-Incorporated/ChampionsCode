@@ -39,6 +39,8 @@ class ChampionConsoleTest {
 		console.submit("clickgui");
 		assertTrue(opened.get());
 		assertEquals(10, console.moduleViews().size());
+		List<String> ids = console.moduleViews().stream().map(ChampionConsole.ModuleView::id).toList();
+		assertEquals(ids.stream().sorted().toList(), ids);
 		assertTrue(console.selectModuleFromUi("auxiliary/scanner/chat_plugin_enumerator"));
 		assertNotNull(console.activeModuleView());
 		assertTrue(console.activeModuleView().options().stream().anyMatch(option -> option.name().equals("MODE")));

@@ -110,10 +110,12 @@ public final class ChampionConsole {
 	}
 
 	public synchronized List<ModuleView> moduleViews() {
-		return registry.all().stream().map(module -> new ModuleView(
-			module.id(), module.name(), module.description(),
-			activeModule != null && activeModule.id().equals(module.id())
-		)).toList();
+		return registry.all().stream()
+			.sorted(java.util.Comparator.comparing(ResearchModule::id))
+			.map(module -> new ModuleView(
+				module.id(), module.name(), module.description(),
+				activeModule != null && activeModule.id().equals(module.id())
+			)).toList();
 	}
 
 	public synchronized ActiveModuleView activeModuleView() {
@@ -143,6 +145,7 @@ public final class ChampionConsole {
 	}
 
 	public synchronized void runFromUi() { runActive(); }
+	public synchronized String runningModuleId() { return runningModuleId == null ? "" : runningModuleId; }
 	public synchronized void clearSelectionFromUi() { back(false); }
 	public synchronized void reloadFromUi() { reload(); }
 
