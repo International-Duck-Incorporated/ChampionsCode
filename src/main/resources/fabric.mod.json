@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "champions",
+  "version": "${version}",
+  "name": "Champions Mod",
+  "description": "An authorization-gated, client-side security research console for defensive Minecraft server and plugin assessment.",
+  "authors": ["Champions Mod contributors"],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/champions/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["dev.champions.client.ChampionsClient"]
+  },
+  "mixins": [
+    {
+      "config": "champions.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": ">=0.161.0"
+  }
+}

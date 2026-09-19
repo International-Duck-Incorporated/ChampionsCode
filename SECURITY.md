@@ -1,0 +1,18 @@
+# Security policy
+
+Champions Mod is a defensive research tool. Only test systems you own or have
+explicit permission to assess.
+
+Do not publish a suspected vulnerability in a Minecraft server plugin before
+the maintainer has had a reasonable opportunity to investigate and patch it.
+A useful private report includes the affected version, configuration,
+reproduction steps against a local test server, impact, logs, and a proposed
+mitigation. Remove player data, tokens, addresses, and other secrets.
+
+The project does not accept modules for credential theft, stealth, arbitrary
+code execution, destructive exploitation, denial of service, authorization
+bypass, anticheat-bypass development, or testing unrelated third-party systems.
+Packet telemetry must remain metadata-only and bounded: no packet bodies, chat
+contents, NBT, authentication/session data, or encryption material. Online
+packet cancellation, delayed flush queues, payload editors, click fabrication,
+GUI desynchronization, and duplication/race automation are out of scope.

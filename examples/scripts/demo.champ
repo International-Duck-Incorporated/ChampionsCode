@@ -1,0 +1,8 @@
+# ChampionScript is deliberately small and read-only.
+print "Champions runtime demo"
+status
+let target = server.address
+print "Current target:"
+print $target
+assert connected
+modules

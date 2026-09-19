@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.champions.client.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "ChampionsConnectionMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
