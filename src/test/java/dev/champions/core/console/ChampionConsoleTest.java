@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -29,6 +30,21 @@ class ChampionConsoleTest {
 		console.submit("java reload");
 		assertEquals("reload", submitted.get());
 		assertTrue(console.history().contains("java reload"));
+	}
+
+	@Test void opensClickGuiAndExposesStructuredModuleOptions() {
+		AtomicBoolean opened = new AtomicBoolean();
+		ChampionConsole console = new ChampionConsole(temp, ChampionConsoleTest::context,
+			ActiveModuleRuntime.disabled(), command -> {}, () -> opened.set(true));
+		console.submit("clickgui");
+		assertTrue(opened.get());
+		assertEquals(10, console.moduleViews().size());
+		assertTrue(console.selectModuleFromUi("auxiliary/scanner/chat_plugin_enumerator"));
+		assertNotNull(console.activeModuleView());
+		assertTrue(console.activeModuleView().options().stream().anyMatch(option -> option.name().equals("MODE")));
+		assertTrue(console.setOptionFromUi("MODE", "aggressive"));
+		assertEquals("aggressive", console.activeModuleView().options().stream()
+			.filter(option -> option.name().equals("MODE")).findFirst().orElseThrow().value());
 	}
 
 	private static ModuleContext context() {

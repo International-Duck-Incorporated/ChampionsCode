@@ -3,7 +3,8 @@
 ## 0.1 foundation (implemented)
 
 - Minecraft 26.3/Fabric client project
-- F8 research GUI with separate Console and Java tabs
+- Movable F8 terminal with separate Console and Java tabs
+- ClickGUI module and option browser opened from the terminal
 - Built-in passive modules
 - One bounded active module with SILENT marking and filtered AGGRESSIVE blank/version/v probes
 - Payload-free packet flow and bounded metadata timeline

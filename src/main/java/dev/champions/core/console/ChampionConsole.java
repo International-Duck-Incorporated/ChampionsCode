@@ -33,6 +33,7 @@ public final class ChampionConsole {
 	private final Supplier<ModuleContext> contextSupplier;
 	private final ActiveModuleRuntime activeRuntime;
 	private final RuntimeJavaCommands runtimeJava;
+	private final Runnable openClickGui;
 	private final List<ConsoleLine> lines = new ArrayList<>();
 	private final List<String> history = new ArrayList<>();
 	private ResearchModule activeModule;
@@ -40,18 +41,24 @@ public final class ChampionConsole {
 	private final Map<String, String> activeOptions = new LinkedHashMap<>();
 
 	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier) {
-		this(configDirectory, contextSupplier, ActiveModuleRuntime.disabled(), RuntimeJavaCommands.disabled());
+		this(configDirectory, contextSupplier, ActiveModuleRuntime.disabled(), RuntimeJavaCommands.disabled(), () -> {});
 	}
 
 	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier, ActiveModuleRuntime activeRuntime) {
-		this(configDirectory, contextSupplier, activeRuntime, RuntimeJavaCommands.disabled());
+		this(configDirectory, contextSupplier, activeRuntime, RuntimeJavaCommands.disabled(), () -> {});
 	}
 
 	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier,
 		ActiveModuleRuntime activeRuntime, RuntimeJavaCommands runtimeJava) {
+		this(configDirectory, contextSupplier, activeRuntime, runtimeJava, () -> {});
+	}
+
+	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier,
+		ActiveModuleRuntime activeRuntime, RuntimeJavaCommands runtimeJava, Runnable openClickGui) {
 		this.contextSupplier = contextSupplier;
 		this.activeRuntime = activeRuntime;
 		this.runtimeJava = runtimeJava;
+		this.openClickGui = openClickGui;
 		this.authorization = new AuthorizationPolicy(configDirectory);
 		this.audit = new AuditLog(configDirectory);
 		banner();
@@ -70,7 +77,8 @@ public final class ChampionConsole {
 		String command = args.getFirst().toLowerCase(Locale.ROOT);
 		try {
 			switch (command) {
-				case "help", "?" -> help();
+				case "help", "?" -> help(args);
+				case "clickgui" -> openClickGui.run();
 				case "banner" -> banner();
 				case "clear" -> lines.clear();
 				case "show" -> show(args);
@@ -101,21 +109,75 @@ public final class ChampionConsole {
 		audit.record(event, target, module, outcome, detail);
 	}
 
-	private void help() {
-		add(ConsoleLine.accent("Core commands"));
-		add(ConsoleLine.info("  show modules | search <text> | use <module> | info | back"));
-		add(ConsoleLine.info("  show options | set <name> <value> | unset <name> | run"));
-		add(ConsoleLine.info("  status | show targets | reload | clear | banner"));
-		add(ConsoleLine.accent("Runtime Java developer system"));
-		add(ConsoleLine.info("  java status | sources | hash | confirm <sha256>"));
-		add(ConsoleLine.info("  java compile | start | reload | stop | diagnostics"));
-		add(ConsoleLine.warning("Runtime Java is unrestricted code execution and is disabled by default. Modules remain authorization-gated and audited."));
+	public synchronized List<ModuleView> moduleViews() {
+		return registry.all().stream().map(module -> new ModuleView(
+			module.id(), module.name(), module.description(),
+			activeModule != null && activeModule.id().equals(module.id())
+		)).toList();
+	}
+
+	public synchronized ActiveModuleView activeModuleView() {
+		if (activeModule == null) return null;
+		List<OptionView> options = activeModule.options().stream().map(option -> {
+			String value = activeOptions.getOrDefault(option.name(), "");
+			boolean configured = !value.isBlank();
+			return new OptionView(option.name(), option.secret() ? "" : value,
+				option.required(), option.secret(), configured, option.description());
+		}).toList();
+		return new ActiveModuleView(activeModule.id(), activeModule.name(), activeModule.description(), options);
+	}
+
+	public synchronized boolean selectModuleFromUi(String id) {
+		ResearchModule module = registry.find(id).orElse(null);
+		if (module == null) return false;
+		selectModule(module);
+		return true;
+	}
+
+	public synchronized boolean setOptionFromUi(String name, String value) {
+		if (activeModule == null || name == null) return false;
+		String normalized = name.toUpperCase(Locale.ROOT);
+		if (!activeOptions.containsKey(normalized)) return false;
+		activeOptions.put(normalized, value == null ? "" : value);
+		return true;
+	}
+
+	public synchronized void runFromUi() { runActive(); }
+	public synchronized void clearSelectionFromUi() { back(false); }
+	public synchronized void reloadFromUi() { reload(); }
+
+	public record ModuleView(String id, String name, String description, boolean selected) {}
+	public record ActiveModuleView(String id, String name, String description, List<OptionView> options) {}
+	public record OptionView(String name, String value, boolean required, boolean secret, boolean configured, String description) {}
+
+	private void help(List<String> args) {
+		String topic = args.size() > 1 ? args.get(1).toLowerCase(Locale.ROOT) : "quick";
+		switch (topic) {
+			case "console", "commands" -> {
+				add(ConsoleLine.accent("Console command reference"));
+				add(ConsoleLine.info("  clickgui | show modules | search <text> | use <module> | info | back"));
+				add(ConsoleLine.info("  show options | set <name> <value> | unset <name> | run"));
+				add(ConsoleLine.info("  status | show targets | reload | clear | banner"));
+			}
+			case "java" -> {
+				add(ConsoleLine.accent("Runtime Java command reference"));
+				add(ConsoleLine.info("  java status | sources | classpath | hash | confirm <sha256>"));
+				add(ConsoleLine.info("  java compile | start | reload | stop | diagnostics"));
+				add(ConsoleLine.warning("Runtime Java is unrestricted code execution and is disabled by default."));
+			}
+			default -> {
+				add(ConsoleLine.accent("Quick start"));
+				add(ConsoleLine.info("  clickgui - open the module and option list"));
+				add(ConsoleLine.info("  help console - command reference | help java - runtime Java reference"));
+				add(ConsoleLine.muted("  Modules remain authorization-gated and audited."));
+			}
+		}
 	}
 
 	private void banner() {
 		add(ConsoleLine.accent("   CHAMPIONS MOD  // defensive research console"));
 		add(ConsoleLine.info("   Minecraft 26.3 | client-only | Fabric"));
-		add(ConsoleLine.muted("   F8 opens this console. Type help to begin."));
+		add(ConsoleLine.muted("   F8 opens this console. Type clickgui to browse modules."));
 		add(ConsoleLine.warning("   Test only systems you own or have explicit permission to assess."));
 	}
 
@@ -153,19 +215,26 @@ public final class ChampionConsole {
 		if (args.size() != 2) { add(ConsoleLine.error("Usage: use <module>")); return; }
 		Optional<ResearchModule> found = registry.find(args.get(1));
 		if (found.isEmpty()) { add(ConsoleLine.error("Module not found: " + args.get(1))); return; }
-		activeModule = found.get();
-		activeOptions.clear();
-		for (ModuleOption option : activeModule.options()) activeOptions.put(option.name(), option.defaultValue());
+		selectModule(found.get());
 		add(ConsoleLine.success("Using " + activeModule.id()));
 		add(ConsoleLine.muted("Type info or show options."));
 	}
 
-	private void back() {
-		if (activeModule == null) add(ConsoleLine.muted("No active module."));
-		else {
+	private void selectModule(ResearchModule module) {
+		activeModule = module;
+		activeOptions.clear();
+		for (ModuleOption option : activeModule.options()) activeOptions.put(option.name(), option.defaultValue());
+	}
+
+	private void back() { back(true); }
+
+	private void back(boolean announce) {
+		if (activeModule == null) {
+			if (announce) add(ConsoleLine.muted("No active module."));
+		} else {
 			activeOptions.clear();
 			activeModule = null;
-			add(ConsoleLine.info("Returned to the main console."));
+			if (announce) add(ConsoleLine.info("Returned to the main console."));
 		}
 	}
 

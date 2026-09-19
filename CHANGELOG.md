@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.0-alpha.9 - 2026-09-20
+
+- Changed the F8 terminal from a full-screen overlay into a movable floating
+  window with a draggable title bar and remembered position.
+- Added the `clickgui` command and a movable module browser with module and
+  option lists, direct option editing, confirmation arming, run controls, and
+  terminal navigation.
+- Replaced the oversized default help dump with a concise quick-start view;
+  full console and runtime Java references remain available through
+  `help console` and `help java`.
+
 ## 0.1.0-alpha.8 - 2026-09-19
 
 - Replaced ChampionScript and the Volt interpreter with real runtime Java source

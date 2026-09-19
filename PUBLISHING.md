@@ -7,7 +7,7 @@ credentials. After extracting it, open PowerShell in the extracted project root
 ```powershell
 git init
 git add .
-git commit -m "Champions Mod 0.1.0-alpha.8"
+git commit -m "Champions Mod 0.1.0-alpha.9"
 git remote add origin https://github.com/International-Duck-Incorporated/ChampionsCode.git
 git branch -M main
 git push -u origin main
