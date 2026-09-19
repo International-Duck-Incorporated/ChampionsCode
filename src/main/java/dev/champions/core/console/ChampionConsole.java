@@ -1,5 +1,6 @@
 package dev.champions.core.console;
 
+import dev.champions.api.java.RuntimeJavaCommands;
 import dev.champions.core.module.Finding;
 import dev.champions.core.module.ModuleContext;
 import dev.champions.core.module.ModuleOption;
@@ -8,8 +9,6 @@ import dev.champions.core.module.ModuleResult;
 import dev.champions.core.module.ResearchModule;
 import dev.champions.core.module.active.ActiveModuleRuntime;
 import dev.champions.core.module.active.ActiveResearchModule;
-import dev.champions.core.script.ChampionScriptEngine;
-import dev.champions.core.script.ScriptRepository;
 import dev.champions.core.security.AuditLog;
 import dev.champions.core.security.AuthorizationPolicy;
 import dev.champions.core.security.AuthorizationPolicy.AuthorizationDecision;
@@ -31,10 +30,9 @@ public final class ChampionConsole {
 	private final ModuleRegistry registry = new ModuleRegistry();
 	private final AuthorizationPolicy authorization;
 	private final AuditLog audit;
-	private final ScriptRepository scripts;
-	private final ChampionScriptEngine scriptEngine;
 	private final Supplier<ModuleContext> contextSupplier;
 	private final ActiveModuleRuntime activeRuntime;
+	private final RuntimeJavaCommands runtimeJava;
 	private final List<ConsoleLine> lines = new ArrayList<>();
 	private final List<String> history = new ArrayList<>();
 	private ResearchModule activeModule;
@@ -42,16 +40,20 @@ public final class ChampionConsole {
 	private final Map<String, String> activeOptions = new LinkedHashMap<>();
 
 	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier) {
-		this(configDirectory, contextSupplier, ActiveModuleRuntime.disabled());
+		this(configDirectory, contextSupplier, ActiveModuleRuntime.disabled(), RuntimeJavaCommands.disabled());
 	}
 
 	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier, ActiveModuleRuntime activeRuntime) {
+		this(configDirectory, contextSupplier, activeRuntime, RuntimeJavaCommands.disabled());
+	}
+
+	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier,
+		ActiveModuleRuntime activeRuntime, RuntimeJavaCommands runtimeJava) {
 		this.contextSupplier = contextSupplier;
 		this.activeRuntime = activeRuntime;
+		this.runtimeJava = runtimeJava;
 		this.authorization = new AuthorizationPolicy(configDirectory);
 		this.audit = new AuditLog(configDirectory);
-		this.scripts = new ScriptRepository(configDirectory);
-		this.scriptEngine = new ChampionScriptEngine(registry);
 		banner();
 	}
 
@@ -81,7 +83,7 @@ public final class ChampionConsole {
 				case "run", "exploit" -> runActive();
 				case "status" -> status();
 				case "reload" -> reload();
-				case "volt", "script" -> volt(input, args);
+				case "java" -> runtimeJava.submit(commandRemainder(input));
 				default -> add(ConsoleLine.error("Unknown command: " + command + ". Type help."));
 			}
 		} catch (RuntimeException e) {
@@ -94,17 +96,20 @@ public final class ChampionConsole {
 	public synchronized String prompt() { return activeModule == null ? "champions" : "champions(" + activeModule.id() + ")"; }
 	public Path auditFile() { return audit.file(); }
 	public Path allowlistFile() { return authorization.allowlistFile(); }
-	public Path scriptsDirectory() { return scripts.directory(); }
+	public synchronized void emit(ConsoleLine line) { add(line); }
+	public synchronized void recordAudit(String event, String target, String module, String outcome, String detail) {
+		audit.record(event, target, module, outcome, detail);
+	}
 
 	private void help() {
 		add(ConsoleLine.accent("Core commands"));
 		add(ConsoleLine.info("  show modules | search <text> | use <module> | info | back"));
 		add(ConsoleLine.info("  show options | set <name> <value> | unset <name> | run"));
 		add(ConsoleLine.info("  status | show targets | reload | clear | banner"));
-		add(ConsoleLine.accent("Volt-style sandbox"));
-		add(ConsoleLine.info("  volt list | volt show <name> | volt run <name>"));
-		add(ConsoleLine.info("  volt eval <statement; statement> | volt help"));
-		add(ConsoleLine.warning("Modules are current-connection-only, allowlist-gated, and audited. Active modules state their one bounded action."));
+		add(ConsoleLine.accent("Runtime Java developer system"));
+		add(ConsoleLine.info("  java status | sources | hash | confirm <sha256>"));
+		add(ConsoleLine.info("  java compile | start | reload | stop | diagnostics"));
+		add(ConsoleLine.warning("Runtime Java is unrestricted code execution and is disabled by default. Modules remain authorization-gated and audited."));
 	}
 
 	private void banner() {
@@ -273,56 +278,10 @@ public final class ChampionConsole {
 	private void reload() {
 		try {
 			authorization.reload();
-			add(ConsoleLine.success("Reloaded authorization policy. Scripts are read fresh on each run."));
+			add(ConsoleLine.success("Reloaded authorization policy. Runtime Java has separate settings and reload commands."));
 		} catch (IOException e) {
 			add(ConsoleLine.error("Reload failed: " + e.getMessage()));
 		}
-	}
-
-	private void volt(String raw, List<String> args) {
-		if (args.size() < 2 || args.get(1).equalsIgnoreCase("help")) {
-			add(ConsoleLine.accent("Volt-style ChampionScript runtime"));
-			add(ConsoleLine.info("  volt list | show <name> | run <name> | eval <code>"));
-			add(ConsoleLine.muted("Read-only API: runtime metadata, variables, assertions, and console output."));
-			add(ConsoleLine.warning("No JVM/native execution, files, network, packets, chat, reflection, or game mutation."));
-			return;
-		}
-		switch (args.get(1).toLowerCase(Locale.ROOT)) {
-			case "list" -> {
-				try {
-					add(ConsoleLine.accent("ChampionScript files in " + scripts.directory()));
-					scripts.list().forEach(name -> add(ConsoleLine.info("  " + name)));
-				} catch (IOException e) { add(ConsoleLine.error(e.getMessage())); }
-			}
-			case "show" -> {
-				if (args.size() != 3) { add(ConsoleLine.error("Usage: volt show <name>")); return; }
-				try {
-					add(ConsoleLine.accent("--- " + args.get(2) + ".champ ---"));
-					for (String line : scripts.read(args.get(2)).lines().toList()) add(ConsoleLine.muted(line));
-				} catch (IOException e) { add(ConsoleLine.error(e.getMessage())); }
-			}
-			case "run" -> {
-				if (args.size() != 3) { add(ConsoleLine.error("Usage: volt run <name>")); return; }
-				try { runScript(args.get(2), scripts.read(args.get(2))); }
-				catch (IOException e) { add(ConsoleLine.error(e.getMessage())); }
-			}
-			case "eval" -> {
-				int at = raw.toLowerCase(Locale.ROOT).indexOf("eval");
-				String source = at < 0 ? "" : raw.substring(at + 4).strip();
-				if (source.isEmpty()) { add(ConsoleLine.error("Usage: volt eval <code>")); return; }
-				runScript("<eval>", source);
-			}
-			default -> add(ConsoleLine.error("Unknown volt command. Try volt help."));
-		}
-	}
-
-	private void runScript(String name, String source) {
-		add(ConsoleLine.accent("[volt] running " + name + " in the read-only sandbox"));
-		var result = scriptEngine.execute(source, contextSupplier.get());
-		result.output().forEach(this::add);
-		if (result.success()) add(ConsoleLine.success("[volt] completed " + result.statementsExecuted() + " statement(s)"));
-		else add(ConsoleLine.error("[volt] stopped: " + result.message()));
-		audit.record("script_run", "client", name, result.success() ? "completed" : "error", result.message());
 	}
 
 	private void renderFinding(Finding finding) {
@@ -357,6 +316,11 @@ public final class ChampionConsole {
 
 	private static String redactForEcho(String input) {
 		return input.replaceFirst("(?i)^(set\\s+confirm\\s+).+$", "$1<redacted>");
+	}
+
+	private static String commandRemainder(String input) {
+		int space = input.indexOf(' ');
+		return space < 0 ? "" : input.substring(space + 1).strip();
 	}
 
 	private static String limit(String value, int max) { return value.length() <= max ? value : value.substring(0, max) + "…"; }

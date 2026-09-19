@@ -6,7 +6,9 @@ Champions has two module types:
 - `ActiveResearchModule` may request a narrow, enumerated capability from
   `ActiveModuleRuntime` after the console's target and confirmation gates pass.
 
-Both are registered in `ModuleRegistry`.
+Both are registered in `ModuleRegistry`. Runtime Java addons are a separate,
+explicitly unsafe developer facility and are not a way to bypass these module
+rules. See `runtime-java.md` for their lifecycle and risk model.
 
 ## Required properties
 

@@ -96,7 +96,20 @@ jobs:
           if "champions.client.mixins.json" not in names:
               raise SystemExit("Client mixin configuration is missing from the built JAR")
 
-          print(f"Verified {jars[0].name} for Fabric Minecraft 26.3")
+          runtime_java_classes = {
+              "dev/champions/api/java/ChampionRuntimeAddon.class",
+              "dev/champions/api/java/ChampionJavaContext.class",
+              "dev/champions/client/java/JavaRuntimeManager.class",
+              "dev/champions/core/java/RuntimeJavaCompiler.class",
+          }
+          missing = runtime_java_classes - names
+          if missing:
+              raise SystemExit(f"Runtime Java classes missing from JAR: {sorted(missing)}")
+          obsolete = sorted(name for name in names if "core/script/" in name or "ChampionScript" in name)
+          if obsolete:
+              raise SystemExit(f"Obsolete ChampionScript classes remain in JAR: {obsolete}")
+
+          print(f"Verified {jars[0].name} for Fabric Minecraft 26.3 and runtime Java packaging")
           PY
 
       - name: Generate artifact checksums

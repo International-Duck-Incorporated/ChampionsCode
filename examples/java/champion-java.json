@@ -1,0 +1,6 @@
+{
+  "id": "example-runtime",
+  "name": "Example Runtime Addon",
+  "version": "0.1.0",
+  "entrypoint": "champions.runtime.Example"
+}

@@ -42,7 +42,7 @@ public final class ChampionsConsoleScreen extends Screen {
 
 		addRenderableWidget(Button.builder(Component.literal("Console"), button -> selectTab(WorkspaceTab.CONSOLE))
 			.bounds(MARGIN, 32, 72, 18).build());
-		addRenderableWidget(Button.builder(Component.literal("Volt"), button -> selectTab(WorkspaceTab.VOLT))
+		addRenderableWidget(Button.builder(Component.literal("Java"), button -> selectTab(WorkspaceTab.JAVA))
 			.bounds(MARGIN + 78, 32, 72, 18).build());
 
 		addRenderableWidget(Button.builder(Component.literal("Clear"), button -> {
@@ -65,11 +65,11 @@ public final class ChampionsConsoleScreen extends Screen {
 
 		graphics.text(font, "CHAMPIONS", MARGIN, 8, 0xFF18D9C7, false);
 		graphics.text(font, "DEFENSIVE SECURITY RESEARCH  /  MC 26.3", MARGIN + 70, 8, 0xFFA8B3C7, false);
-		String modeLine = activeTab == WorkspaceTab.VOLT
-			? "VOLT RUNTIME  •  CHAMPIONSCRIPT ONLY  •  READ-ONLY SANDBOX"
+		String modeLine = activeTab == WorkspaceTab.JAVA
+			? "RUNTIME JAVA  •  UNRESTRICTED  •  JDK 25  •  HASH-GATED"
 			: "PASSIVE  •  CURRENT CONNECTION ONLY  •  AUDITED";
-		graphics.text(font, modeLine, MARGIN, 20, 0xFF6EE7B7, false);
-		graphics.text(font, activeTab == WorkspaceTab.VOLT ? "volt >" : console.prompt() + " >",
+		graphics.text(font, modeLine, MARGIN, 20, activeTab == WorkspaceTab.JAVA ? 0xFFFB7185 : 0xFF6EE7B7, false);
+		graphics.text(font, activeTab == WorkspaceTab.JAVA ? "java >" : console.prompt() + " >",
 			MARGIN, height - 22, 0xFFFBBF24, false);
 
 		List<VisualLine> visual = buildVisualLines(Math.max(80, width - MARGIN * 2 - 10));
@@ -137,29 +137,24 @@ public final class ChampionsConsoleScreen extends Screen {
 
 	private void updateInputHint() {
 		if (input == null) return;
-		input.setHint(Component.literal(activeTab == WorkspaceTab.VOLT
-			? "print \"hello\" + server.brand; status  |  list  |  run demo"
+		input.setHint(Component.literal(activeTab == WorkspaceTab.JAVA
+			? "status | hash | confirm <sha256> | compile | start | reload | stop"
 			: "help"));
 	}
 
 	private void submitInput() {
 		String command = input.getValue().strip();
 		if (command.isBlank()) return;
-		if (activeTab == WorkspaceTab.VOLT) console.submit(toVoltCommand(command));
+		if (activeTab == WorkspaceTab.JAVA) console.submit(toJavaCommand(command));
 		else console.submit(command);
 		input.setValue("");
 		historyCursor = console.history().size();
 		scrollOffset = 0;
 	}
 
-	private static String toVoltCommand(String input) {
+	private static String toJavaCommand(String input) {
 		String lower = input.toLowerCase(java.util.Locale.ROOT);
-		if (lower.equals("volt") || lower.startsWith("volt ") || lower.equals("script") || lower.startsWith("script ")) return input;
-		String first = lower.contains(" ") ? lower.substring(0, lower.indexOf(' ')) : lower;
-		if (first.equals("help") || first.equals("list") || first.equals("show") || first.equals("run") || first.equals("eval")) {
-			return "volt " + input;
-		}
-		return "volt eval " + input;
+		return lower.equals("java") || lower.startsWith("java ") ? input : "java " + input;
 	}
 
 	private void navigateHistory(int direction) {
@@ -201,7 +196,7 @@ public final class ChampionsConsoleScreen extends Screen {
 		};
 	}
 
-	private enum WorkspaceTab { CONSOLE, VOLT }
+	private enum WorkspaceTab { CONSOLE, JAVA }
 
 	private record VisualLine(ConsoleLine.Tone tone, String text) {}
 }

@@ -3,7 +3,7 @@
   "id": "champions",
   "version": "${version}",
   "name": "Champions Mod",
-  "description": "An authorization-gated, client-side security research console for defensive Minecraft server and plugin assessment.",
+  "description": "An authorization-gated defensive research console with an opt-in, hash-confirmed runtime Java addon developer system.",
   "authors": ["Champions Mod contributors"],
   "contact": {},
   "license": "MIT",

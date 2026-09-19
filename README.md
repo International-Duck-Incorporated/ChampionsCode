@@ -4,9 +4,9 @@
 
 A **client-side Fabric mod for Minecraft Java Edition 26.3** that provides an
 msfconsole-inspired workflow for authorized, defensive server/plugin research,
-plus a bounded Volt-style runtime called **ChampionScript**.
+plus an explicitly enabled runtime Java addon development system.
 
-> **Status:** `0.1.0-alpha.7` - working foundation. The project builds, tests,
+> **Status:** `0.1.0-alpha.8` - working foundation. The project builds, tests,
 > and produces an installable Fabric JAR. It now includes packet-flow, metadata
 > replay, inventory-integrity, passive transaction-flow, client-resilience, and
 > passive motion foundations.
@@ -15,7 +15,7 @@ plus a bounded Volt-style runtime called **ChampionScript**.
 
 ### Research console
 
-Press **F8** in game to open the GUI. It has separate **Console** and **Volt**
+Press **F8** in game to open the GUI. It has separate **Console** and **Java**
 tabs; the key can be rebound as **Open Champions Console** under the Champions
 Mod controls category.
 
@@ -57,34 +57,33 @@ exploitability. Motion evidence uses rendered remote-player positions and
 intentionally broad thresholds; lag, teleports, vehicles, and interpolation can
 explain its notes.
 
-### ChampionScript (“Volt” mode)
+### Runtime Java addons
 
-ChampionScript runs at client runtime, but is intentionally **not arbitrary JVM
-code execution or game injection**. It is a small, non-Turing-complete language
-with a read-only API. The dedicated **Volt** tab accepts ChampionScript directly
-and recognizes `list`, `show <name>`, and `run <name>` shortcuts. The same runtime
-is available through console commands:
+The **Java** tab compiles real `.java` files from
+`.minecraft/config/champions-mod/java/` with the standard JDK 25 compiler. All
+sources are compiled together, loaded through a fresh classloader, and started
+through the `ChampionRuntimeAddon` interface. Explicit reload calls `stop()`,
+runs registered cleanup callbacks, closes the old classloader, compiles the
+replacement, and invokes the new `start()` on the client thread.
 
 ```text
-volt list
-volt show demo
-volt run demo
-volt eval print "brand=" + server.brand; assert connected
+java status
+java sources
+java classpath
+java hash
+java confirm <current-sha256>
+java compile
+java start
+java reload
+java stop
 ```
 
-Supported statements:
-
-- `print <expression>` and `notify <expression>`
-- `let name = <expression>` and `get name`
-- `status`, `server`, `player`, `position`, `modules`
-- `assert connected`, `assert disconnected`, `assert online_mode`
-
-Runtime values include `server.address`, `server.brand`, `server.version`,
-`server.protocol`, `server.players`, `server.ping`, `player.name`,
-`player.position`, `player.dimension`, `client.connected`, and `client.fps`.
-
-The sandbox has source, statement, output, and time budgets. It exposes no file,
-socket, packet, chat, reflection, native-process, or game-mutation API.
+Runtime Java is **unrestricted code execution inside Minecraft**. It is not a
+sandbox and can access game internals, packets, files, credentials, networking,
+reflection, process APIs, native libraries, and other loaded mods. The feature
+is disabled by default, requires a full JDK 25, and requires both
+`developerMode=true` and confirmation of the exact current source-set SHA-256.
+Any source or manifest change invalidates that confirmation.
 
 ## Safety model
 
@@ -105,17 +104,19 @@ assess.
    consumed afterward.
 7. Runs are recorded in `audit.jsonl` without secret option values.
 
-This starter intentionally does **not** include exploit delivery, credential or
-token collection, stealth, arbitrary remote scanning, packet fuzzing, arbitrary
-command execution, permission/namespace bypasses, destructive checks, native/JVM
-script execution, or code injection into Minecraft.
+The research modules intentionally do **not** include exploit delivery,
+credential or token collection, stealth, arbitrary remote scanning, packet
+fuzzing, arbitrary command execution, permission/namespace bypasses, or
+destructive checks. Runtime Java is a separate, local developer feature with an
+explicit unsafe-mode and source-hash gate; once started, its code is unrestricted
+and is outside the module capability boundary.
 
 ## Requirements
 
 - Minecraft Java Edition **26.3**
 - Fabric Loader **0.19.5+**
 - Fabric API **0.161.0+26.3**
-- Java **25**
+- Java **25**; a full **JDK 25** is required for runtime Java compilation
 
 This is a normal client-side Fabric mod: one JAR, with no server-side component
 or companion process. It runs alongside other compatible Fabric mods.
@@ -124,7 +125,7 @@ or companion process. It runs alongside other compatible Fabric mods.
 
 1. Install Fabric Loader for Minecraft 26.3.
 2. Put Fabric API for 26.3 in the instance's `mods` folder.
-3. Put `champions-mod-0.1.0-alpha.7.jar` in the same folder.
+3. Put `champions-mod-0.1.0-alpha.8.jar` in the same folder.
 4. Start Minecraft and press **F8**.
 
 ## First authorized run
@@ -201,8 +202,11 @@ Generated files:
 .minecraft/config/champions-mod/
 ├── authorized-targets.txt
 ├── audit.jsonl
-└── scripts/
-    └── demo.champ
+├── java-runtime.properties
+└── java/
+    ├── champion-java.json
+    ├── Example.java
+    └── .build/
 ```
 
 ## Build from source
@@ -213,8 +217,8 @@ Generated files:
 ```
 
 The mod and source JARs are written to `build/libs/`. Tests cover command
-parsing, authorization, bounded telemetry/transaction correlation, and
-ChampionScript capability boundaries.
+parsing, authorization, bounded telemetry/transaction correlation, deterministic
+runtime-source hashing, manifest validation, and JDK compilation.
 
 The `Fabric 26.3 build` GitHub Actions workflow runs on pushes to `main`, pull
 requests targeting `main`, and manual dispatch. It uses Java 25, verifies the
@@ -225,11 +229,13 @@ SHA-256 sums, and uploads both JARs as a workflow artifact.
 ## Project layout
 
 ```text
-src/main/java/dev/champions/core/
-├── console/       # command shell and safe parsing
-├── module/        # module SPI, context, findings, built-ins
-├── script/        # ChampionScript interpreter and script repository
-└── security/      # exact-host authorization and audit logging
+src/main/java/dev/champions/
+├── api/java/      # runtime addon entrypoint and context API
+└── core/
+    ├── console/   # command shell and safe parsing
+    ├── java/      # manifest, source hashing, and JDK compiler wrapper
+    ├── module/    # module SPI, context, findings, built-ins
+    └── security/  # exact-host authorization and audit logging
 
 src/client/java/dev/champions/client/
 ├── ChampionsClient.java
@@ -237,16 +243,17 @@ src/client/java/dev/champions/client/
 ├── PacketTelemetry.java
 ├── InventoryTelemetry.java
 ├── PlayerMotionTelemetry.java
+├── java/JavaRuntimeManager.java
 ├── mixin/ChampionsConnectionMixin.java
 └── ui/ChampionsConsoleScreen.java
 ```
 
-See [`docs/championscript.md`](docs/championscript.md),
+See [`docs/runtime-java.md`](docs/runtime-java.md),
 [`docs/module-authoring.md`](docs/module-authoring.md),
 [`docs/research-influences.md`](docs/research-influences.md),
 [`docs/roadmap.md`](docs/roadmap.md), and [`PUBLISHING.md`](PUBLISHING.md) for
-the Volt language reference, extension rules, clean-room design notes, planned
-work, and PowerShell publishing steps.
+the runtime Java lifecycle and risk model, extension rules, clean-room design
+notes, planned work, and PowerShell publishing steps.
 
 ## License
 

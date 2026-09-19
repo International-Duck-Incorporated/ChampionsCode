@@ -1,2 +1,2 @@
-7094e3f2c9725ddd3d7d0e48960504dead7fad827c8b09fec57aef2f896a8f81  release/champions-mod-0.1.0-alpha.7-sources.jar
-1fc549389df621ef5be3fb8238a4b46d54f43169903e750492803de42a57c383  release/champions-mod-0.1.0-alpha.7.jar
+ec64987b4920a200ae5ef5bdaefc7ab88a405a4ff540128c22ff8ab0f4c50dee  release/champions-mod-0.1.0-alpha.8.jar
+22c85f0b7c9c71cd4ebc9e2abf35b8fbc5bf601df675bfe6e46ba4757c884a30  release/champions-mod-0.1.0-alpha.8-sources.jar

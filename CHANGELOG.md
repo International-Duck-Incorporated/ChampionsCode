@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.0-alpha.8 - 2026-09-19
+
+- Replaced ChampionScript and the Volt interpreter with real runtime Java source
+  compilation backed by the standard JDK 25 compiler.
+- Added multi-file source sets, `champion-java.json`, and the
+  `ChampionRuntimeAddon` start/stop entrypoint contract.
+- Added persistent addon lifecycle management with explicit compile, start,
+  reload, stop, diagnostics, client-thread scheduling, and cleanup callbacks.
+- Added manual developer-mode opt-in and exact source-set SHA-256 confirmation;
+  any source or manifest change invalidates the confirmation.
+- Added deterministic source hashing, manifest validation, compiler tests, an
+  example Java addon, audit events, and detailed unrestricted-code warnings.
+- Replaced the Volt GUI tab with a Java developer tab.
+
 ## 0.1.0-alpha.7 - 2026-09-19
 
 - Removed the Unicode em dash character from the current source tree,
