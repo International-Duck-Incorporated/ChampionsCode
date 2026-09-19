@@ -2,6 +2,7 @@ package dev.champions.client.ui;
 
 import dev.champions.core.console.ChampionConsole;
 import dev.champions.core.console.ChampionConsole.ActiveModuleView;
+import dev.champions.core.console.ChampionConsole.CurrentTargetView;
 import dev.champions.core.console.ChampionConsole.ModuleView;
 import dev.champions.core.console.ChampionConsole.OptionView;
 import dev.champions.core.console.ConsoleLine;
@@ -152,10 +153,14 @@ public final class ChampionsClickGuiScreen extends Screen {
 		}).bounds(x, y, 54, 18).build());
 		back.active = active != null;
 		x += 60;
-		track(Button.builder(Component.literal("Reload"), button -> {
-			console.reloadFromUi();
-			setActivity("Authorization policy reloaded.");
-		}).bounds(x, y, 62, 18).build());
+		CurrentTargetView target = console.currentTargetView();
+		Button authorization = track(Button.builder(
+			Component.literal(target.authorized() ? "Remove target" : "Authorize current"), button -> {
+				setActivity(target.authorized() ? "Removing current target authorization..." : "Authorizing current target...");
+				console.setCurrentTargetAuthorizedFromUi(!target.authorized());
+				rebuildWidgets();
+			}).bounds(x, y, 120, 18).build());
+		authorization.active = target.available();
 		track(Button.builder(Component.literal("Terminal"), button -> returnToTerminal())
 			.bounds(windowX + windowWidth - 142, y, 70, 18).build());
 		track(Button.builder(Component.literal("Close"), button -> minecraft.setScreenAndShow(null))
@@ -226,8 +231,13 @@ public final class ChampionsClickGuiScreen extends Screen {
 
 	private void renderRunStatus(GuiGraphicsExtractor graphics) {
 		String running = console.runningModuleId();
-		String status = running.isBlank() ? "STATUS: IDLE" : "STATUS: RUNNING " + running;
-		int statusColor = running.isBlank() ? 0xFF6EE7B7 : 0xFFFBBF24;
+		CurrentTargetView target = console.currentTargetView();
+		String runStatus = running.isBlank() ? "IDLE" : "RUNNING " + running;
+		String targetStatus = target.available()
+			? target.target() + (target.authorized() ? " [AUTHORIZED]" : " [NOT AUTHORIZED]")
+			: "no current target";
+		String status = "STATUS: " + runStatus + " | TARGET: " + targetStatus;
+		int statusColor = running.isBlank() ? (target.authorized() ? 0xFF6EE7B7 : 0xFFFBBF24) : 0xFFFBBF24;
 		graphics.text(font, fit(status, windowWidth - 20), windowX + 10, windowY + windowHeight - 52, statusColor, false);
 		List<ConsoleLine> lines = console.lines();
 		ConsoleLine latest = lines.isEmpty() ? null : lines.getLast();

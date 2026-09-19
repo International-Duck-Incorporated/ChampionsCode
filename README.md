@@ -6,7 +6,7 @@ A **client-side Fabric mod for Minecraft Java Edition 26.3** that provides an
 msfconsole-inspired workflow for authorized, defensive server/plugin research,
 plus an explicitly enabled runtime Java addon development system.
 
-> **Status:** `0.1.0-alpha.10` - working foundation. The project builds, tests,
+> **Status:** `0.1.0-alpha.11` - working foundation. The project builds, tests,
 > and produces an installable Fabric JAR. It now includes packet-flow, metadata
 > replay, inventory-integrity, passive transaction-flow, client-resilience, and
 > passive motion foundations.
@@ -103,7 +103,7 @@ assess.
 3. AGGRESSIVE probes run sequentially, at most two per second, across no more
    than 12 candidate roots with bounded response windows.
 4. `RHOST` must be `CURRENT` or exactly match the active connection.
-5. The host must be present in `authorized-targets.txt`; wildcards are rejected.
+5. The connected host must be authorized in game with `authorize current` or the ClickGUI; wildcards are rejected.
 6. `CONFIRM` must be set to `I_HAVE_AUTHORIZATION` for each module run, and is
    consumed afterward.
 7. Runs are recorded in `audit.jsonl` without secret option values.
@@ -129,7 +129,7 @@ or companion process. It runs alongside other compatible Fabric mods.
 
 1. Install Fabric Loader for Minecraft 26.3.
 2. Put Fabric API for 26.3 in the instance's `mods` folder.
-3. Put `champions-mod-0.1.0-alpha.10.jar` in the same folder.
+3. Put `champions-mod-0.1.0-alpha.11.jar` in the same folder.
 4. Start Minecraft and press **F8**.
 
 ## First authorized run
@@ -195,10 +195,11 @@ run
 For an authorized remote lab/server:
 
 1. Connect to that server normally.
-2. Add its **exact hostname** to
-   `.minecraft/config/champions-mod/authorized-targets.txt`.
-3. In the console, run `reload`.
-4. Select a module, set the one-run confirmation phrase, and run it.
+2. Run `authorize current` in the terminal, or press **Authorize current** in the ClickGUI.
+3. Select a module, arm the one-run confirmation phrase, and run it.
+4. Use `deauthorize current` or **Remove target** when the authorization should be removed.
+
+The exact-host list is persisted automatically; manual text-file editing is not required.
 
 Generated files:
 

@@ -11,7 +11,7 @@
 - Read-only container integrity and client resilience audits
 - Passive menu-action/update class correlation with no packet manipulation
 - Passive, non-verdict remote-player motion evidence
-- Exact-target allowlist, one-run confirmation, and audit log
+- In-game exact-target authorization management, one-run confirmation, and audit log
 - Hash-gated runtime Java addon compilation with a persistent reload lifecycle
 - Unit tests and CI build
 

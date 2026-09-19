@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.0-alpha.11 - 2026-09-20
+
+- Added `authorize current` and `deauthorize current` for persistent in-game
+  management of the connected exact host.
+- Added an **Authorize current** / **Remove target** toggle and current-target
+  authorization state to the ClickGUI.
+- Kept the exact-host authorization gate and one-run confirmation while removing
+  the need to edit or reload the target text file manually.
+- Replaced filesystem-path denial output with concise in-game instructions.
+
 ## 0.1.0-alpha.10 - 2026-09-20
 
 - Fixed terminal and ClickGUI title-bar dragging by explicitly maintaining the

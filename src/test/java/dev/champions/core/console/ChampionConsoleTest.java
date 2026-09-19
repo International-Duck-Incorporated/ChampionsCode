@@ -47,6 +47,10 @@ class ChampionConsoleTest {
 		assertTrue(console.setOptionFromUi("MODE", "aggressive"));
 		assertEquals("aggressive", console.activeModuleView().options().stream()
 			.filter(option -> option.name().equals("MODE")).findFirst().orElseThrow().value());
+		console.submit("deauthorize current");
+		assertFalse(console.currentTargetView().authorized());
+		console.submit("authorize current");
+		assertTrue(console.currentTargetView().authorized());
 	}
 
 	private static ModuleContext context() {

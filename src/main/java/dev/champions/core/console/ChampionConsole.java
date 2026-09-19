@@ -90,6 +90,8 @@ public final class ChampionConsole {
 				case "unset" -> unset(args);
 				case "run", "exploit" -> runActive();
 				case "status" -> status();
+				case "authorize" -> manageCurrentAuthorization(args, true);
+				case "deauthorize" -> manageCurrentAuthorization(args, false);
 				case "reload" -> reload();
 				case "java" -> runtimeJava.submit(commandRemainder(input));
 				default -> add(ConsoleLine.error("Unknown command: " + command + ". Type help."));
@@ -148,10 +150,20 @@ public final class ChampionConsole {
 	public synchronized String runningModuleId() { return runningModuleId == null ? "" : runningModuleId; }
 	public synchronized void clearSelectionFromUi() { back(false); }
 	public synchronized void reloadFromUi() { reload(); }
+	public synchronized CurrentTargetView currentTargetView() {
+		ModuleContext context = contextSupplier.get();
+		String target = AuthorizationPolicy.normalizeHost(context.serverAddress());
+		boolean available = context.connected() && !target.isBlank() && !target.equals("unknown");
+		return new CurrentTargetView(available, target, available && authorization.isAllowed(target));
+	}
+	public synchronized void setCurrentTargetAuthorizedFromUi(boolean authorized) {
+		manageCurrentAuthorization(List.of(authorized ? "authorize" : "deauthorize", "current"), authorized);
+	}
 
 	public record ModuleView(String id, String name, String description, boolean selected) {}
 	public record ActiveModuleView(String id, String name, String description, List<OptionView> options) {}
 	public record OptionView(String name, String value, boolean required, boolean secret, boolean configured, String description) {}
+	public record CurrentTargetView(boolean available, String target, boolean authorized) {}
 
 	private void help(List<String> args) {
 		String topic = args.size() > 1 ? args.get(1).toLowerCase(Locale.ROOT) : "quick";
@@ -160,7 +172,8 @@ public final class ChampionConsole {
 				add(ConsoleLine.accent("Console command reference"));
 				add(ConsoleLine.info("  clickgui | show modules | search <text> | use <module> | info | back"));
 				add(ConsoleLine.info("  show options | set <name> <value> | unset <name> | run"));
-				add(ConsoleLine.info("  status | show targets | reload | clear | banner"));
+				add(ConsoleLine.info("  authorize current | deauthorize current | show targets"));
+				add(ConsoleLine.info("  status | reload | clear | banner"));
 			}
 			case "java" -> {
 				add(ConsoleLine.accent("Runtime Java command reference"));
@@ -170,7 +183,8 @@ public final class ChampionConsole {
 			}
 			default -> {
 				add(ConsoleLine.accent("Quick start"));
-				add(ConsoleLine.info("  clickgui - open the module and option list"));
+				add(ConsoleLine.info("  clickgui - open modules, options, and current-target authorization"));
+				add(ConsoleLine.info("  authorize current - authorize the connected server in game"));
 				add(ConsoleLine.info("  help console - command reference | help java - runtime Java reference"));
 				add(ConsoleLine.muted("  Modules remain authorization-gated and audited."));
 			}
@@ -195,7 +209,7 @@ public final class ChampionConsole {
 			case "targets" -> {
 				add(ConsoleLine.accent("Exact authorized targets"));
 				authorization.allowedTargets().stream().sorted().forEach(t -> add(ConsoleLine.info("  " + t)));
-				add(ConsoleLine.muted("File: " + authorization.allowlistFile()));
+				add(ConsoleLine.muted("Manage the connected server with authorize current or deauthorize current."));
 			}
 			default -> add(ConsoleLine.error("Unknown show type: " + args.get(1)));
 		}
@@ -345,6 +359,28 @@ public final class ChampionConsole {
 		add(ConsoleLine.info("  player=" + c.playerName() + " position=" + c.playerPosition()));
 		add(ConsoleLine.info("  active_job=" + (runningModuleId == null ? "none" : runningModuleId)));
 		add(ConsoleLine.muted("  audit=" + audit.file()));
+	}
+
+	private void manageCurrentAuthorization(List<String> args, boolean authorize) {
+		if (args.size() != 2 || !args.get(1).equalsIgnoreCase("current")) {
+			add(ConsoleLine.error("Usage: " + (authorize ? "authorize" : "deauthorize") + " current"));
+			return;
+		}
+		ModuleContext context = contextSupplier.get();
+		String target = AuthorizationPolicy.normalizeHost(context.serverAddress());
+		if (!context.connected() || target.isBlank() || target.equals("unknown")) {
+			add(ConsoleLine.error("No current server target is available."));
+			return;
+		}
+		try {
+			boolean changed = authorize ? authorization.addTarget(target) : authorization.removeTarget(target);
+			String action = authorize ? "Authorized" : "Removed authorization for";
+			String detail = changed ? action + " current target: " + target : "Current target already " + (authorize ? "authorized: " : "not authorized: ") + target;
+			add(changed ? ConsoleLine.success(detail) : ConsoleLine.muted(detail));
+			audit.record("target_allowlist", target, "authorization", authorize ? "authorized" : "removed", "Changed in game");
+		} catch (IOException | IllegalArgumentException error) {
+			add(ConsoleLine.error("Could not update current target authorization: " + safeMessage(error)));
+		}
 	}
 
 	private void reload() {

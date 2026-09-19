@@ -4,7 +4,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -48,9 +50,29 @@ public final class AuthorizationPolicy {
 			return AuthorizationDecision.denied("RHOST must be CURRENT or exactly match the connected server. No third-party probing is supported.");
 		}
 		if (!allowedTargets.contains(current)) {
-			return AuthorizationDecision.denied("Target is not allowlisted.");
+			return AuthorizationDecision.denied("Target is not allowlisted. Use authorize current or ClickGUI.");
 		}
 		return AuthorizationDecision.allowed(current);
+	}
+
+	public synchronized boolean addTarget(String address) throws IOException {
+		String host = requireExactHost(address);
+		Set<String> next = new LinkedHashSet<>(allowedTargets);
+		boolean changed = next.add(host);
+		if (changed) persist(next);
+		return changed;
+	}
+
+	public synchronized boolean removeTarget(String address) throws IOException {
+		String host = requireExactHost(address);
+		Set<String> next = new LinkedHashSet<>(allowedTargets);
+		boolean changed = next.remove(host);
+		if (changed) persist(next);
+		return changed;
+	}
+
+	public boolean isAllowed(String address) {
+		return allowedTargets.contains(normalizeHost(address));
 	}
 
 	public Set<String> allowedTargets() { return allowedTargets; }
@@ -72,14 +94,39 @@ public final class AuthorizationPolicy {
 		return value;
 	}
 
+	private String requireExactHost(String address) {
+		String host = normalizeHost(address);
+		if (host.isBlank() || host.equals("unknown")) throw new IllegalArgumentException("Current server address is unavailable.");
+		if (host.equals("*") || host.startsWith("*.")) throw new IllegalArgumentException("Wildcard targets are unsupported.");
+		return host;
+	}
+
+	private void persist(Set<String> targets) throws IOException {
+		List<String> sorted = targets.stream().sorted().toList();
+		StringBuilder content = new StringBuilder("""
+			# Champions Mod exact target allowlist.
+			# Managed in game with authorize current and deauthorize current.
+			# Only authorize systems you own or have explicit permission to assess.
+			""");
+		for (String target : sorted) content.append(target).append('\n');
+		Path temporary = allowlistFile.resolveSibling(allowlistFile.getFileName() + ".tmp");
+		Files.writeString(temporary, content, StandardCharsets.UTF_8);
+		try {
+			Files.move(temporary, allowlistFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+		} catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+			Files.move(temporary, allowlistFile, StandardCopyOption.REPLACE_EXISTING);
+		}
+		allowedTargets = Set.copyOf(targets);
+	}
+
 	private void initialize() {
 		try {
 			Files.createDirectories(allowlistFile.getParent());
 			if (Files.notExists(allowlistFile)) {
 				Files.writeString(allowlistFile, """
 					# Champions Mod exact target allowlist.
-					# Only add systems you own or have explicit permission to assess.
-					# Wildcards are not supported. One host per line; ports are ignored.
+					# Managed in game with authorize current and deauthorize current.
+					# Only authorize systems you own or have explicit permission to assess.
 					localhost
 					127.0.0.1
 					::1
