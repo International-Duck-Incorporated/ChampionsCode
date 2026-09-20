@@ -157,15 +157,32 @@ and is outside the module capability boundary.
 - Fabric API **0.161.0+26.3**
 - Java **25**; a full **JDK 25** is required for runtime Java compilation
 
-This is a normal client-side Fabric mod: one JAR, with no server-side component
-or companion process. It runs alongside other compatible Fabric mods.
+This is a normal client-side Fabric mod with no server-side component or
+companion process. It runs alongside other compatible Fabric mods and requires
+only one runtime JAR in the `mods` folder.
+
+### Which release file should I download?
+
+GitHub releases contain two JAR files, but only one is the playable mod:
+
+| Release file | Purpose | Put in `mods`? |
+|---|---|---|
+| `champions-mod-0.1.0-alpha.15.jar` | Compiled Fabric mod used by Minecraft. | **Yes** |
+| `champions-mod-0.1.0-alpha.15-sources.jar` | Readable Java sources for IDE navigation, debugging, and developers. It is not a second mod. | **No** |
+
+Players should download `champions-mod-0.1.0-alpha.15.jar`. Do not put the
+`-sources.jar` file in the Minecraft `mods` folder. `SHA256SUMS.txt` contains the
+checksums used to verify both release files.
 
 ## Install
 
 1. Install Fabric Loader for Minecraft 26.3.
 2. Put Fabric API for 26.3 in the instance's `mods` folder.
-3. Put `champions-mod-0.1.0-alpha.15.jar` in the same folder.
-4. Start Minecraft and press **F8**.
+3. Download `champions-mod-0.1.0-alpha.15.jar` from the GitHub release and put it
+   in the same `mods` folder.
+4. Do not install `champions-mod-0.1.0-alpha.15-sources.jar`; it is provided only
+   for developers and source browsing.
+5. Start Minecraft and press **F8**.
 
 ## First authorized run
 
@@ -288,11 +305,12 @@ Generated files:
 ./gradlew build
 ```
 
-The mod and source JARs are written to `build/libs/`. Tests cover command
-parsing, authorization, bounded telemetry/transaction correlation, defensive
-normalization and prompt classification, declared-inventory posture, passive
-plugin review, deterministic runtime-source hashing, manifest validation, and
-JDK compilation.
+Gradle writes the playable mod JAR and the optional developer source JAR to
+`build/libs/`. The unqualified `.jar` is installed in Minecraft; the
+`-sources.jar` is for IDEs and source browsing only. Tests cover command parsing,
+authorization, bounded telemetry/transaction correlation, defensive normalization
+and prompt classification, declared-inventory posture, passive plugin review,
+deterministic runtime-source hashing, manifest validation, and JDK compilation.
 
 The `Fabric 26.3 build` GitHub Actions workflow runs on pushes to `main`, pull
 requests targeting `main`, and manual dispatch. It uses Java 25, verifies the
