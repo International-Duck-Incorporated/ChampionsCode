@@ -1,4 +1,5 @@
 {
-  "key.champions.open_console": "Open Champions Console",
-  "key.category.champions.security_research": "Champions Mod"
+  "key.champions.open_console": "Open ChampionsCode Terminal",
+  "key.champions.open_java_studio": "Open ChampionsCode Java Studio",
+  "key.category.champions.security_research": "ChampionsCode"
 }

@@ -45,6 +45,12 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 	private String resizingPanel;
 	private boolean movingSettings;
 	private boolean resizingSettings;
+	private boolean settingsMinimized;
+	private boolean settingsMaximized;
+	private int settingsRestoreX;
+	private int settingsRestoreY;
+	private int settingsRestoreWidth;
+	private int settingsRestoreHeight;
 	private int dragOffsetX;
 	private int dragOffsetY;
 	private int optionScroll;
@@ -53,7 +59,7 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 	private String activity = "Choose a module from a category window.";
 
 	public ChampionsCategoryGuiScreen(ChampionConsole console, Screen parent) {
-		super(Component.literal("Champions Category GUI"));
+		super(Component.literal("ChampionsCode Category GUI"));
 		this.console = console;
 		this.parent = parent;
 		List<ConsoleLine> lines = console.lines();
@@ -86,6 +92,13 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 			int defaultX = 12 + (i % 5) * 176;
 			int defaultY = 34 + (i / 5) * 180;
 			PanelLayout panel = SAVED_PANELS.computeIfAbsent(id, ignored -> new PanelLayout(defaultX, defaultY, 166, false));
+			if (panel.maximized) {
+				panel.x = 0;
+				panel.y = 24;
+				panel.width = width;
+				if (!Z_ORDER.contains(id)) Z_ORDER.add(id);
+				continue;
+			}
 			int maximumPanelWidth = Math.max(126, width - Math.min(20, Math.max(0, width / 6)));
 			maximumPanelWidth = Math.min(width, maximumPanelWidth);
 			panel.width = clamp(panel.width, Math.min(126, maximumPanelWidth), maximumPanelWidth);
@@ -98,6 +111,13 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 	}
 
 	private void initializeSettingsGeometry() {
+		if (settingsMaximized) {
+			settingsX = 0;
+			settingsY = 0;
+			settingsWidth = width;
+			settingsHeight = height;
+			return;
+		}
 		int maximumWidth = Math.min(width, Math.max(220, width - Math.min(30, Math.max(0, width / 6))));
 		int maximumHeight = Math.min(height, Math.max(200, height - Math.min(28, Math.max(0, height / 6))));
 		settingsWidth = clamp(settingsWidth, Math.min(300, maximumWidth), maximumWidth);
@@ -152,12 +172,9 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 		track(Button.builder(Component.literal("List GUI"), button ->
 			minecraft.setScreenAndShow(new ChampionsClickGuiScreen(console, this)))
 			.bounds(settingsX + 84, actionsY, 62, 18).build());
-		track(Button.builder(Component.literal("Close settings"), button -> {
-			console.clearSelectionFromUi();
-			optionScroll = 0;
-			setActivity("Settings window closed.");
-			rebuildWidgets();
-		}).bounds(settingsX + settingsWidth - 104, actionsY, 94, 18).build());
+		track(Button.builder(Component.literal("Close settings"), button -> closeSettings())
+			.bounds(settingsX + settingsWidth - 104, actionsY, 94, 18).build());
+		if (settingsMinimized) setSettingsWidgetsVisible(false);
 	}
 
 	private <T extends AbstractWidget> T track(T widget) {
@@ -168,7 +185,7 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
 		graphics.fill(0, 0, width, height, 0x66000000);
-		graphics.text(font, "CHAMPIONS CATEGORY GUI", 8, 8, 0xFF18D9C7, false);
+		graphics.text(font, "CHAMPIONSCODE CATEGORY GUI", 8, 8, 0xFF18D9C7, false);
 		graphics.text(font, "drag headers | right-click header to collapse | drag corners to resize", 142, 8, 0xFF8EA0B8, false);
 		for (String id : Z_ORDER) renderPanel(graphics, id, mouseX, mouseY);
 		if (console.activeModuleView() != null) renderSettingsPanel(graphics, mouseX, mouseY);
@@ -177,21 +194,23 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 
 	private void renderPanel(GuiGraphicsExtractor graphics, String id, int mouseX, int mouseY) {
 		PanelLayout panel = SAVED_PANELS.get(id);
-		if (panel == null) return;
+		if (panel == null || panel.hidden) return;
 		int panelHeight = panelHeight(id, panel);
 		boolean hoveredTitle = contains(panel.x, panel.y, panel.width, TITLE_HEIGHT, mouseX, mouseY);
 		graphics.fill(panel.x - 2, panel.y - 2, panel.x + panel.width + 2, panel.y + panelHeight + 2, 0x99000000);
 		graphics.fill(panel.x, panel.y, panel.x + panel.width, panel.y + TITLE_HEIGHT,
 			hoveredTitle ? 0xFF153A4A : 0xFF0B2432);
 		graphics.fill(panel.x, panel.y + TITLE_HEIGHT - 2, panel.x + panel.width, panel.y + TITLE_HEIGHT, 0xFF18D9C7);
-		String title = id.equals(CONTROLS) ? "CHAMPIONS" : id.toUpperCase(Locale.ROOT);
-		graphics.text(font, fit(title, panel.width - 28), panel.x + 7, panel.y + 7, 0xFFEAF4FF, false);
-		graphics.text(font, panel.collapsed ? "+" : "-", panel.x + panel.width - 12, panel.y + 7, 0xFFFBBF24, false);
+		String title = id.equals(CONTROLS) ? "CHAMPIONSCODE" : id.toUpperCase(Locale.ROOT);
+		graphics.text(font, fit(title, panel.width - WindowChrome.BUTTON_WIDTH * WindowChrome.CONTROL_COUNT - 12),
+			panel.x + 7, panel.y + 7, 0xFFEAF4FF, false);
+		WindowChrome.render(graphics, font, panel.x, panel.y, panel.width, TITLE_HEIGHT,
+			mouseX, mouseY, 0xFFEAF4FF, panel.maximized);
 		if (!panel.collapsed) {
 			graphics.fill(panel.x, panel.y + TITLE_HEIGHT, panel.x + panel.width, panel.y + panelHeight, 0xEE09111C);
 			if (id.equals(CONTROLS)) renderControlRows(graphics, panel, mouseX, mouseY);
 			else renderModuleRows(graphics, id, panel, mouseX, mouseY);
-			renderPanelGrip(graphics, panel.x + panel.width, panel.y + panelHeight);
+			if (!panel.maximized) renderPanelGrip(graphics, panel.x + panel.width, panel.y + panelHeight);
 		}
 	}
 
@@ -215,6 +234,7 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 			"Terminal",
 			"Sorted list GUI",
 			target.authorized() ? "Remove current target" : "Authorize current target",
+			"Restore closed panels",
 			"Reset window layout",
 			"Close"
 		);
@@ -230,19 +250,22 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 	private void renderSettingsPanel(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
 		ActiveModuleView active = console.activeModuleView();
 		if (active == null) return;
-		graphics.fill(settingsX - 3, settingsY - 3, settingsX + settingsWidth + 3, settingsY + settingsHeight + 3, 0xBB000000);
-		graphics.fill(settingsX, settingsY, settingsX + settingsWidth, settingsY + settingsHeight, 0xFA080E18);
+		int shownHeight = settingsMinimized ? 24 : settingsHeight;
+		graphics.fill(settingsX - 3, settingsY - 3, settingsX + settingsWidth + 3, settingsY + shownHeight + 3, 0xBB000000);
+		graphics.fill(settingsX, settingsY, settingsX + settingsWidth, settingsY + shownHeight, 0xFA080E18);
 		graphics.fill(settingsX, settingsY, settingsX + settingsWidth, settingsY + 24, 0xFF102B3A);
 		graphics.fill(settingsX, settingsY + 22, settingsX + settingsWidth, settingsY + 24, 0xFFFBBF24);
-		graphics.text(font, fit(active.name(), settingsWidth - 130), settingsX + 9, settingsY + 8, 0xFFFFFFFF, false);
-		graphics.text(font, active.exploitResearch() ? "LEGAL GATE" : "SETTINGS", settingsX + settingsWidth - 62, settingsY + 8,
-			active.exploitResearch() ? 0xFFFB7185 : 0xFFFBBF24, false);
+		graphics.text(font, fit(active.name(), settingsWidth - WindowChrome.BUTTON_WIDTH * WindowChrome.CONTROL_COUNT - 20),
+			settingsX + 9, settingsY + 8, 0xFFFFFFFF, false);
+		WindowChrome.render(graphics, font, settingsX, settingsY, settingsWidth, 24,
+			mouseX, mouseY, active.exploitResearch() ? 0xFFFB7185 : 0xFFFBBF24, settingsMaximized);
+		if (settingsMinimized) return;
 		graphics.text(font, fit(active.id(), settingsWidth - 20), settingsX + 9, settingsY + 31,
 			active.exploitResearch() ? 0xFFFB7185 : 0xFF22D3EE, false);
 		graphics.text(font, fit(active.description(), settingsWidth - 20), settingsX + 9, settingsY + 45, 0xFF8EA0B8, false);
 		renderOptionLabels(graphics, active);
 		renderSettingsStatus(graphics);
-		renderPanelGrip(graphics, settingsX + settingsWidth, settingsY + settingsHeight);
+		if (!settingsMaximized) renderPanelGrip(graphics, settingsX + settingsWidth, settingsY + settingsHeight);
 	}
 
 	private void renderOptionLabels(GuiGraphicsExtractor graphics, ActiveModuleView active) {
@@ -290,20 +313,32 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 		int mouseX = (int) event.x();
 		int mouseY = (int) event.y();
 		if (console.activeModuleView() != null) {
-			if (event.button() == PRIMARY && inSettingsResizeGrip(mouseX, mouseY)) {
+			if (event.button() == PRIMARY) {
+				WindowChrome.Control control = WindowChrome.controlAt(settingsX, settingsY, settingsWidth, 24, mouseX, mouseY);
+				if (control != WindowChrome.Control.NONE) {
+					handleSettingsControl(control);
+					return true;
+				}
+			}
+			if (event.button() == PRIMARY && !settingsMinimized && !settingsMaximized && inSettingsResizeGrip(mouseX, mouseY)) {
 				resizingSettings = true;
 				setDragging(true);
 				return true;
 			}
-			if (event.button() == PRIMARY && contains(settingsX, settingsY, settingsWidth, 24, mouseX, mouseY)) {
-				movingSettings = true;
-				dragOffsetX = mouseX - settingsX;
-				dragOffsetY = mouseY - settingsY;
-				setDragging(true);
+			if (event.button() == PRIMARY && contains(settingsX, settingsY,
+				WindowChrome.controlsLeft(settingsX, settingsWidth) - settingsX, 24, mouseX, mouseY)) {
+				if (doubleClick) toggleSettingsMaximize();
+				else if (!settingsMaximized) {
+					movingSettings = true;
+					dragOffsetX = mouseX - settingsX;
+					dragOffsetY = mouseY - settingsY;
+					setDragging(true);
+				}
 				return true;
 			}
-			if (contains(settingsX, settingsY, settingsWidth, settingsHeight, mouseX, mouseY)) {
-				if (super.mouseClicked(event, doubleClick)) return true;
+			int shownSettingsHeight = settingsMinimized ? 24 : settingsHeight;
+			if (contains(settingsX, settingsY, settingsWidth, shownSettingsHeight, mouseX, mouseY)) {
+				if (!settingsMinimized && super.mouseClicked(event, doubleClick)) return true;
 				return true;
 			}
 		}
@@ -313,18 +348,30 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 		PanelLayout panel = SAVED_PANELS.get(panelId);
 		bringToFront(panelId);
 		int panelHeight = panelHeight(panelId, panel);
-		if (event.button() == PRIMARY && !panel.collapsed && contains(panel.x + panel.width - RESIZE_GRIP,
+		if (event.button() == PRIMARY) {
+			WindowChrome.Control control = WindowChrome.controlAt(panel.x, panel.y, panel.width, TITLE_HEIGHT, mouseX, mouseY);
+			if (control != WindowChrome.Control.NONE) {
+				handlePanelControl(panelId, panel, control);
+				return true;
+			}
+		}
+		if (event.button() == PRIMARY && !panel.collapsed && !panel.maximized && contains(panel.x + panel.width - RESIZE_GRIP,
 			panel.y + panelHeight - RESIZE_GRIP, RESIZE_GRIP, RESIZE_GRIP, mouseX, mouseY)) {
 			resizingPanel = panelId;
 			setDragging(true);
 			return true;
 		}
-		if (contains(panel.x, panel.y, panel.width, TITLE_HEIGHT, mouseX, mouseY)) {
-			if (event.button() == SECONDARY || doubleClick) {
+		if (contains(panel.x, panel.y, WindowChrome.controlsLeft(panel.x, panel.width) - panel.x,
+			TITLE_HEIGHT, mouseX, mouseY)) {
+			if (event.button() == SECONDARY) {
 				panel.collapsed = !panel.collapsed;
 				return true;
 			}
-			if (event.button() == PRIMARY) {
+			if (event.button() == PRIMARY && doubleClick) {
+				togglePanelMaximize(panel);
+				return true;
+			}
+			if (event.button() == PRIMARY && !panel.maximized) {
 				draggingPanel = panelId;
 				dragOffsetX = mouseX - panel.x;
 				dragOffsetY = mouseY - panel.y;
@@ -374,8 +421,12 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 				console.setCurrentTargetAuthorizedFromUi(!target.authorized());
 				rebuildWidgets();
 			}
-			case 3 -> resetPanelLayout();
-			case 4 -> minecraft.setScreenAndShow(null);
+			case 3 -> {
+				SAVED_PANELS.values().forEach(panel -> panel.hidden = false);
+				setActivity("Closed category panels restored.");
+			}
+			case 4 -> resetPanelLayout();
+			case 5 -> minecraft.setScreenAndShow(null);
 			default -> { return false; }
 		}
 		return true;
@@ -386,8 +437,9 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 		int mouseX = (int) event.x();
 		int mouseY = (int) event.y();
 		if (movingSettings) {
+			int shownHeight = settingsMinimized ? 24 : settingsHeight;
 			int nextX = clamp(mouseX - dragOffsetX, 0, Math.max(0, width - settingsWidth));
-			int nextY = clamp(mouseY - dragOffsetY, 0, Math.max(0, height - settingsHeight));
+			int nextY = clamp(mouseY - dragOffsetY, 0, Math.max(0, height - shownHeight));
 			moveSettingsWidgets(nextX - settingsX, nextY - settingsY);
 			settingsX = nextX;
 			settingsY = nextY;
@@ -431,7 +483,8 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
-		if (console.activeModuleView() != null && contains(settingsX, settingsY, settingsWidth, settingsHeight, mouseX, mouseY)) {
+		if (console.activeModuleView() != null && !settingsMinimized
+			&& contains(settingsX, settingsY, settingsWidth, settingsHeight, mouseX, mouseY)) {
 			int direction = vertical > 0 ? -1 : vertical < 0 ? 1 : 0;
 			ActiveModuleView active = console.activeModuleView();
 			int maximum = active == null ? 0 : Math.max(0, active.options().size() - visibleOptionRows());
@@ -464,6 +517,85 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 		observedConsoleTail = lines.isEmpty() ? null : lines.getLast();
 	}
 
+	private void handlePanelControl(String id, PanelLayout panel, WindowChrome.Control control) {
+		switch (control) {
+			case MINIMIZE -> panel.collapsed = !panel.collapsed;
+			case MAXIMIZE -> togglePanelMaximize(panel);
+			case CLOSE -> {
+				if (id.equals(CONTROLS)) minecraft.setScreenAndShow(null);
+				else {
+					panel.hidden = true;
+					setActivity("Closed " + id + " panel. Use Restore closed panels to reopen it.");
+				}
+			}
+			default -> {}
+		}
+	}
+
+	private void togglePanelMaximize(PanelLayout panel) {
+		if (!panel.maximized) {
+			panel.restoreX = panel.x;
+			panel.restoreY = panel.y;
+			panel.restoreWidth = panel.width;
+			panel.x = 0;
+			panel.y = 24;
+			panel.width = width;
+			panel.collapsed = false;
+			panel.maximized = true;
+		} else {
+			panel.maximized = false;
+			panel.x = clamp(panel.restoreX, 0, Math.max(0, width - panel.restoreWidth));
+			panel.y = clamp(panel.restoreY, 0, Math.max(0, height - TITLE_HEIGHT));
+			panel.width = clamp(panel.restoreWidth, 126, Math.max(126, width - panel.x));
+		}
+	}
+
+	private void handleSettingsControl(WindowChrome.Control control) {
+		switch (control) {
+			case MINIMIZE -> {
+				settingsMinimized = !settingsMinimized;
+				setSettingsWidgetsVisible(!settingsMinimized);
+			}
+			case MAXIMIZE -> toggleSettingsMaximize();
+			case CLOSE -> closeSettings();
+			default -> {}
+		}
+	}
+
+	private void toggleSettingsMaximize() {
+		if (settingsMinimized) {
+			settingsMinimized = false;
+			setSettingsWidgetsVisible(true);
+		}
+		if (!settingsMaximized) {
+			settingsRestoreX = settingsX;
+			settingsRestoreY = settingsY;
+			settingsRestoreWidth = settingsWidth;
+			settingsRestoreHeight = settingsHeight;
+			settingsMaximized = true;
+		} else {
+			settingsMaximized = false;
+			settingsX = settingsRestoreX;
+			settingsY = settingsRestoreY;
+			settingsWidth = settingsRestoreWidth;
+			settingsHeight = settingsRestoreHeight;
+		}
+		rebuildWidgets();
+	}
+
+	private void closeSettings() {
+		settingsMinimized = false;
+		settingsMaximized = false;
+		console.clearSelectionFromUi();
+		optionScroll = 0;
+		setActivity("Settings window closed.");
+		rebuildWidgets();
+	}
+
+	private void setSettingsWidgetsVisible(boolean visible) {
+		for (AbstractWidget widget : settingsWidgets) widget.visible = visible;
+	}
+
 	private void resetPanelLayout() {
 		SAVED_PANELS.clear();
 		Z_ORDER.clear();
@@ -471,6 +603,8 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 		settingsY = -1;
 		settingsWidth = 390;
 		settingsHeight = 400;
+		settingsMinimized = false;
+		settingsMaximized = false;
 		setActivity("Category window layout reset.");
 		rebuildWidgets();
 	}
@@ -488,14 +622,16 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 		for (int i = Z_ORDER.size() - 1; i >= 0; i--) {
 			String id = Z_ORDER.get(i);
 			PanelLayout panel = SAVED_PANELS.get(id);
-			if (panel != null && contains(panel.x, panel.y, panel.width, panelHeight(id, panel), mouseX, mouseY)) return id;
+			if (panel != null && !panel.hidden
+				&& contains(panel.x, panel.y, panel.width, panelHeight(id, panel), mouseX, mouseY)) return id;
 		}
 		return null;
 	}
 
 	private int panelHeight(String id, PanelLayout panel) {
 		if (panel.collapsed) return TITLE_HEIGHT;
-		int rows = id.equals(CONTROLS) ? 5 : categories.getOrDefault(id, List.of()).size();
+		if (panel.maximized) return Math.max(TITLE_HEIGHT, height - panel.y);
+		int rows = id.equals(CONTROLS) ? 6 : categories.getOrDefault(id, List.of()).size();
 		return TITLE_HEIGHT + rows * ROW_HEIGHT;
 	}
 
@@ -542,12 +678,20 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 		private int x;
 		private int y;
 		private int width;
+		private int restoreX;
+		private int restoreY;
+		private int restoreWidth;
 		private boolean collapsed;
+		private boolean maximized;
+		private boolean hidden;
 
 		private PanelLayout(int x, int y, int width, boolean collapsed) {
 			this.x = x;
 			this.y = y;
 			this.width = width;
+			this.restoreX = x;
+			this.restoreY = y;
+			this.restoreWidth = width;
 			this.collapsed = collapsed;
 		}
 	}

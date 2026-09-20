@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.1.0-alpha.16 - 2026-09-20
+
+- Removed the Java and Exploits tabs from the F8 terminal. The warning-gated
+  Exploits filter remains available in the sorted ClickGUI, and exploit modules
+  remain available in the category GUI.
+- Added a dedicated F7 ChampionsCode Java Studio with a purple IDE-style layout,
+  workspace file list, multiline source editor, runtime console, command field,
+  lifecycle actions, and persistent movable/resizable geometry.
+- Added bounded in-game editing for `.java` files and `champion-java.json` below
+  the runtime workspace. Ctrl+S and Save file persist changes, emit the new
+  source hash, invalidate stale confirmation naturally, and audit the file name
+  and hash without recording source contents.
+- Restyled the F8 console as a dark Linux-style terminal with a title bar,
+  shell-like prompt, colored output, history, scrolling, and selectable text.
+- Added shared close, maximize/restore, and minimize controls to the terminal,
+  Java Studio, sorted ClickGUI, category panels, and module-settings window.
+  Double-clicking a title bar also toggles maximize.
+- Preserved one-based Minecraft 26.3 pointer handling, drag/resize behavior,
+  ClickGUI exploit warnings, exact-target authorization, one-run confirmation,
+  and audit controls.
+- Standardized all user-visible product branding on ChampionsCode while retaining
+  stable technical IDs and configuration paths.
+
 ## 0.1.0-alpha.15 - 2026-09-20
 
 - Added an automatic GitHub prerelease job after successful pushes to `main`.

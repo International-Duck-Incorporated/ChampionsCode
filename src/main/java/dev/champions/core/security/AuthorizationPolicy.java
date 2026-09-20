@@ -104,7 +104,7 @@ public final class AuthorizationPolicy {
 	private void persist(Set<String> targets) throws IOException {
 		List<String> sorted = targets.stream().sorted().toList();
 		StringBuilder content = new StringBuilder("""
-			# Champions Mod exact target allowlist.
+			# ChampionsCode exact target allowlist.
 			# Managed in game with authorize current and deauthorize current.
 			# Only authorize systems you own or have explicit permission to assess.
 			""");
@@ -124,7 +124,7 @@ public final class AuthorizationPolicy {
 			Files.createDirectories(allowlistFile.getParent());
 			if (Files.notExists(allowlistFile)) {
 				Files.writeString(allowlistFile, """
-					# Champions Mod exact target allowlist.
+					# ChampionsCode exact target allowlist.
 					# Managed in game with authorize current and deauthorize current.
 					# Only authorize systems you own or have explicit permission to assess.
 					localhost

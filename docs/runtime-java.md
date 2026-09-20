@@ -1,6 +1,6 @@
 # Runtime Java developer system
 
-Champions can compile and load a local set of real Java source files while the
+ChampionsCode can compile and load a local set of real Java source files while the
 Minecraft client is running. This replaces ChampionScript and the old Volt
 interpreter.
 
@@ -21,7 +21,7 @@ will remain unavailable until the game is launched with a full JDK 25.
 
 ## Workspace
 
-Champions creates:
+ChampionsCode creates:
 
 ```text
 .minecraft/config/champions-mod/
@@ -37,7 +37,7 @@ The source set is limited to 128 files and 2 MiB. Symbolic-link source files are
 rejected so the confirmation hash covers the files that will be compiled.
 
 Generated classes are written beneath `.build/`. That directory is managed by
-Champions and must not contain source files.
+ChampionsCode and must not contain source files.
 
 ## Manifest
 
@@ -93,9 +93,23 @@ thread.
 
 These conveniences do not restrict direct JVM or Minecraft access.
 
-## Enabling and running
+## Java Studio
 
-Press F8 and open the **Java** tab. First display the settings path:
+Press **F7** to open the dedicated ChampionsCode Java Studio. The movable,
+resizable purple workspace provides:
+
+- a multiline editor for `.java` files and `champion-java.json`;
+- a workspace file list;
+- Save, Compile, Start/Reload, and Stop actions;
+- runtime output and a command field;
+- minimize, maximize, and close controls.
+
+The editor is restricted to supported files below the Java workspace and never
+edits `.build/`. Save with the button or Ctrl+S. Saving records the file name and
+new source hash in the audit log, but not the source content. Unsaved changes
+must be saved or discarded before switching files.
+
+First display the settings path from the Java Studio command field:
 
 ```text
 settings
@@ -156,12 +170,12 @@ diagnostics
 help
 ```
 
-The same operations are available from the Console tab with a `java` prefix,
+The same operations remain available from the F8 terminal with a `java` prefix,
 for example `java status` or `java reload`.
 
 ## Compilation and loading
 
-Champions uses the standard JDK 25 compiler with annotation processing disabled.
+ChampionsCode uses the standard JDK 25 compiler with annotation processing disabled.
 It compiles the source set on a dedicated daemon thread against the current game
 and mod classpath. Successful classes are loaded through a fresh child
 `URLClassLoader` whose parent is the running Fabric game classloader.
@@ -178,7 +192,7 @@ for explicit cleanup. Restart Minecraft if clean unloading is uncertain.
 
 ## Audit behavior
 
-Champions records source-hash confirmation, compilation, start, stop, and cleanup
+ChampionsCode records source-hash confirmation, compilation, start, stop, and cleanup
 outcomes in `audit.jsonl`. Source contents are not copied into the audit log.
 The source confirmation is a deliberate-review control, not a security sandbox
 or a guarantee that the code is safe.

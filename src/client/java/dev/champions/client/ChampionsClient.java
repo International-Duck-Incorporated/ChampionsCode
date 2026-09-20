@@ -5,6 +5,7 @@ import dev.champions.client.java.JavaRuntimeManager;
 import dev.champions.client.ui.ChampionsCategoryGuiScreen;
 import dev.champions.client.ui.ChampionsClickGuiScreen;
 import dev.champions.client.ui.ChampionsConsoleScreen;
+import dev.champions.client.ui.ChampionsJavaScreen;
 import dev.champions.client.ui.ExploitWarningScreen;
 import dev.champions.api.java.RuntimeJavaCommands;
 import dev.champions.core.console.ChampionConsole;
@@ -66,12 +67,19 @@ public final class ChampionsClient implements ClientModInitializer {
 			InputConstants.KEY_F8,
 			category
 		));
+		KeyMapping openJavaStudio = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+			"key.champions.open_java_studio",
+			InputConstants.Type.KEYBOARD,
+			InputConstants.KEY_F7,
+			category
+		));
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			chatRuntime.tick(client);
 			PlayerMotionTelemetry.tick(client);
 			while (openConsole.consumeClick()) client.setScreenAndShow(new ChampionsConsoleScreen(console));
+			while (openJavaStudio.consumeClick()) client.setScreenAndShow(new ChampionsJavaScreen(console, javaRuntime));
 		});
-		LOGGER.info("Champions Mod initialized: defensive modules and hash-gated runtime Java developer system ready");
+		LOGGER.info("ChampionsCode initialized: defensive modules and hash-gated runtime Java developer system ready");
 	}
 
 	public static Identifier id(String path) {

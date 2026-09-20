@@ -1,6 +1,6 @@
 # Security policy
 
-Champions Mod is a defensive research tool. Only test systems you own or have
+ChampionsCode is a defensive research tool. Only test systems you own or have
 explicit permission to assess.
 
 Do not publish a suspected vulnerability in a Minecraft server plugin before

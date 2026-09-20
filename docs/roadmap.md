@@ -3,7 +3,9 @@
 ## 0.1 foundation (implemented)
 
 - Minecraft 26.3/Fabric client project
-- Movable, resizable F8 terminal with selectable and copyable output
+- Movable, resizable F8 Linux-style terminal with selectable and copyable output
+- Dedicated F7 purple Java Studio with bounded workspace editing and runtime controls
+- Desktop-style minimize, maximize/restore, and close controls on primary windows
 - Sorted-list ClickGUI plus a separate movable multi-window category and settings interface
 - Built-in passive modules
 - One bounded active module with SILENT marking and filtered AGGRESSIVE blank/version/v probes

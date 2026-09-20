@@ -1,6 +1,6 @@
 # Clean-room research influences
 
-Champions Mod does not vendor, copy, shade, or rename code from the projects
+ChampionsCode does not vendor, copy, shade, or rename code from the projects
 below. Their public descriptions were reviewed for capability ideas, then the
 Champions implementations were designed independently against Minecraft 26.3.
 The module names, APIs, data models, bounds, and code are original to this

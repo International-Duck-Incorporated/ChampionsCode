@@ -4,7 +4,6 @@ import com.mojang.blaze3d.platform.InputConstants;
 import dev.champions.core.console.ChampionConsole;
 import dev.champions.core.console.ConsoleLine;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
@@ -16,11 +15,11 @@ import java.util.List;
 
 import static dev.champions.core.ui.MinecraftPointerButtons.PRIMARY;
 
+/** A movable desktop-style terminal for ChampionsCode commands. */
 public final class ChampionsConsoleScreen extends Screen {
-	private static final int MARGIN = 12;
-	private static final int TITLE_HEIGHT = 28;
-	private static final int HEADER_HEIGHT = 58;
-	private static final int FOOTER_HEIGHT = 38;
+	private static final int TITLE_HEIGHT = 24;
+	private static final int PADDING = 10;
+	private static final int INPUT_AREA_HEIGHT = 28;
 	private static final int LINE_HEIGHT = 10;
 	private static final int RESIZE_GRIP = 12;
 	private static int savedX = -1;
@@ -30,21 +29,20 @@ public final class ChampionsConsoleScreen extends Screen {
 
 	private final ChampionConsole console;
 	private EditBox input;
-	private Button consoleTab;
-	private Button javaTab;
-	private Button exploitsTab;
-	private Button copyButton;
-	private Button clearButton;
-	private Button closeButton;
-	private WorkspaceTab activeTab = WorkspaceTab.CONSOLE;
 	private int windowX;
 	private int windowY;
 	private int windowWidth;
 	private int windowHeight;
+	private int restoreX;
+	private int restoreY;
+	private int restoreWidth;
+	private int restoreHeight;
 	private int scrollOffset;
 	private int historyCursor;
 	private boolean moving;
 	private boolean resizing;
+	private boolean minimized;
+	private boolean maximized;
 	private int dragOffsetX;
 	private int dragOffsetY;
 	private boolean selecting;
@@ -57,99 +55,69 @@ public final class ChampionsConsoleScreen extends Screen {
 	private long copiedNoticeUntil;
 
 	public ChampionsConsoleScreen(ChampionConsole console) {
-		super(Component.literal("Champions Security Research Console"));
+		super(Component.literal("ChampionsCode Terminal"));
 		this.console = console;
 	}
 
 	@Override
 	protected void init() {
-		int maximumWidth = Math.max(220, width - Math.min(32, Math.max(0, width / 6)));
-		int maximumHeight = Math.max(180, height - Math.min(30, Math.max(0, height / 6)));
-		maximumWidth = Math.min(width, maximumWidth);
-		maximumHeight = Math.min(height, maximumHeight);
-		int minimumWidth = Math.min(360, maximumWidth);
-		int minimumHeight = Math.min(240, maximumHeight);
-		int defaultWidth = Math.min(900, maximumWidth);
-		int defaultHeight = Math.min(540, maximumHeight);
-		windowWidth = savedWidth < 0 ? defaultWidth : clamp(savedWidth, minimumWidth, maximumWidth);
-		windowHeight = savedHeight < 0 ? defaultHeight : clamp(savedHeight, minimumHeight, maximumHeight);
-		if (savedX < 0 || savedY < 0) {
-			windowX = (width - windowWidth) / 2;
-			windowY = (height - windowHeight) / 2;
+		int maximumWidth = Math.min(width, Math.max(260, width - Math.min(32, Math.max(0, width / 6))));
+		int maximumHeight = Math.min(height, Math.max(180, height - Math.min(30, Math.max(0, height / 6))));
+		int minimumWidth = Math.min(400, maximumWidth);
+		int minimumHeight = Math.min(250, maximumHeight);
+		if (maximized) {
+			windowX = 0;
+			windowY = 0;
+			windowWidth = width;
+			windowHeight = height;
 		} else {
-			windowX = clamp(savedX, 0, Math.max(0, width - windowWidth));
-			windowY = clamp(savedY, 0, Math.max(0, height - windowHeight));
+			windowWidth = savedWidth < 0 ? Math.min(820, maximumWidth) : clamp(savedWidth, minimumWidth, maximumWidth);
+			windowHeight = savedHeight < 0 ? Math.min(500, maximumHeight) : clamp(savedHeight, minimumHeight, maximumHeight);
+			windowX = savedX < 0 ? (width - windowWidth) / 2 : clamp(savedX, 0, Math.max(0, width - windowWidth));
+			windowY = savedY < 0 ? (height - windowHeight) / 2 : clamp(savedY, 0, Math.max(0, height - windowHeight));
+			saveGeometry();
 		}
-		saveGeometry();
 
-		int inputY = windowY + windowHeight - 27;
-		int inputWidth = Math.max(40, windowWidth - 296);
-		input = new EditBox(font, windowX + MARGIN + 82, inputY, inputWidth, 18, Component.literal("Champions command"));
+		input = new EditBox(font, inputX(), inputY(), inputWidth(), 18, Component.literal("ChampionsCode command"));
 		input.setMaxLength(2048);
-		updateInputHint();
+		input.setHint(Component.literal("help | show modules | clickgui | categorygui | java status"));
 		input.setCanLoseFocus(false);
+		input.setBordered(false);
+		input.setTextColor(0xFFF1F1F1);
+		input.setVisible(!minimized);
 		addRenderableWidget(input);
 		setInitialFocus(input);
 		historyCursor = console.history().size();
-
-		consoleTab = addRenderableWidget(Button.builder(Component.literal("Console"), button -> selectTab(WorkspaceTab.CONSOLE))
-			.bounds(windowX + MARGIN, windowY + 34, 72, 18).build());
-		javaTab = addRenderableWidget(Button.builder(Component.literal("Java"), button -> selectTab(WorkspaceTab.JAVA))
-			.bounds(windowX + MARGIN + 78, windowY + 34, 72, 18).build());
-		exploitsTab = addRenderableWidget(Button.builder(Component.literal("Exploits"), button -> requestExploitTab())
-			.bounds(windowX + MARGIN + 156, windowY + 34, 82, 18).build());
-		copyButton = addRenderableWidget(Button.builder(Component.literal("Copy"), button -> copyTerminalText(true))
-			.bounds(windowX + windowWidth - 196, inputY, 54, 18).build());
-		clearButton = addRenderableWidget(Button.builder(Component.literal("Clear"), button -> {
-			console.submit("clear");
-			scrollOffset = 0;
-			clearSelection();
-		}).bounds(windowX + windowWidth - 136, inputY, 54, 18).build());
-		closeButton = addRenderableWidget(Button.builder(Component.literal("Close"), button -> onClose())
-			.bounds(windowX + windowWidth - 76, inputY, 64, 18).build());
 	}
 
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
-		graphics.fill(0, 0, width, height, 0x33000000);
-		graphics.fill(windowX - 3, windowY - 3, windowX + windowWidth + 3, windowY + windowHeight + 3, 0x88000000);
-		graphics.fill(windowX, windowY, windowX + windowWidth, windowY + windowHeight, 0xF2070A12);
-		graphics.fill(windowX, windowY, windowX + windowWidth, windowY + HEADER_HEIGHT, 0xFF0B1726);
-		graphics.fill(windowX, windowY + TITLE_HEIGHT - 1, windowX + windowWidth, windowY + TITLE_HEIGHT, 0xFF24435D);
-		graphics.fill(windowX, windowY + HEADER_HEIGHT - 2, windowX + windowWidth, windowY + HEADER_HEIGHT, 0xFF18D9C7);
-		int activeTabX = windowX + MARGIN + switch (activeTab) {
-			case CONSOLE -> 0;
-			case JAVA -> 78;
-			case EXPLOITS -> 156;
-		};
-		int activeTabWidth = activeTab == WorkspaceTab.EXPLOITS ? 82 : 72;
-		graphics.fill(activeTabX, windowY + 52, activeTabX + activeTabWidth, windowY + 54, 0xFFFBBF24);
-		graphics.fill(windowX, windowY + windowHeight - FOOTER_HEIGHT, windowX + windowWidth, windowY + windowHeight, 0xFF0B1726);
-		graphics.fill(windowX + MARGIN - 4, windowY + HEADER_HEIGHT + 5,
-			windowX + windowWidth - MARGIN + 4, windowY + windowHeight - FOOTER_HEIGHT - 4, 0xB30B1220);
-
-		graphics.text(font, "CHAMPIONS TERMINAL", windowX + MARGIN, windowY + 9, 0xFF18D9C7, false);
-		graphics.text(font, "drag title | resize corner", windowX + windowWidth - 133, windowY + 9, 0xFF7E8A9E, false);
-		String modeLine = switch (activeTab) {
-			case JAVA -> "RUNTIME JAVA | UNRESTRICTED | JDK 25 | HASH-GATED";
-			case EXPLOITS -> "EXPLOIT RESEARCH | LEGAL RISK | AUTHORIZATION-GATED | AUDITED";
-			case CONSOLE -> "DEFENSIVE RESEARCH | CURRENT CONNECTION | AUDITED";
-		};
-		int modeColor = activeTab == WorkspaceTab.CONSOLE ? 0xFF6EE7B7 : 0xFFFB7185;
-		if (windowWidth > 330) {
-			graphics.text(font, fit(modeLine, Math.max(40, windowWidth - 270)), windowX + 258, windowY + 39,
-				modeColor, false);
+		graphics.fill(0, 0, width, height, 0x44000000);
+		int shownHeight = minimized ? TITLE_HEIGHT : windowHeight;
+		graphics.fill(windowX - 4, windowY - 4, windowX + windowWidth + 4, windowY + shownHeight + 4, 0x99000000);
+		graphics.fill(windowX, windowY, windowX + windowWidth, windowY + shownHeight, 0xFF090909);
+		graphics.fill(windowX, windowY, windowX + windowWidth, windowY + TITLE_HEIGHT, 0xFF252525);
+		graphics.fill(windowX, windowY + TITLE_HEIGHT - 1, windowX + windowWidth, windowY + TITLE_HEIGHT, 0xFF353535);
+		graphics.fill(windowX + 7, windowY + 7, windowX + 13, windowY + 13, 0xFF58D66B);
+		String title = "champions@minecraft: ~";
+		graphics.text(font, title, windowX + (windowWidth - font.width(title)) / 2, windowY + 8, 0xFFF0F0F0, false);
+		WindowChrome.render(graphics, font, windowX, windowY, windowWidth, TITLE_HEIGHT,
+			mouseX, mouseY, 0xFFD5D5D5, maximized);
+		if (minimized) {
+			super.extractRenderState(graphics, mouseX, mouseY, delta);
+			return;
 		}
-		graphics.text(font, activeTab == WorkspaceTab.JAVA ? "java >" : activeTab == WorkspaceTab.EXPLOITS ? "exploits >" : "champions >",
-			windowX + MARGIN, windowY + windowHeight - 22, 0xFFFBBF24, false);
 
-		List<VisualLine> visual = buildVisualLines(Math.max(80, windowWidth - MARGIN * 2 - 10));
-		int rows = Math.max(1, (windowHeight - HEADER_HEIGHT - FOOTER_HEIGHT - 14) / LINE_HEIGHT);
+		graphics.fill(windowX + 4, windowY + TITLE_HEIGHT + 4, windowX + windowWidth - 4,
+			windowY + windowHeight - 4, 0xFF090909);
+		int outputBottom = windowY + windowHeight - INPUT_AREA_HEIGHT;
+		List<VisualLine> visual = buildVisualLines(Math.max(80, windowWidth - PADDING * 2));
+		int rows = Math.max(1, (outputBottom - (windowY + TITLE_HEIGHT + 10)) / LINE_HEIGHT);
 		int maxOffset = Math.max(0, visual.size() - rows);
 		scrollOffset = Math.min(scrollOffset, maxOffset);
 		int end = visual.size() - scrollOffset;
 		int start = Math.max(0, end - rows);
-		int y = windowY + HEADER_HEIGHT + 9;
+		int y = windowY + TITLE_HEIGHT + 9;
 		renderedVisual = visual;
 		renderedStart = start;
 		renderedEnd = end;
@@ -158,15 +126,22 @@ public final class ChampionsConsoleScreen extends Screen {
 		for (int i = start; i < end; i++) {
 			VisualLine line = visual.get(i);
 			renderSelection(graphics, line, y);
-			graphics.text(font, line.text(), windowX + MARGIN, y, color(line.tone()), false);
+			graphics.text(font, line.text(), windowX + PADDING, y, color(line.tone()), false);
 			y += LINE_HEIGHT;
 		}
+
+		int promptY = windowY + windowHeight - 19;
+		int promptX = windowX + PADDING;
+		graphics.text(font, "champions@minecraft", promptX, promptY, 0xFF55D65A, false);
+		promptX += font.width("champions@minecraft");
+		graphics.text(font, ":~$", promptX, promptY, 0xFFF2F2F2, false);
 		if (scrollOffset > 0) {
-			graphics.text(font, "up: " + scrollOffset + " line(s)", windowX + windowWidth - 116,
-				windowY + HEADER_HEIGHT + 8, 0xFFFBBF24, false);
+			String marker = "[" + scrollOffset + " line(s) above]";
+			graphics.text(font, marker, windowX + windowWidth - PADDING - font.width(marker),
+				windowY + TITLE_HEIGHT + 9, 0xFFE5C35A, false);
 		}
 		if (System.currentTimeMillis() < copiedNoticeUntil) {
-			graphics.text(font, "Copied", windowX + windowWidth - 240, windowY + windowHeight - 22, 0xFF6EE7B7, false);
+			graphics.text(font, "copied", windowX + windowWidth - PADDING - 38, promptY, 0xFF55D65A, false);
 		}
 		renderResizeGrip(graphics);
 		super.extractRenderState(graphics, mouseX, mouseY, delta);
@@ -183,18 +158,10 @@ public final class ChampionsConsoleScreen extends Screen {
 		if (selectedStart < selectedEnd) {
 			int from = selectedStart - lineStart;
 			int to = selectedEnd - lineStart;
-			int x1 = windowX + MARGIN + font.width(line.text().substring(0, from));
-			int x2 = windowX + MARGIN + font.width(line.text().substring(0, to));
-			graphics.fill(x1, y - 1, Math.max(x1 + 1, x2), y + 9, 0xA04B6B8A);
+			int x1 = windowX + PADDING + font.width(line.text().substring(0, from));
+			int x2 = windowX + PADDING + font.width(line.text().substring(0, to));
+			graphics.fill(x1, y - 1, Math.max(x1 + 1, x2), y + 9, 0xA06687A8);
 		}
-	}
-
-	private void renderResizeGrip(GuiGraphicsExtractor graphics) {
-		int right = windowX + windowWidth;
-		int bottom = windowY + windowHeight;
-		graphics.fill(right - 10, bottom - 3, right - 2, bottom - 1, 0xFF18D9C7);
-		graphics.fill(right - 7, bottom - 6, right - 2, bottom - 4, 0xFF18D9C7);
-		graphics.fill(right - 4, bottom - 9, right - 2, bottom - 7, 0xFF18D9C7);
 	}
 
 	@Override
@@ -228,36 +195,46 @@ public final class ChampionsConsoleScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (event.button() == PRIMARY && inResizeGrip(event.x(), event.y())) {
-			resizing = true;
-			setDragging(true);
-			return true;
-		}
-		if (event.button() == PRIMARY && inTitleBar(event.x(), event.y())) {
-			moving = true;
-			dragOffsetX = (int) event.x() - windowX;
-			dragOffsetY = (int) event.y() - windowY;
-			setDragging(true);
-			return true;
-		}
-		if (event.button() == PRIMARY && inOutput(event.x(), event.y())) {
-			int position = textPositionAt(event.x(), event.y());
-			if (doubleClick) {
-				VisualLine line = visualLineAt(event.y());
-				if (line != null) {
-					selectionAnchor = line.offset();
-					selectionCaret = line.offset() + line.text().length();
-				}
-			} else {
-				selectionAnchor = position;
-				selectionCaret = position;
-				selecting = true;
-				setDragging(true);
+		if (event.button() == PRIMARY) {
+			WindowChrome.Control control = WindowChrome.controlAt(windowX, windowY, windowWidth, TITLE_HEIGHT, event.x(), event.y());
+			if (control != WindowChrome.Control.NONE) {
+				handleWindowControl(control);
+				return true;
 			}
-			return true;
+			if (!minimized && !maximized && inResizeGrip(event.x(), event.y())) {
+				resizing = true;
+				setDragging(true);
+				return true;
+			}
+			if (inTitleBar(event.x(), event.y())) {
+				if (doubleClick) toggleMaximize();
+				else if (!maximized) {
+					moving = true;
+					dragOffsetX = (int) event.x() - windowX;
+					dragOffsetY = (int) event.y() - windowY;
+					setDragging(true);
+				}
+				return true;
+			}
+			if (!minimized && inOutput(event.x(), event.y())) {
+				int position = textPositionAt(event.x(), event.y());
+				if (doubleClick) {
+					VisualLine line = visualLineAt(event.y());
+					if (line != null) {
+						selectionAnchor = line.offset();
+						selectionCaret = line.offset() + line.text().length();
+					}
+				} else {
+					selectionAnchor = position;
+					selectionCaret = position;
+					selecting = true;
+					setDragging(true);
+				}
+				return true;
+			}
+			if (!minimized) clearSelection();
 		}
-		if (event.button() == PRIMARY) clearSelection();
-		return super.mouseClicked(event, doubleClick);
+		return minimized ? true : super.mouseClicked(event, doubleClick);
 	}
 
 	@Override
@@ -265,18 +242,19 @@ public final class ChampionsConsoleScreen extends Screen {
 		if (resizing) {
 			int maxWidth = Math.max(1, width - windowX);
 			int maxHeight = Math.max(1, height - windowY);
-			windowWidth = clamp((int) event.x() - windowX, Math.min(360, maxWidth), maxWidth);
-			windowHeight = clamp((int) event.y() - windowY, Math.min(240, maxHeight), maxHeight);
+			windowWidth = clamp((int) event.x() - windowX, Math.min(400, maxWidth), maxWidth);
+			windowHeight = clamp((int) event.y() - windowY, Math.min(250, maxHeight), maxHeight);
 			saveGeometry();
 			clearSelection();
-			layoutWidgets();
+			layoutInput();
 			return true;
 		}
 		if (moving) {
+			int shownHeight = minimized ? TITLE_HEIGHT : windowHeight;
 			windowX = clamp((int) event.x() - dragOffsetX, 0, Math.max(0, width - windowWidth));
-			windowY = clamp((int) event.y() - dragOffsetY, 0, Math.max(0, height - windowHeight));
+			windowY = clamp((int) event.y() - dragOffsetY, 0, Math.max(0, height - shownHeight));
 			saveGeometry();
-			layoutWidgets();
+			layoutInput();
 			return true;
 		}
 		if (selecting) {
@@ -300,7 +278,7 @@ public final class ChampionsConsoleScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
-		if (!insideWindow(mouseX, mouseY)) return false;
+		if (!insideWindow(mouseX, mouseY) || minimized) return false;
 		if (vertical > 0) scrollOffset += 3;
 		else if (vertical < 0) scrollOffset = Math.max(0, scrollOffset - 3);
 		return true;
@@ -314,26 +292,65 @@ public final class ChampionsConsoleScreen extends Screen {
 	@Override public boolean isPauseScreen() { return false; }
 	@Override public boolean isInGameUi() { return true; }
 
-	private void layoutWidgets() {
-		int inputY = windowY + windowHeight - 27;
-		consoleTab.setX(windowX + MARGIN);
-		consoleTab.setY(windowY + 34);
-		javaTab.setX(windowX + MARGIN + 78);
-		javaTab.setY(windowY + 34);
-		exploitsTab.setX(windowX + MARGIN + 156);
-		exploitsTab.setY(windowY + 34);
-		input.setX(windowX + MARGIN + 82);
-		input.setY(inputY);
-		input.setWidth(Math.max(40, windowWidth - 296));
-		copyButton.setX(windowX + windowWidth - 196);
-		copyButton.setY(inputY);
-		clearButton.setX(windowX + windowWidth - 136);
-		clearButton.setY(inputY);
-		closeButton.setX(windowX + windowWidth - 76);
-		closeButton.setY(inputY);
+	private void handleWindowControl(WindowChrome.Control control) {
+		switch (control) {
+			case MINIMIZE -> {
+				minimized = !minimized;
+				input.setVisible(!minimized);
+			}
+			case MAXIMIZE -> toggleMaximize();
+			case CLOSE -> minecraft.setScreenAndShow(null);
+			default -> {}
+		}
+	}
+
+	private void toggleMaximize() {
+		if (minimized) {
+			minimized = false;
+			input.setVisible(true);
+		}
+		if (!maximized) {
+			restoreX = windowX;
+			restoreY = windowY;
+			restoreWidth = windowWidth;
+			restoreHeight = windowHeight;
+			windowX = 0;
+			windowY = 0;
+			windowWidth = width;
+			windowHeight = height;
+			maximized = true;
+		} else {
+			maximized = false;
+			windowX = restoreX;
+			windowY = restoreY;
+			windowWidth = restoreWidth;
+			windowHeight = restoreHeight;
+			saveGeometry();
+		}
+		clearSelection();
+		layoutInput();
+	}
+
+	private void layoutInput() {
+		input.setX(inputX());
+		input.setY(inputY());
+		input.setWidth(inputWidth());
+	}
+
+	private int inputX() {
+		return windowX + PADDING + font.width("champions@minecraft:~$ ");
+	}
+
+	private int inputY() {
+		return windowY + windowHeight - 24;
+	}
+
+	private int inputWidth() {
+		return Math.max(32, windowX + windowWidth - PADDING - inputX());
 	}
 
 	private void saveGeometry() {
+		if (maximized) return;
 		savedX = windowX;
 		savedY = windowY;
 		savedWidth = windowWidth;
@@ -341,7 +358,7 @@ public final class ChampionsConsoleScreen extends Screen {
 	}
 
 	private boolean inTitleBar(double mouseX, double mouseY) {
-		return mouseX >= windowX && mouseX < windowX + windowWidth
+		return mouseX >= windowX && mouseX < WindowChrome.controlsLeft(windowX, windowWidth)
 			&& mouseY >= windowY && mouseY < windowY + TITLE_HEIGHT;
 	}
 
@@ -351,72 +368,33 @@ public final class ChampionsConsoleScreen extends Screen {
 	}
 
 	private boolean inOutput(double mouseX, double mouseY) {
-		return mouseX >= windowX + MARGIN - 4 && mouseX < windowX + windowWidth - MARGIN + 4
-			&& mouseY >= windowY + HEADER_HEIGHT + 5 && mouseY < windowY + windowHeight - FOOTER_HEIGHT - 4;
+		return mouseX >= windowX + PADDING && mouseX < windowX + windowWidth - PADDING
+			&& mouseY >= windowY + TITLE_HEIGHT + 5 && mouseY < windowY + windowHeight - INPUT_AREA_HEIGHT;
 	}
 
 	private boolean insideWindow(double mouseX, double mouseY) {
+		int shownHeight = minimized ? TITLE_HEIGHT : windowHeight;
 		return mouseX >= windowX && mouseX < windowX + windowWidth
-			&& mouseY >= windowY && mouseY < windowY + windowHeight;
+			&& mouseY >= windowY && mouseY < windowY + shownHeight;
 	}
 
-	private void selectTab(WorkspaceTab tab) {
-		if (tab == WorkspaceTab.EXPLOITS) {
-			requestExploitTab();
-			return;
-		}
-		activateTab(tab);
-	}
-
-	private void requestExploitTab() {
-		if (activeTab == WorkspaceTab.EXPLOITS) return;
-		CurrentTargetNotice target = currentTargetNotice();
-		minecraft.setScreenAndShow(ExploitWarningScreen.forEntry(this, "Champions Exploits tab", () -> {
-			activateTab(WorkspaceTab.EXPLOITS);
-			console.recordAudit("exploit_workspace", target.target(), "workspace", "acknowledged",
-				"Legal-risk warning acknowledged on terminal tab entry");
-			console.emit(ConsoleLine.warning("Exploit workspace warning acknowledged. Every module run requires another popup."));
-		}, () -> console.recordAudit("exploit_workspace", target.target(), "workspace", "cancelled",
-			"Legal-risk warning declined on terminal tab entry")));
-	}
-
-	private void activateTab(WorkspaceTab tab) {
-		activeTab = tab;
-		if (input != null) input.setValue("");
-		clearSelection();
-		updateInputHint();
-		if (input != null) setFocused(input);
-	}
-
-	private CurrentTargetNotice currentTargetNotice() {
-		ChampionConsole.CurrentTargetView target = console.currentTargetView();
-		return new CurrentTargetNotice(target.available() ? target.target() : "unknown");
-	}
-
-	private void updateInputHint() {
-		if (input == null) return;
-		String hint = switch (activeTab) {
-			case JAVA -> "status | hash | confirm <sha256> | compile | start | reload | stop";
-			case EXPLOITS -> "show exploits | use auxiliary/exploits/research_workspace | info | run";
-			case CONSOLE -> "clickgui | help";
-		};
-		input.setHint(Component.literal(hint));
+	private void renderResizeGrip(GuiGraphicsExtractor graphics) {
+		if (maximized) return;
+		int right = windowX + windowWidth;
+		int bottom = windowY + windowHeight;
+		graphics.fill(right - 10, bottom - 3, right - 2, bottom - 1, 0xFF7C7C7C);
+		graphics.fill(right - 7, bottom - 6, right - 2, bottom - 4, 0xFF7C7C7C);
+		graphics.fill(right - 4, bottom - 9, right - 2, bottom - 7, 0xFF7C7C7C);
 	}
 
 	private void submitInput() {
 		String command = input.getValue().strip();
 		if (command.isBlank()) return;
-		if (activeTab == WorkspaceTab.JAVA) console.submit(toJavaCommand(command));
-		else console.submit(command);
+		console.submit(command);
 		input.setValue("");
 		historyCursor = console.history().size();
 		scrollOffset = 0;
 		clearSelection();
-	}
-
-	private static String toJavaCommand(String input) {
-		String lower = input.toLowerCase(java.util.Locale.ROOT);
-		return lower.equals("java") || lower.startsWith("java ") ? input : "java " + input;
 	}
 
 	private void navigateHistory(int direction) {
@@ -456,7 +434,7 @@ public final class ChampionsConsoleScreen extends Screen {
 	private int textPositionAt(double mouseX, double mouseY) {
 		VisualLine line = visualLineAt(mouseY);
 		if (line == null) return 0;
-		int relativeX = clamp((int) mouseX - (windowX + MARGIN), 0, Math.max(0, font.width(line.text())));
+		int relativeX = clamp((int) mouseX - (windowX + PADDING), 0, Math.max(0, font.width(line.text())));
 		String prefix = font.plainSubstrByWidth(line.text(), relativeX);
 		return line.offset() + prefix.length();
 	}
@@ -512,29 +490,20 @@ public final class ChampionsConsoleScreen extends Screen {
 		return last.offset() + last.text().length();
 	}
 
-	private String fit(String value, int maxWidth) {
-		if (font.width(value) <= maxWidth) return value;
-		String suffix = "...";
-		return font.plainSubstrByWidth(value, Math.max(1, maxWidth - font.width(suffix))) + suffix;
-	}
-
 	private static int clamp(int value, int min, int max) {
 		return Math.max(min, Math.min(max, value));
 	}
 
 	private static int color(ConsoleLine.Tone tone) {
 		return switch (tone) {
-			case MUTED -> 0xFF7E8A9E;
-			case INFO -> 0xFFD8E2F0;
-			case SUCCESS -> 0xFF6EE7B7;
-			case WARNING -> 0xFFFBBF24;
-			case ERROR -> 0xFFFB7185;
-			case ACCENT -> 0xFF22D3EE;
+			case MUTED -> 0xFF9A9A9A;
+			case INFO -> 0xFFF0F0F0;
+			case SUCCESS -> 0xFF55D65A;
+			case WARNING -> 0xFFE5C35A;
+			case ERROR -> 0xFFFF6868;
+			case ACCENT -> 0xFF5F9DFF;
 		};
 	}
 
-	private enum WorkspaceTab { CONSOLE, JAVA, EXPLOITS }
-
-	private record CurrentTargetNotice(String target) {}
 	private record VisualLine(ConsoleLine.Tone tone, String text, int offset) {}
 }

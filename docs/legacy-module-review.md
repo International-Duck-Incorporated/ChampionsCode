@@ -1,6 +1,6 @@
 # Older project module review
 
-Reviewed on 2026-09-20 for the Champions Mod 0.1.0-alpha.13 port.
+Reviewed on 2026-09-20 for the ChampionsCode 0.1.0-alpha.13 port.
 
 ## Scope and source state
 

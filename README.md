@@ -1,12 +1,12 @@
 # ChampionsCode
 
-<img src="docs/branding/ChampionsCode.png" alt="Champions Mod logo" width="180">
+<img src="docs/branding/ChampionsCode.png" alt="ChampionsCode logo" width="180">
 
 A **client-side Fabric mod for Minecraft Java Edition 26.3** that provides an
 msfconsole-inspired workflow for authorized, defensive server/plugin research,
 plus an explicitly enabled runtime Java addon development system.
 
-> **Status:** `0.1.0-alpha.15` - working foundation. The project builds, tests,
+> **Status:** `0.1.0-alpha.16` - working foundation. The project builds, tests,
 > and produces an installable Fabric JAR. It includes packet-flow, metadata
 > replay, inventory-integrity, passive transaction-flow, client-resilience,
 > passive motion, bounded older-project ports, and a separately warned exploit-research workspace.
@@ -15,15 +15,19 @@ plus an explicitly enabled runtime Java addon development system.
 
 ### Research console
 
-Press **F8** in game to open the movable terminal window. Drag its title bar to
-reposition it and drag the bottom-right corner to resize it. Terminal output can
-be selected with the mouse and copied with Ctrl+C or the Copy button. It has
-separate **Console**, **Java**, and **Exploits** tabs; the key can be rebound as
-**Open Champions Console** under the Champions Mod controls category. Entering
-Exploits displays a legal-risk warning. Run `clickgui` for the sorted-list
-interface, or `categorygui` for the separate movable category-window interface.
-All custom drag handlers use Minecraft 26.3's one-based mouse-button values;
-windows are also clamped below the viewport size so a draggable margin remains.
+Press **F8** in game to open the movable ChampionsCode terminal. Its dark shell,
+colored output, prompt, and title bar follow a familiar Linux terminal layout.
+Drag the title bar to move it, drag the bottom-right corner to resize it, and use
+the top-right minimize, maximize, and close controls. Terminal output remains
+mouse-selectable and can be copied with Ctrl+C.
+
+The terminal no longer contains workspace tabs. Press **F7** to open the separate
+ChampionsCode Java Studio. Run `clickgui` for the sorted-list interface, where the
+warning-gated **Exploits** filter remains available, or run `categorygui` for the
+movable category-window interface. F7 and F8 can both be rebound under the
+ChampionsCode controls category. The sorted ClickGUI, category panels, and module
+settings window also provide close, maximize/restore, and minimize controls. All
+custom drag handlers use Minecraft 26.3's one-based mouse-button values.
 
 - `clickgui`, `categorygui`, `show modules`, `search`, `use`, `info`, `show options`
 - `set`, `unset`, `run`, `back`, `status`, `reload`
@@ -72,8 +76,9 @@ explain its notes.
 
 ### Exploit research workspace
 
-The red **Exploits** workspace appears in the terminal, as a ClickGUI filter,
-and as an `exploits` category window. Entering it requires a modal acknowledgement
+The red **Exploits** workspace remains available as a ClickGUI filter and as an
+`exploits` category window, but it is no longer a terminal tab. Entering it
+requires a modal acknowledgement
 that exploit research can create legal, contractual, privacy, availability, and
 data-integrity risk. Every exploit-research module run displays a fresh warning
 popup, then revalidates exact-target authorization and the one-run `CONFIRM`
@@ -92,12 +97,19 @@ format and implementation review requirements.
 
 ### Runtime Java addons
 
-The **Java** tab compiles real `.java` files from
+Press **F7** to open the dedicated, movable ChampionsCode Java Studio. Its
+purple IDE-style layout has a workspace file list, multiline source editor,
+runtime console, command field, lifecycle actions, and desktop-style window
+controls. Changes can be saved with the **Save file** button or Ctrl+S. Only
+`.java` files and `champion-java.json` inside the runtime workspace are editable.
+
+The studio compiles real `.java` files from
 `.minecraft/config/champions-mod/java/` with the standard JDK 25 compiler. All
 sources are compiled together, loaded through a fresh classloader, and started
-through the `ChampionRuntimeAddon` interface. Explicit reload calls `stop()`,
-runs registered cleanup callbacks, closes the old classloader, compiles the
-replacement, and invokes the new `start()` on the client thread.
+through the `ChampionRuntimeAddon` interface. Saving a file changes the source
+hash and therefore invalidates the previous confirmation. Explicit reload calls
+`stop()`, runs registered cleanup callbacks, closes the old classloader, compiles
+the replacement, and invokes the new `start()` on the client thread.
 
 ```text
 java status
@@ -120,7 +132,7 @@ Any source or manifest change invalidates that confirmation.
 
 ## Safety model
 
-Champions Mod is designed for systems you own or are explicitly authorized to
+ChampionsCode is designed for systems you own or are explicitly authorized to
 assess.
 
 1. Passive modules only receive an immutable snapshot of data already available
@@ -167,10 +179,10 @@ GitHub releases contain two JAR files, but only one is the playable mod:
 
 | Release file | Purpose | Put in `mods`? |
 |---|---|---|
-| `champions-mod-0.1.0-alpha.15.jar` | Compiled Fabric mod used by Minecraft. | **Yes** |
-| `champions-mod-0.1.0-alpha.15-sources.jar` | Readable Java sources for IDE navigation, debugging, and developers. It is not a second mod. | **No** |
+| `champions-mod-0.1.0-alpha.16.jar` | Compiled Fabric mod used by Minecraft. | **Yes** |
+| `champions-mod-0.1.0-alpha.16-sources.jar` | Readable Java sources for IDE navigation, debugging, and developers. It is not a second mod. | **No** |
 
-Players should download `champions-mod-0.1.0-alpha.15.jar`. Do not put the
+Players should download `champions-mod-0.1.0-alpha.16.jar`. Do not put the
 `-sources.jar` file in the Minecraft `mods` folder. `SHA256SUMS.txt` contains the
 checksums used to verify both release files.
 
@@ -178,11 +190,11 @@ checksums used to verify both release files.
 
 1. Install Fabric Loader for Minecraft 26.3.
 2. Put Fabric API for 26.3 in the instance's `mods` folder.
-3. Download `champions-mod-0.1.0-alpha.15.jar` from the GitHub release and put it
+3. Download `champions-mod-0.1.0-alpha.16.jar` from the GitHub release and put it
    in the same `mods` folder.
-4. Do not install `champions-mod-0.1.0-alpha.15-sources.jar`; it is provided only
+4. Do not install `champions-mod-0.1.0-alpha.16-sources.jar`; it is provided only
    for developers and source browsing.
-5. Start Minecraft and press **F8**.
+5. Start Minecraft. Press **F8** for the terminal or **F7** for Java Studio.
 
 ## First authorized run
 
@@ -261,7 +273,7 @@ run
 Chat Normalization and Chat Game Fairness accept only a synthetic or redacted
 `SAMPLE`. They do not inspect chat history or send messages.
 
-The Exploits tab first displays the legal-risk popup. The initial workspace is a
+The ClickGUI Exploits filter first displays the legal-risk popup. The initial workspace is a
 non-executing research checklist:
 
 ```text
@@ -319,7 +331,7 @@ checks the packaged `fabric.mod.json` and client mixin configuration, generates
 SHA-256 sums, and uploads both JARs as a workflow artifact.
 
 After a successful push to `main`, a separate write-scoped job creates a tag such
-as `v0.1.0-alpha.15`, publishes or refreshes the matching GitHub release as a
+as `v0.1.0-alpha.16`, publishes or refreshes the matching GitHub release as a
 **prerelease**, and attaches the binary JAR, source JAR, and `SHA256SUMS.txt`.
 Pull requests and manual workflow runs build artifacts but do not publish. Tags
 are immutable across commits: if the version tag already points elsewhere, the
@@ -344,7 +356,12 @@ src/client/java/dev/champions/client/
 ├── PlayerMotionTelemetry.java
 ├── java/JavaRuntimeManager.java
 ├── mixin/ChampionsConnectionMixin.java
-└── ui/ChampionsConsoleScreen.java
+└── ui/
+    ├── ChampionsConsoleScreen.java
+    ├── ChampionsJavaScreen.java
+    ├── ChampionsClickGuiScreen.java
+    ├── ChampionsCategoryGuiScreen.java
+    └── WindowChrome.java
 ```
 
 See [`docs/runtime-java.md`](docs/runtime-java.md),

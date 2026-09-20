@@ -38,12 +38,18 @@ public final class ChampionsClickGuiScreen extends Screen {
 	private int windowY;
 	private int windowWidth;
 	private int windowHeight;
+	private int restoreX;
+	private int restoreY;
+	private int restoreWidth;
+	private int restoreHeight;
 	private int modulePanelWidth;
 	private int moduleScroll;
 	private int optionScroll;
 	private ModuleFilter moduleFilter = ModuleFilter.ALL;
 	private boolean moving;
 	private boolean resizing;
+	private boolean minimized;
+	private boolean maximized;
 	private int dragOffsetX;
 	private int dragOffsetY;
 	private ConsoleLine observedConsoleTail;
@@ -51,7 +57,7 @@ public final class ChampionsClickGuiScreen extends Screen {
 	private String lastAction = "Select a module, configure its options, then press Run now.";
 
 	public ChampionsClickGuiScreen(ChampionConsole console, Screen parent) {
-		super(Component.literal("Champions ClickGUI"));
+		super(Component.literal("ChampionsCode ClickGUI"));
 		this.console = console;
 		this.parent = parent;
 		List<ConsoleLine> lines = console.lines();
@@ -67,22 +73,30 @@ public final class ChampionsClickGuiScreen extends Screen {
 		int minimumHeight = Math.min(300, maximumHeight);
 		int defaultWidth = Math.min(920, maximumWidth);
 		int defaultHeight = Math.min(560, maximumHeight);
-		windowWidth = savedWidth < 0 ? defaultWidth : clamp(savedWidth, minimumWidth, maximumWidth);
-		windowHeight = savedHeight < 0 ? defaultHeight : clamp(savedHeight, minimumHeight, maximumHeight);
-		modulePanelWidth = Math.min(280, Math.max(185, windowWidth / 3));
-		if (savedX < 0 || savedY < 0) {
-			windowX = (width - windowWidth) / 2;
-			windowY = (height - windowHeight) / 2;
+		if (maximized) {
+			windowX = 0;
+			windowY = 0;
+			windowWidth = width;
+			windowHeight = height;
 		} else {
-			windowX = clamp(savedX, 0, Math.max(0, width - windowWidth));
-			windowY = clamp(savedY, 0, Math.max(0, height - windowHeight));
+			windowWidth = savedWidth < 0 ? defaultWidth : clamp(savedWidth, minimumWidth, maximumWidth);
+			windowHeight = savedHeight < 0 ? defaultHeight : clamp(savedHeight, minimumHeight, maximumHeight);
+			if (savedX < 0 || savedY < 0) {
+				windowX = (width - windowWidth) / 2;
+				windowY = (height - windowHeight) / 2;
+			} else {
+				windowX = clamp(savedX, 0, Math.max(0, width - windowWidth));
+				windowY = clamp(savedY, 0, Math.max(0, height - windowHeight));
+			}
+			saveGeometry();
 		}
-		saveGeometry();
+		modulePanelWidth = Math.min(280, Math.max(185, windowWidth / 3));
 
 		buildFilterButtons();
 		buildModuleButtons();
 		buildOptionWidgets();
 		buildActionButtons();
+		setWidgetsVisible(!minimized);
 	}
 
 	private void buildFilterButtons() {
@@ -129,7 +143,7 @@ public final class ChampionsClickGuiScreen extends Screen {
 	private void requestExploitFilter() {
 		if (moduleFilter == ModuleFilter.EXPLOITS) return;
 		String target = currentTarget();
-		minecraft.setScreenAndShow(ExploitWarningScreen.forEntry(this, "ClickGUI Exploits tab", () -> {
+		minecraft.setScreenAndShow(ExploitWarningScreen.forEntry(this, "ClickGUI Exploits filter", () -> {
 			moduleFilter = ModuleFilter.EXPLOITS;
 			moduleScroll = 0;
 			console.recordAudit("exploit_workspace", target, "workspace", "acknowledged",
@@ -239,17 +253,23 @@ public final class ChampionsClickGuiScreen extends Screen {
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
 		graphics.fill(0, 0, width, height, 0x33000000);
-		graphics.fill(windowX - 3, windowY - 3, windowX + windowWidth + 3, windowY + windowHeight + 3, 0x88000000);
-		graphics.fill(windowX, windowY, windowX + windowWidth, windowY + windowHeight, 0xF20A0F18);
+		int shownHeight = minimized ? TITLE_HEIGHT : windowHeight;
+		graphics.fill(windowX - 3, windowY - 3, windowX + windowWidth + 3, windowY + shownHeight + 3, 0x88000000);
+		graphics.fill(windowX, windowY, windowX + windowWidth, windowY + shownHeight, 0xF20A0F18);
 		graphics.fill(windowX, windowY, windowX + windowWidth, windowY + TITLE_HEIGHT, 0xFF0B1726);
 		graphics.fill(windowX, windowY + TITLE_HEIGHT - 2, windowX + windowWidth, windowY + TITLE_HEIGHT, 0xFF18D9C7);
+		graphics.text(font, "CHAMPIONSCODE CLICKGUI", windowX + 10, windowY + 10, 0xFF18D9C7, false);
+		WindowChrome.render(graphics, font, windowX, windowY, windowWidth, TITLE_HEIGHT,
+			mouseX, mouseY, 0xFFD8E2F0, maximized);
+		if (minimized) {
+			super.extractRenderState(graphics, mouseX, mouseY, delta);
+			return;
+		}
 		graphics.fill(windowX + modulePanelWidth, windowY + TITLE_HEIGHT,
 			windowX + modulePanelWidth + 1, windowY + windowHeight - ACTION_HEIGHT, 0xFF24435D);
 		graphics.fill(windowX, windowY + windowHeight - ACTION_HEIGHT,
 			windowX + windowWidth, windowY + windowHeight, 0xFF0B1726);
 
-		graphics.text(font, "CHAMPIONS CLICKGUI", windowX + 10, windowY + 10, 0xFF18D9C7, false);
-		graphics.text(font, "drag title | resize corner", windowX + windowWidth - 133, windowY + 10, 0xFF7E8A9E, false);
 		String moduleHeading = moduleFilter == ModuleFilter.EXPLOITS ? "EXPLOITS - EXTRA WARNING GATE" : "MODULES - SORTED BY CATEGORY";
 		graphics.text(font, fit(moduleHeading, modulePanelWidth - 20), windowX + 10, windowY + 58, 0xFFFBBF24, false);
 		List<ModuleView> modules = visibleModules();
@@ -315,6 +335,7 @@ public final class ChampionsClickGuiScreen extends Screen {
 	}
 
 	private void renderResizeGrip(GuiGraphicsExtractor graphics) {
+		if (maximized) return;
 		int right = windowX + windowWidth;
 		int bottom = windowY + windowHeight;
 		graphics.fill(right - 10, bottom - 3, right - 2, bottom - 1, 0xFF18D9C7);
@@ -324,19 +345,29 @@ public final class ChampionsClickGuiScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (event.button() == PRIMARY && inResizeGrip(event.x(), event.y())) {
-			resizing = true;
-			setDragging(true);
-			return true;
+		if (event.button() == PRIMARY) {
+			WindowChrome.Control control = WindowChrome.controlAt(windowX, windowY, windowWidth, TITLE_HEIGHT, event.x(), event.y());
+			if (control != WindowChrome.Control.NONE) {
+				handleWindowControl(control);
+				return true;
+			}
+			if (!minimized && !maximized && inResizeGrip(event.x(), event.y())) {
+				resizing = true;
+				setDragging(true);
+				return true;
+			}
+			if (inTitleBar(event.x(), event.y())) {
+				if (doubleClick) toggleMaximize();
+				else if (!maximized) {
+					moving = true;
+					dragOffsetX = (int) event.x() - windowX;
+					dragOffsetY = (int) event.y() - windowY;
+					setDragging(true);
+				}
+				return true;
+			}
 		}
-		if (event.button() == PRIMARY && inTitleBar(event.x(), event.y())) {
-			moving = true;
-			dragOffsetX = (int) event.x() - windowX;
-			dragOffsetY = (int) event.y() - windowY;
-			setDragging(true);
-			return true;
-		}
-		return super.mouseClicked(event, doubleClick);
+		return minimized ? true : super.mouseClicked(event, doubleClick);
 	}
 
 	@Override
@@ -353,8 +384,9 @@ public final class ChampionsClickGuiScreen extends Screen {
 			return true;
 		}
 		if (moving) {
+			int shownHeight = minimized ? TITLE_HEIGHT : windowHeight;
 			int nextX = clamp((int) event.x() - dragOffsetX, 0, Math.max(0, width - windowWidth));
-			int nextY = clamp((int) event.y() - dragOffsetY, 0, Math.max(0, height - windowHeight));
+			int nextY = clamp((int) event.y() - dragOffsetY, 0, Math.max(0, height - shownHeight));
 			int moveX = nextX - windowX;
 			int moveY = nextY - windowY;
 			windowX = nextX;
@@ -382,7 +414,7 @@ public final class ChampionsClickGuiScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
-		if (!insideWindow(mouseX, mouseY)) return false;
+		if (!insideWindow(mouseX, mouseY) || minimized) return false;
 		int direction = vertical > 0 ? -1 : vertical < 0 ? 1 : 0;
 		if (direction == 0) return true;
 		if (mouseX < windowX + modulePanelWidth) {
@@ -416,7 +448,45 @@ public final class ChampionsClickGuiScreen extends Screen {
 		observedConsoleTail = lines.isEmpty() ? null : lines.getLast();
 	}
 
+	private void handleWindowControl(WindowChrome.Control control) {
+		switch (control) {
+			case MINIMIZE -> {
+				minimized = !minimized;
+				setWidgetsVisible(!minimized);
+			}
+			case MAXIMIZE -> toggleMaximize();
+			case CLOSE -> minecraft.setScreenAndShow(null);
+			default -> {}
+		}
+	}
+
+	private void toggleMaximize() {
+		if (minimized) {
+			minimized = false;
+			setWidgetsVisible(true);
+		}
+		if (!maximized) {
+			restoreX = windowX;
+			restoreY = windowY;
+			restoreWidth = windowWidth;
+			restoreHeight = windowHeight;
+			maximized = true;
+		} else {
+			maximized = false;
+			savedX = restoreX;
+			savedY = restoreY;
+			savedWidth = restoreWidth;
+			savedHeight = restoreHeight;
+		}
+		rebuildWidgets();
+	}
+
+	private void setWidgetsVisible(boolean visible) {
+		for (AbstractWidget widget : windowWidgets) widget.visible = visible;
+	}
+
 	private void saveGeometry() {
+		if (maximized) return;
 		savedX = windowX;
 		savedY = windowY;
 		savedWidth = windowWidth;
@@ -432,7 +502,7 @@ public final class ChampionsClickGuiScreen extends Screen {
 	}
 
 	private boolean inTitleBar(double mouseX, double mouseY) {
-		return mouseX >= windowX && mouseX < windowX + windowWidth
+		return mouseX >= windowX && mouseX < WindowChrome.controlsLeft(windowX, windowWidth)
 			&& mouseY >= windowY && mouseY < windowY + TITLE_HEIGHT;
 	}
 
@@ -442,8 +512,9 @@ public final class ChampionsClickGuiScreen extends Screen {
 	}
 
 	private boolean insideWindow(double mouseX, double mouseY) {
+		int shownHeight = minimized ? TITLE_HEIGHT : windowHeight;
 		return mouseX >= windowX && mouseX < windowX + windowWidth
-			&& mouseY >= windowY && mouseY < windowY + windowHeight;
+			&& mouseY >= windowY && mouseY < windowY + shownHeight;
 	}
 
 	private String fit(String value, int maxWidth) {

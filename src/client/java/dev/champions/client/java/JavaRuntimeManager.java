@@ -62,6 +62,66 @@ public final class JavaRuntimeManager implements AutoCloseable {
 		initializeWorkspace();
 	}
 
+	public synchronized List<String> editableFiles() throws IOException {
+		if (Files.notExists(workspace)) return List.of();
+		try (var paths = Files.walk(workspace)) {
+			return paths
+				.filter(Files::isRegularFile)
+				.filter(path -> !path.startsWith(buildRoot))
+				.filter(path -> path.getFileName().toString().endsWith(".java")
+					|| path.equals(workspace.resolve("champion-java.json")))
+				.map(path -> workspace.relativize(path).toString().replace('\\', '/'))
+				.sorted()
+				.toList();
+		}
+	}
+
+	public synchronized String readEditableFile(String relative) throws IOException {
+		Path path = editablePath(relative);
+		if (!Files.isRegularFile(path)) throw new IOException("Runtime Java file does not exist: " + relative);
+		return Files.readString(path, StandardCharsets.UTF_8);
+	}
+
+	public synchronized void saveEditableFile(String relative, String content) throws IOException {
+		Path path = editablePath(relative);
+		String value = content == null ? "" : content;
+		if (value.getBytes(StandardCharsets.UTF_8).length > 512 * 1024) {
+			throw new IOException("Runtime Java editor limit is 512 KiB per file");
+		}
+		Files.createDirectories(path.getParent());
+		boolean existed = Files.exists(path);
+		String previous = existed ? Files.readString(path, StandardCharsets.UTF_8) : "";
+		Files.writeString(path, value, StandardCharsets.UTF_8);
+		JavaSourceSet sourceSet;
+		try {
+			sourceSet = JavaSourceSet.capture(workspace);
+		} catch (IOException | RuntimeException error) {
+			if (existed) Files.writeString(path, previous, StandardCharsets.UTF_8);
+			else Files.deleteIfExists(path);
+			throw new IOException("Save rejected because the workspace would be invalid: " + safeMessage(error), error);
+		}
+		emit(ConsoleLine.success("Saved runtime Java file " + relative));
+		emit(ConsoleLine.warning("Review and confirm the new source hash before compiling: " + sourceSet.sha256()));
+		console.recordAudit("java_source_edit", "client", sourceSet.manifest().id(), "saved",
+			relative + " hash=" + sourceSet.sha256());
+	}
+
+	public synchronized String currentSourceHash() throws IOException {
+		return JavaSourceSet.capture(workspace).sha256();
+	}
+
+	private Path editablePath(String relative) throws IOException {
+		if (relative == null || relative.isBlank()) throw new IOException("Runtime Java file name is missing");
+		Path path = workspace.resolve(relative).normalize();
+		if (!path.startsWith(workspace) || path.startsWith(buildRoot)) {
+			throw new IOException("Runtime Java file escaped the editable workspace");
+		}
+		boolean editable = path.getFileName().toString().endsWith(".java")
+			|| path.equals(workspace.resolve("champion-java.json"));
+		if (!editable) throw new IOException("Only .java files and champion-java.json are editable");
+		return path;
+	}
+
 	public synchronized void submit(String rawCommand) {
 		String command = rawCommand == null ? "" : rawCommand.strip();
 		if (command.isEmpty() || command.equalsIgnoreCase("help")) {

@@ -20,7 +20,7 @@ env:
 
 jobs:
   build:
-    name: Build Champions Mod for Minecraft 26.3
+    name: Build ChampionsCode for Minecraft 26.3
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
@@ -42,7 +42,7 @@ jobs:
             exit 1
           fi
           if [[ "$version" != *-* ]]; then
-            echo "Automatic releases require a prerelease version such as 0.1.0-alpha.15" >&2
+            echo "Automatic releases require a prerelease version such as 0.1.0-alpha.16" >&2
             exit 1
           fi
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$ ]]; then
@@ -126,6 +126,8 @@ jobs:
               "dev/champions/client/java/JavaRuntimeManager.class",
               "dev/champions/client/ui/ChampionsClickGuiScreen.class",
               "dev/champions/client/ui/ChampionsCategoryGuiScreen.class",
+              "dev/champions/client/ui/ChampionsJavaScreen.class",
+              "dev/champions/client/ui/WindowChrome.class",
               "dev/champions/client/ui/ExploitWarningScreen.class",
               "dev/champions/core/module/ExploitResearchModule.class",
               "dev/champions/core/module/builtin/ExploitResearchWorkspaceModule.class",
@@ -219,12 +221,12 @@ jobs:
 
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" \
-              --title "Champions Mod $MOD_VERSION" \
+              --title "ChampionsCode $MOD_VERSION" \
               --prerelease
           else
             gh release create "$RELEASE_TAG" \
               --target "$GITHUB_SHA" \
-              --title "Champions Mod $MOD_VERSION" \
+              --title "ChampionsCode $MOD_VERSION" \
               --prerelease \
               --generate-notes
           fi

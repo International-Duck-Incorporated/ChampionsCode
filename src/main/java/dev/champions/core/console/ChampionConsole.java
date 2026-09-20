@@ -224,7 +224,7 @@ public final class ChampionConsole {
 	}
 
 	private void banner() {
-		add(ConsoleLine.accent("   CHAMPIONS MOD  // defensive research console"));
+		add(ConsoleLine.accent("   CHAMPIONSCODE  // defensive research console"));
 		add(ConsoleLine.info("   Minecraft 26.3 | client-only | Fabric"));
 		add(ConsoleLine.muted("   F8 opens this console. Type clickgui to browse modules."));
 		add(ConsoleLine.warning("   Test only systems you own or have explicit permission to assess."));
