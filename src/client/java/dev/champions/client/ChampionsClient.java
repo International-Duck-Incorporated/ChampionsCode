@@ -5,8 +5,10 @@ import dev.champions.client.java.JavaRuntimeManager;
 import dev.champions.client.ui.ChampionsCategoryGuiScreen;
 import dev.champions.client.ui.ChampionsClickGuiScreen;
 import dev.champions.client.ui.ChampionsConsoleScreen;
+import dev.champions.client.ui.ExploitWarningScreen;
 import dev.champions.api.java.RuntimeJavaCommands;
 import dev.champions.core.console.ChampionConsole;
+import dev.champions.core.console.ExploitWarningPrompt;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -46,7 +48,12 @@ public final class ChampionsClient implements ClientModInitializer {
 			Minecraft client = Minecraft.getInstance();
 			client.execute(() -> client.setScreenAndShow(new ChampionsCategoryGuiScreen(console, new ChampionsConsoleScreen(console))));
 		};
-		console = new ChampionConsole(configDirectory, contextSupplier, chatRuntime, javaCommands, openClickGui, openCategoryGui);
+		ExploitWarningPrompt exploitWarningPrompt = request -> {
+			Minecraft client = Minecraft.getInstance();
+			client.execute(() -> client.setScreenAndShow(ExploitWarningScreen.forRun(client.gui.screen(), request)));
+		};
+		console = new ChampionConsole(configDirectory, contextSupplier, chatRuntime, javaCommands,
+			openClickGui, openCategoryGui, exploitWarningPrompt);
 		javaRuntime = new JavaRuntimeManager(configDirectory, contextSupplier, console);
 		javaRuntimeReference.set(javaRuntime);
 		ClientReceiveMessageEvents.GAME.register(chatRuntime::onGameMessage);

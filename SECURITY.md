@@ -17,6 +17,15 @@ NBT, authentication/session data, or encryption material. Online packet
 cancellation, delayed flush queues, payload editors, click fabrication, GUI
 desynchronization, and duplication/race automation remain out of scope.
 
+## Exploit research warning
+
+Entering an Exploits interface and every `ExploitResearchModule` run require
+separate legal-risk acknowledgements. Acknowledgement is audited but does not
+establish ownership, written permission, legal compliance, or safe operation.
+Exact-host authorization and one-run confirmation still apply after the popup.
+The marker groups modules and adds the warning; it grants no extra capability.
+See `docs/exploit-research.md` for the intake and review requirements.
+
 ## Runtime Java warning
 
 The optional runtime Java developer system is a deliberate exception to the

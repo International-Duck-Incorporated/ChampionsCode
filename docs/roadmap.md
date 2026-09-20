@@ -15,6 +15,8 @@
 - Hash-gated runtime Java addon compilation with a persistent reload lifecycle
 - Clean-room older-project ports for plugin review, declared dependency posture,
   defensive chat normalization, and non-solving chat-game fairness analysis
+- Separately warned Exploits workspace with entry and per-run legal-risk popups
+- Minecraft 26.3 one-based pointer handling for movable terminal and GUI windows
 - Unit tests and CI build
 
 ## Candidate 0.2 work

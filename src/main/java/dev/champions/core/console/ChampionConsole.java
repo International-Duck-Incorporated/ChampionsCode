@@ -1,6 +1,7 @@
 package dev.champions.core.console;
 
 import dev.champions.api.java.RuntimeJavaCommands;
+import dev.champions.core.module.ExploitResearchModule;
 import dev.champions.core.module.Finding;
 import dev.champions.core.module.ModuleContext;
 import dev.champions.core.module.ModuleOption;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 /** Stateful msfconsole-inspired command shell for defensive, authorized modules. */
@@ -35,37 +37,52 @@ public final class ChampionConsole {
 	private final RuntimeJavaCommands runtimeJava;
 	private final Runnable openClickGui;
 	private final Runnable openCategoryGui;
+	private final ExploitWarningPrompt exploitWarningPrompt;
 	private final List<ConsoleLine> lines = new ArrayList<>();
 	private final List<String> history = new ArrayList<>();
 	private ResearchModule activeModule;
 	private String runningModuleId;
+	private String approvedExploitRunModuleId;
+	private boolean exploitWarningPending;
 	private final Map<String, String> activeOptions = new LinkedHashMap<>();
 
 	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier) {
-		this(configDirectory, contextSupplier, ActiveModuleRuntime.disabled(), RuntimeJavaCommands.disabled(), () -> {}, () -> {});
+		this(configDirectory, contextSupplier, ActiveModuleRuntime.disabled(), RuntimeJavaCommands.disabled(),
+			() -> {}, () -> {}, ExploitWarningPrompt.unavailable());
 	}
 
 	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier, ActiveModuleRuntime activeRuntime) {
-		this(configDirectory, contextSupplier, activeRuntime, RuntimeJavaCommands.disabled(), () -> {}, () -> {});
+		this(configDirectory, contextSupplier, activeRuntime, RuntimeJavaCommands.disabled(),
+			() -> {}, () -> {}, ExploitWarningPrompt.unavailable());
 	}
 
 	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier,
 		ActiveModuleRuntime activeRuntime, RuntimeJavaCommands runtimeJava) {
-		this(configDirectory, contextSupplier, activeRuntime, runtimeJava, () -> {}, () -> {});
+		this(configDirectory, contextSupplier, activeRuntime, runtimeJava,
+			() -> {}, () -> {}, ExploitWarningPrompt.unavailable());
 	}
 
 	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier,
 		ActiveModuleRuntime activeRuntime, RuntimeJavaCommands runtimeJava, Runnable openClickGui) {
-		this(configDirectory, contextSupplier, activeRuntime, runtimeJava, openClickGui, () -> {});
+		this(configDirectory, contextSupplier, activeRuntime, runtimeJava,
+			openClickGui, () -> {}, ExploitWarningPrompt.unavailable());
 	}
 
 	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier,
 		ActiveModuleRuntime activeRuntime, RuntimeJavaCommands runtimeJava, Runnable openClickGui, Runnable openCategoryGui) {
+		this(configDirectory, contextSupplier, activeRuntime, runtimeJava,
+			openClickGui, openCategoryGui, ExploitWarningPrompt.unavailable());
+	}
+
+	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier,
+		ActiveModuleRuntime activeRuntime, RuntimeJavaCommands runtimeJava, Runnable openClickGui,
+		Runnable openCategoryGui, ExploitWarningPrompt exploitWarningPrompt) {
 		this.contextSupplier = contextSupplier;
 		this.activeRuntime = activeRuntime;
 		this.runtimeJava = runtimeJava;
 		this.openClickGui = openClickGui;
 		this.openCategoryGui = openCategoryGui;
+		this.exploitWarningPrompt = exploitWarningPrompt == null ? ExploitWarningPrompt.unavailable() : exploitWarningPrompt;
 		this.authorization = new AuthorizationPolicy(configDirectory);
 		this.audit = new AuditLog(configDirectory);
 		banner();
@@ -124,8 +141,13 @@ public final class ChampionConsole {
 			.sorted(java.util.Comparator.comparing(ResearchModule::id))
 			.map(module -> new ModuleView(
 				module.id(), module.name(), module.description(),
-				activeModule != null && activeModule.id().equals(module.id())
+				activeModule != null && activeModule.id().equals(module.id()),
+				module instanceof ExploitResearchModule
 			)).toList();
+	}
+
+	public synchronized List<ModuleView> exploitModuleViews() {
+		return moduleViews().stream().filter(ModuleView::exploitResearch).toList();
 	}
 
 	public synchronized ActiveModuleView activeModuleView() {
@@ -136,7 +158,8 @@ public final class ChampionConsole {
 			return new OptionView(option.name(), option.secret() ? "" : value,
 				option.required(), option.secret(), configured, option.description());
 		}).toList();
-		return new ActiveModuleView(activeModule.id(), activeModule.name(), activeModule.description(), options);
+		return new ActiveModuleView(activeModule.id(), activeModule.name(), activeModule.description(), options,
+			activeModule instanceof ExploitResearchModule);
 	}
 
 	public synchronized boolean selectModuleFromUi(String id) {
@@ -168,8 +191,8 @@ public final class ChampionConsole {
 		manageCurrentAuthorization(List.of(authorized ? "authorize" : "deauthorize", "current"), authorized);
 	}
 
-	public record ModuleView(String id, String name, String description, boolean selected) {}
-	public record ActiveModuleView(String id, String name, String description, List<OptionView> options) {}
+	public record ModuleView(String id, String name, String description, boolean selected, boolean exploitResearch) {}
+	public record ActiveModuleView(String id, String name, String description, List<OptionView> options, boolean exploitResearch) {}
 	public record OptionView(String name, String value, boolean required, boolean secret, boolean configured, String description) {}
 	public record CurrentTargetView(boolean available, String target, boolean authorized) {}
 
@@ -178,7 +201,7 @@ public final class ChampionConsole {
 		switch (topic) {
 			case "console", "commands" -> {
 				add(ConsoleLine.accent("Console command reference"));
-				add(ConsoleLine.info("  clickgui | categorygui | show modules | search <text> | use <module> | info | back"));
+				add(ConsoleLine.info("  clickgui | categorygui | show modules|exploits | search <text> | use <module> | info | back"));
 				add(ConsoleLine.info("  show options | set <name> <value> | unset <name> | run"));
 				add(ConsoleLine.info("  authorize current | deauthorize current | show targets"));
 				add(ConsoleLine.info("  status | reload | clear | banner"));
@@ -208,11 +231,17 @@ public final class ChampionConsole {
 	}
 
 	private void show(List<String> args) {
-		if (args.size() < 2) { add(ConsoleLine.error("Usage: show modules|options|targets")); return; }
+		if (args.size() < 2) { add(ConsoleLine.error("Usage: show modules|exploits|options|targets")); return; }
 		switch (args.get(1).toLowerCase(Locale.ROOT)) {
 			case "modules" -> {
 				add(ConsoleLine.accent("Available modules"));
 				for (ResearchModule module : registry.all()) add(ConsoleLine.info("  " + module.id() + " - " + module.name()));
+			}
+			case "exploits" -> {
+				add(ConsoleLine.accent("Exploit research workspace"));
+				registry.all().stream().filter(ExploitResearchModule.class::isInstance)
+					.forEach(module -> add(ConsoleLine.warning("  " + module.id() + " - " + module.name())));
+				add(ConsoleLine.muted("Opening the workspace and every module run require separate legal-risk acknowledgement."));
 			}
 			case "options" -> showOptions();
 			case "targets" -> {
@@ -271,6 +300,10 @@ public final class ChampionConsole {
 		add(ConsoleLine.accent(module.id()));
 		add(ConsoleLine.info(module.name()));
 		add(ConsoleLine.info(module.description()));
+		if (module instanceof ExploitResearchModule exploit) {
+			add(ConsoleLine.warning(exploit.legalRiskSummary()));
+			add(ConsoleLine.warning("A legal-risk popup is mandatory before every run; authorization and audit gates still apply."));
+		}
 		if (module instanceof ActiveResearchModule) {
 			add(ConsoleLine.warning("Active behavior is mode-dependent: only filtered, advertised blank/version/v paths; bounded capture; no bypasses."));
 		} else {
@@ -313,6 +346,11 @@ public final class ChampionConsole {
 		if (runningModuleId != null) { add(ConsoleLine.error("Active module already running: " + runningModuleId)); return; }
 
 		ResearchModule module = activeModule;
+		if (module instanceof ExploitResearchModule exploit && !module.id().equals(approvedExploitRunModuleId)) {
+			requestExploitRunWarning(exploit);
+			return;
+		}
+		approvedExploitRunModuleId = null;
 		ModuleContext context = contextSupplier.get();
 		String confirm = activeOptions.getOrDefault("CONFIRM", "");
 		AuthorizationDecision decision = authorization.authorize(context.connected(), context.serverAddress(), activeOptions.get("RHOST"), confirm);
@@ -344,6 +382,53 @@ public final class ChampionConsole {
 		} catch (RuntimeException e) {
 			finishRun(module, decision.normalizedTarget(), started, null, e, activeAction);
 		}
+	}
+
+	private void requestExploitRunWarning(ExploitResearchModule module) {
+		if (exploitWarningPending) {
+			add(ConsoleLine.warning("An exploit-research legal warning is already awaiting a decision."));
+			return;
+		}
+		exploitWarningPending = true;
+		String target = AuthorizationPolicy.normalizeHost(contextSupplier.get().serverAddress());
+		AtomicBoolean resolved = new AtomicBoolean();
+		ExploitWarningPrompt.Request request = new ExploitWarningPrompt.Request(
+			module.id(), module.name(), target, module.legalRiskSummary(),
+			() -> {
+				if (!resolved.compareAndSet(false, true)) return;
+				approveExploitRun(module.id(), target);
+			},
+			() -> {
+				if (!resolved.compareAndSet(false, true)) return;
+				cancelExploitRun(module.id(), target);
+			}
+		);
+		try {
+			exploitWarningPrompt.request(request);
+		} catch (RuntimeException error) {
+			exploitWarningPending = false;
+			throw error;
+		}
+	}
+
+	private synchronized void approveExploitRun(String moduleId, String target) {
+		exploitWarningPending = false;
+		if (activeModule == null || !activeModule.id().equals(moduleId)) {
+			add(ConsoleLine.warning("Exploit-research run cancelled because the selected module changed."));
+			audit.record("exploit_warning", target, moduleId, "cancelled", "Selection changed before acknowledgement");
+			return;
+		}
+		approvedExploitRunModuleId = moduleId;
+		add(ConsoleLine.warning("Legal-risk warning acknowledged for this run. Revalidating authorization and scope."));
+		audit.record("exploit_warning", target, moduleId, "acknowledged", "Per-run legal-risk warning acknowledged");
+		runActive();
+	}
+
+	private synchronized void cancelExploitRun(String moduleId, String target) {
+		exploitWarningPending = false;
+		approvedExploitRunModuleId = null;
+		add(ConsoleLine.warning("Exploit-research run cancelled at the legal-risk warning."));
+		audit.record("exploit_warning", target, moduleId, "cancelled", "Per-run warning declined or unavailable");
 	}
 
 	private synchronized void finishRun(ResearchModule module, String target, long started, ModuleResult result, Throwable error, boolean wasActive) {

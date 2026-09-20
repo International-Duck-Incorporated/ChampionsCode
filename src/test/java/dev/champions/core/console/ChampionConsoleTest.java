@@ -8,6 +8,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -41,7 +42,7 @@ class ChampionConsoleTest {
 		console.submit("categorygui");
 		assertTrue(openedList.get());
 		assertTrue(openedCategories.get());
-		assertEquals(14, console.moduleViews().size());
+		assertEquals(15, console.moduleViews().size());
 		List<String> ids = console.moduleViews().stream().map(ChampionConsole.ModuleView::id).toList();
 		assertEquals(ids.stream().sorted().toList(), ids);
 		assertTrue(console.selectModuleFromUi("auxiliary/scanner/chat_plugin_enumerator"));
@@ -54,6 +55,38 @@ class ChampionConsoleTest {
 		assertFalse(console.currentTargetView().authorized());
 		console.submit("authorize current");
 		assertTrue(console.currentTargetView().authorized());
+	}
+
+	@Test void exploitWorkspaceRequiresFreshPopupAcknowledgementForEveryRun() {
+		AtomicInteger prompts = new AtomicInteger();
+		AtomicReference<ExploitWarningPrompt.Request> request = new AtomicReference<>();
+		ExploitWarningPrompt prompt = pending -> {
+			prompts.incrementAndGet();
+			request.set(pending);
+		};
+		ChampionConsole console = new ChampionConsole(temp, ChampionConsoleTest::context,
+			ActiveModuleRuntime.disabled(), command -> {}, () -> {}, () -> {}, prompt);
+		assertEquals(1, console.exploitModuleViews().size());
+		assertTrue(console.selectModuleFromUi("auxiliary/exploits/research_workspace"));
+		assertTrue(console.activeModuleView().exploitResearch());
+		assertTrue(console.setOptionFromUi("CONFIRM", "I_HAVE_AUTHORIZATION"));
+
+		console.runFromUi();
+		assertEquals(1, prompts.get());
+		assertFalse(console.lines().stream().anyMatch(line -> line.text().contains("plan reviewed")));
+		request.get().confirm().run();
+		assertTrue(console.lines().stream().anyMatch(line -> line.text().contains("plan reviewed")));
+
+		assertTrue(console.setOptionFromUi("CONFIRM", "I_HAVE_AUTHORIZATION"));
+		console.runFromUi();
+		assertEquals(2, prompts.get());
+		request.get().cancel().run();
+		assertTrue(console.lines().stream().anyMatch(line -> line.text().contains("cancelled at the legal-risk warning")));
+	}
+
+	@Test void minecraft263UsesOneBasedPrimaryAndSecondaryPointerButtons() {
+		assertEquals(1, dev.champions.core.ui.MinecraftPointerButtons.PRIMARY);
+		assertEquals(2, dev.champions.core.ui.MinecraftPointerButtons.SECONDARY);
 	}
 
 	private static ModuleContext context() {

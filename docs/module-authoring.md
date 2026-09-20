@@ -6,9 +6,12 @@ Champions has two module types:
 - `ActiveResearchModule` may request a narrow, enumerated capability from
   `ActiveModuleRuntime` after the console's target and confirmation gates pass.
 
-Both are registered in `ModuleRegistry`. Runtime Java addons are a separate,
-explicitly unsafe developer facility and are not a way to bypass these module
-rules. See `runtime-java.md` for their lifecycle and risk model.
+Both are registered in `ModuleRegistry`. `ExploitResearchModule` is a marker for
+research workflows that require the separate Exploits workspace and a fresh
+legal-risk popup before every run; it does not grant an additional capability.
+Runtime Java addons are a separate, explicitly unsafe developer facility and are
+not a way to bypass these module rules. See `runtime-java.md` and
+`exploit-research.md` for their lifecycle and review models.
 
 ## Required properties
 
@@ -19,7 +22,11 @@ A module must:
 - return structured `Finding` values with actionable recommendations;
 - keep `RHOST` and one-run `CONFIRM` options when authorization is required;
 - avoid secrets in result text and audit details;
-- have deterministic bounds for duration, requests, and captured output.
+- have deterministic bounds for duration, requests, and captured output;
+- implement `ExploitResearchModule` when it belongs in the Exploits workspace,
+  so entry and per-run warnings cannot be skipped; and
+- define expected impact, cleanup, stop conditions, and evidence limitations for
+  any active research proposal.
 
 A module must not:
 

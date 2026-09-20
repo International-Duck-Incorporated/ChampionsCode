@@ -61,6 +61,7 @@ class LegacyModulePortsTest {
 		assertTrue(registry.find("auxiliary/audit/dependency_posture").isPresent());
 		assertTrue(registry.find("auxiliary/audit/chat_normalization").isPresent());
 		assertTrue(registry.find("auxiliary/audit/chat_game_fairness").isPresent());
+		assertTrue(registry.find("auxiliary/exploits/research_workspace").isPresent());
 	}
 
 	private static ModuleContext context(List<String> commands) {

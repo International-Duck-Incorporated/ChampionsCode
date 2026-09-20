@@ -21,6 +21,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 
+import static dev.champions.core.ui.MinecraftPointerButtons.PRIMARY;
+import static dev.champions.core.ui.MinecraftPointerButtons.SECONDARY;
+
 /** Original multi-window category interface inspired by classic utility-client layouts. */
 public final class ChampionsCategoryGuiScreen extends Screen {
 	private static final String CONTROLS = "$controls";
@@ -83,7 +86,9 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 			int defaultX = 12 + (i % 5) * 176;
 			int defaultY = 34 + (i / 5) * 180;
 			PanelLayout panel = SAVED_PANELS.computeIfAbsent(id, ignored -> new PanelLayout(defaultX, defaultY, 166, false));
-			panel.width = clamp(panel.width, 126, Math.max(126, width));
+			int maximumPanelWidth = Math.max(126, width - Math.min(20, Math.max(0, width / 6)));
+			maximumPanelWidth = Math.min(width, maximumPanelWidth);
+			panel.width = clamp(panel.width, Math.min(126, maximumPanelWidth), maximumPanelWidth);
 			int panelHeight = panelHeight(id, panel);
 			panel.x = clamp(panel.x, 0, Math.max(0, width - panel.width));
 			panel.y = clamp(panel.y, 0, Math.max(0, height - panelHeight));
@@ -93,8 +98,10 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 	}
 
 	private void initializeSettingsGeometry() {
-		settingsWidth = clamp(settingsWidth, Math.min(300, width), Math.max(1, width));
-		settingsHeight = clamp(settingsHeight, Math.min(260, height), Math.max(1, height));
+		int maximumWidth = Math.min(width, Math.max(220, width - Math.min(30, Math.max(0, width / 6))));
+		int maximumHeight = Math.min(height, Math.max(200, height - Math.min(28, Math.max(0, height / 6))));
+		settingsWidth = clamp(settingsWidth, Math.min(300, maximumWidth), maximumWidth);
+		settingsHeight = clamp(settingsHeight, Math.min(260, maximumHeight), maximumHeight);
 		if (settingsX < 0 || settingsY < 0) {
 			settingsX = Math.max(0, (width - settingsWidth) / 2);
 			settingsY = Math.max(0, (height - settingsHeight) / 2);
@@ -195,9 +202,10 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 			int y = panel.y + TITLE_HEIGHT + i * ROW_HEIGHT;
 			boolean hovered = contains(panel.x, y, panel.width, ROW_HEIGHT, mouseX, mouseY);
 			int background = module.selected() ? 0xCC155E75 : hovered ? 0xAA1A3040 : (i % 2 == 0 ? 0x44182A39 : 0x22182A39);
+			if (module.exploitResearch() && !module.selected()) background = hovered ? 0xBB5A1C2A : 0x663A111A;
 			graphics.fill(panel.x, y, panel.x + panel.width, y + ROW_HEIGHT, background);
 			graphics.text(font, fit(module.name(), panel.width - 16), panel.x + 7, y + 7,
-				module.selected() ? 0xFFFFFFFF : 0xFFD8E2F0, false);
+				module.selected() ? 0xFFFFFFFF : module.exploitResearch() ? 0xFFFFA8B8 : 0xFFD8E2F0, false);
 		}
 	}
 
@@ -227,8 +235,10 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 		graphics.fill(settingsX, settingsY, settingsX + settingsWidth, settingsY + 24, 0xFF102B3A);
 		graphics.fill(settingsX, settingsY + 22, settingsX + settingsWidth, settingsY + 24, 0xFFFBBF24);
 		graphics.text(font, fit(active.name(), settingsWidth - 130), settingsX + 9, settingsY + 8, 0xFFFFFFFF, false);
-		graphics.text(font, "SETTINGS", settingsX + settingsWidth - 58, settingsY + 8, 0xFFFBBF24, false);
-		graphics.text(font, fit(active.id(), settingsWidth - 20), settingsX + 9, settingsY + 31, 0xFF22D3EE, false);
+		graphics.text(font, active.exploitResearch() ? "LEGAL GATE" : "SETTINGS", settingsX + settingsWidth - 62, settingsY + 8,
+			active.exploitResearch() ? 0xFFFB7185 : 0xFFFBBF24, false);
+		graphics.text(font, fit(active.id(), settingsWidth - 20), settingsX + 9, settingsY + 31,
+			active.exploitResearch() ? 0xFFFB7185 : 0xFF22D3EE, false);
 		graphics.text(font, fit(active.description(), settingsWidth - 20), settingsX + 9, settingsY + 45, 0xFF8EA0B8, false);
 		renderOptionLabels(graphics, active);
 		renderSettingsStatus(graphics);
@@ -280,12 +290,12 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 		int mouseX = (int) event.x();
 		int mouseY = (int) event.y();
 		if (console.activeModuleView() != null) {
-			if (event.button() == 0 && inSettingsResizeGrip(mouseX, mouseY)) {
+			if (event.button() == PRIMARY && inSettingsResizeGrip(mouseX, mouseY)) {
 				resizingSettings = true;
 				setDragging(true);
 				return true;
 			}
-			if (event.button() == 0 && contains(settingsX, settingsY, settingsWidth, 24, mouseX, mouseY)) {
+			if (event.button() == PRIMARY && contains(settingsX, settingsY, settingsWidth, 24, mouseX, mouseY)) {
 				movingSettings = true;
 				dragOffsetX = mouseX - settingsX;
 				dragOffsetY = mouseY - settingsY;
@@ -303,18 +313,18 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 		PanelLayout panel = SAVED_PANELS.get(panelId);
 		bringToFront(panelId);
 		int panelHeight = panelHeight(panelId, panel);
-		if (event.button() == 0 && !panel.collapsed && contains(panel.x + panel.width - RESIZE_GRIP,
+		if (event.button() == PRIMARY && !panel.collapsed && contains(panel.x + panel.width - RESIZE_GRIP,
 			panel.y + panelHeight - RESIZE_GRIP, RESIZE_GRIP, RESIZE_GRIP, mouseX, mouseY)) {
 			resizingPanel = panelId;
 			setDragging(true);
 			return true;
 		}
 		if (contains(panel.x, panel.y, panel.width, TITLE_HEIGHT, mouseX, mouseY)) {
-			if (event.button() == 1 || doubleClick) {
+			if (event.button() == SECONDARY || doubleClick) {
 				panel.collapsed = !panel.collapsed;
 				return true;
 			}
-			if (event.button() == 0) {
+			if (event.button() == PRIMARY) {
 				draggingPanel = panelId;
 				dragOffsetX = mouseX - panel.x;
 				dragOffsetY = mouseY - panel.y;
@@ -322,20 +332,36 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 				return true;
 			}
 		}
-		if (event.button() == 0 && !panel.collapsed) {
+		if (event.button() == PRIMARY && !panel.collapsed) {
 			int row = (mouseY - panel.y - TITLE_HEIGHT) / ROW_HEIGHT;
 			if (panelId.equals(CONTROLS)) return activateControl(row);
 			List<ModuleView> modules = categories.getOrDefault(panelId, List.of());
 			if (row >= 0 && row < modules.size()) {
 				ModuleView module = modules.get(row);
-				console.selectModuleFromUi(module.id());
-				optionScroll = 0;
-				setActivity("Selected " + module.id());
-				rebuildWidgets();
+				if (module.exploitResearch()) requestExploitSelection(module);
+				else selectModule(module);
 				return true;
 			}
 		}
 		return true;
+	}
+
+	private void selectModule(ModuleView module) {
+		console.selectModuleFromUi(module.id());
+		optionScroll = 0;
+		setActivity("Selected " + module.id());
+		rebuildWidgets();
+	}
+
+	private void requestExploitSelection(ModuleView module) {
+		CurrentTargetView current = console.currentTargetView();
+		String target = current.available() ? current.target() : "unknown";
+		minecraft.setScreenAndShow(ExploitWarningScreen.forEntry(this, "Category GUI: " + module.name(), () -> {
+			console.recordAudit("exploit_workspace", target, module.id(), "acknowledged",
+				"Legal-risk warning acknowledged on category exploit selection");
+			selectModule(module);
+		}, () -> console.recordAudit("exploit_workspace", target, module.id(), "cancelled",
+			"Legal-risk warning declined on category exploit selection")));
 	}
 
 	private boolean activateControl(int row) {

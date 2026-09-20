@@ -7,6 +7,7 @@ import dev.champions.core.module.builtin.ClientResilienceModule;
 import dev.champions.core.module.builtin.ConnectionPostureModule;
 import dev.champions.core.module.builtin.ContainerIntegrityModule;
 import dev.champions.core.module.builtin.DependencyPostureModule;
+import dev.champions.core.module.builtin.ExploitResearchWorkspaceModule;
 import dev.champions.core.module.builtin.MotionEvidenceModule;
 import dev.champions.core.module.builtin.PluginRiskReviewModule;
 import dev.champions.core.module.builtin.PluginSurfaceModule;
@@ -32,6 +33,7 @@ public final class ModuleRegistry {
 		register(new DependencyPostureModule());
 		register(new ChatNormalizationAuditModule());
 		register(new ChatGameFairnessModule());
+		register(new ExploitResearchWorkspaceModule());
 		register(new ChatPluginEnumeratorModule());
 		register(new WireLensModule());
 		register(new SessionTraceModule());

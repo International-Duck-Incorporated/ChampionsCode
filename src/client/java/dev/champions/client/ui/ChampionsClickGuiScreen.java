@@ -17,12 +17,15 @@ import net.minecraft.network.chat.Component;
 import java.util.ArrayList;
 import java.util.List;
 
+import static dev.champions.core.ui.MinecraftPointerButtons.PRIMARY;
+
 public final class ChampionsClickGuiScreen extends Screen {
 	private static final int TITLE_HEIGHT = 30;
 	private static final int ACTION_HEIGHT = 60;
 	private static final int MODULE_ROW_HEIGHT = 21;
 	private static final int OPTION_ROW_HEIGHT = 36;
 	private static final int RESIZE_GRIP = 12;
+	private static final int MODULE_LIST_TOP = 74;
 	private static int savedX = -1;
 	private static int savedY = -1;
 	private static int savedWidth = -1;
@@ -38,6 +41,7 @@ public final class ChampionsClickGuiScreen extends Screen {
 	private int modulePanelWidth;
 	private int moduleScroll;
 	private int optionScroll;
+	private ModuleFilter moduleFilter = ModuleFilter.ALL;
 	private boolean moving;
 	private boolean resizing;
 	private int dragOffsetX;
@@ -57,12 +61,14 @@ public final class ChampionsClickGuiScreen extends Screen {
 	@Override
 	protected void init() {
 		windowWidgets.clear();
-		int defaultWidth = Math.min(920, Math.max(440, width - 30));
-		int defaultHeight = Math.min(560, Math.max(300, height - 28));
-		int minimumWidth = Math.min(440, width);
-		int minimumHeight = Math.min(300, height);
-		windowWidth = savedWidth < 0 ? Math.min(defaultWidth, width) : clamp(savedWidth, minimumWidth, width);
-		windowHeight = savedHeight < 0 ? Math.min(defaultHeight, height) : clamp(savedHeight, minimumHeight, height);
+		int maximumWidth = Math.min(width, Math.max(260, width - Math.min(30, Math.max(0, width / 6))));
+		int maximumHeight = Math.min(height, Math.max(220, height - Math.min(28, Math.max(0, height / 6))));
+		int minimumWidth = Math.min(440, maximumWidth);
+		int minimumHeight = Math.min(300, maximumHeight);
+		int defaultWidth = Math.min(920, maximumWidth);
+		int defaultHeight = Math.min(560, maximumHeight);
+		windowWidth = savedWidth < 0 ? defaultWidth : clamp(savedWidth, minimumWidth, maximumWidth);
+		windowHeight = savedHeight < 0 ? defaultHeight : clamp(savedHeight, minimumHeight, maximumHeight);
 		modulePanelWidth = Math.min(280, Math.max(185, windowWidth / 3));
 		if (savedX < 0 || savedY < 0) {
 			windowX = (width - windowWidth) / 2;
@@ -73,13 +79,28 @@ public final class ChampionsClickGuiScreen extends Screen {
 		}
 		saveGeometry();
 
+		buildFilterButtons();
 		buildModuleButtons();
 		buildOptionWidgets();
 		buildActionButtons();
 	}
 
+	private void buildFilterButtons() {
+		Button all = track(Button.builder(Component.literal(moduleFilter == ModuleFilter.ALL ? "[All]" : "All"), button -> {
+			moduleFilter = ModuleFilter.ALL;
+			moduleScroll = 0;
+			setActivity("Showing all modules.");
+			rebuildWidgets();
+		}).bounds(windowX + 10, windowY + 34, 54, 18).build());
+		all.active = moduleFilter != ModuleFilter.ALL;
+		Button exploits = track(Button.builder(Component.literal(moduleFilter == ModuleFilter.EXPLOITS ? "[Exploits]" : "Exploits"),
+			button -> requestExploitFilter())
+			.bounds(windowX + 70, windowY + 34, 74, 18).build());
+		exploits.active = moduleFilter != ModuleFilter.EXPLOITS;
+	}
+
 	private void buildModuleButtons() {
-		List<ModuleView> modules = console.moduleViews();
+		List<ModuleView> modules = visibleModules();
 		int visibleRows = visibleModuleRows();
 		moduleScroll = clamp(moduleScroll, 0, Math.max(0, modules.size() - visibleRows));
 		int end = Math.min(modules.size(), moduleScroll + visibleRows);
@@ -88,13 +109,56 @@ public final class ChampionsClickGuiScreen extends Screen {
 			int row = i - moduleScroll;
 			String label = (module.selected() ? "> " : "") + category(module.id()) + " | " + module.name();
 			track(Button.builder(Component.literal(label), button -> {
-				console.selectModuleFromUi(module.id());
-				optionScroll = 0;
-				setActivity("Selected " + module.id());
-				rebuildWidgets();
-			}).bounds(windowX + 10, windowY + 52 + row * MODULE_ROW_HEIGHT,
+				if (module.exploitResearch() && moduleFilter != ModuleFilter.EXPLOITS) {
+					requestExploitSelection(module);
+					return;
+				}
+				selectModule(module);
+			}).bounds(windowX + 10, windowY + MODULE_LIST_TOP + row * MODULE_ROW_HEIGHT,
 				modulePanelWidth - 20, 18).build());
 		}
+	}
+
+	private void selectModule(ModuleView module) {
+		console.selectModuleFromUi(module.id());
+		optionScroll = 0;
+		setActivity("Selected " + module.id());
+		rebuildWidgets();
+	}
+
+	private void requestExploitFilter() {
+		if (moduleFilter == ModuleFilter.EXPLOITS) return;
+		String target = currentTarget();
+		minecraft.setScreenAndShow(ExploitWarningScreen.forEntry(this, "ClickGUI Exploits tab", () -> {
+			moduleFilter = ModuleFilter.EXPLOITS;
+			moduleScroll = 0;
+			console.recordAudit("exploit_workspace", target, "workspace", "acknowledged",
+				"Legal-risk warning acknowledged on ClickGUI Exploits entry");
+			setActivity("Exploit workspace opened. Every run requires another popup.");
+			rebuildWidgets();
+		}, () -> console.recordAudit("exploit_workspace", target, "workspace", "cancelled",
+			"Legal-risk warning declined on ClickGUI Exploits entry")));
+	}
+
+	private void requestExploitSelection(ModuleView module) {
+		String target = currentTarget();
+		minecraft.setScreenAndShow(ExploitWarningScreen.forEntry(this, module.name(), () -> {
+			moduleFilter = ModuleFilter.EXPLOITS;
+			moduleScroll = 0;
+			console.recordAudit("exploit_workspace", target, module.id(), "acknowledged",
+				"Legal-risk warning acknowledged on exploit module selection");
+			selectModule(module);
+		}, () -> console.recordAudit("exploit_workspace", target, module.id(), "cancelled",
+			"Legal-risk warning declined on exploit module selection")));
+	}
+
+	private List<ModuleView> visibleModules() {
+		return moduleFilter == ModuleFilter.EXPLOITS ? console.exploitModuleViews() : console.moduleViews();
+	}
+
+	private String currentTarget() {
+		CurrentTargetView target = console.currentTargetView();
+		return target.available() ? target.target() : "unknown";
 	}
 
 	private void buildOptionWidgets() {
@@ -186,11 +250,12 @@ public final class ChampionsClickGuiScreen extends Screen {
 
 		graphics.text(font, "CHAMPIONS CLICKGUI", windowX + 10, windowY + 10, 0xFF18D9C7, false);
 		graphics.text(font, "drag title | resize corner", windowX + windowWidth - 133, windowY + 10, 0xFF7E8A9E, false);
-		graphics.text(font, "MODULES - SORTED BY CATEGORY", windowX + 10, windowY + 37, 0xFFFBBF24, false);
-		List<ModuleView> modules = console.moduleViews();
+		String moduleHeading = moduleFilter == ModuleFilter.EXPLOITS ? "EXPLOITS - EXTRA WARNING GATE" : "MODULES - SORTED BY CATEGORY";
+		graphics.text(font, fit(moduleHeading, modulePanelWidth - 20), windowX + 10, windowY + 58, 0xFFFBBF24, false);
+		List<ModuleView> modules = visibleModules();
 		if (modules.size() > visibleModuleRows()) {
 			graphics.text(font, (moduleScroll + 1) + "-" + Math.min(modules.size(), moduleScroll + visibleModuleRows())
-				+ "/" + modules.size(), windowX + modulePanelWidth - 50, windowY + 37, 0xFF7E8A9E, false);
+				+ "/" + modules.size(), windowX + modulePanelWidth - 50, windowY + 58, 0xFF7E8A9E, false);
 		}
 
 		ActiveModuleView active = console.activeModuleView();
@@ -259,12 +324,12 @@ public final class ChampionsClickGuiScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (event.button() == 0 && inResizeGrip(event.x(), event.y())) {
+		if (event.button() == PRIMARY && inResizeGrip(event.x(), event.y())) {
 			resizing = true;
 			setDragging(true);
 			return true;
 		}
-		if (event.button() == 0 && inTitleBar(event.x(), event.y())) {
+		if (event.button() == PRIMARY && inTitleBar(event.x(), event.y())) {
 			moving = true;
 			dragOffsetX = (int) event.x() - windowX;
 			dragOffsetY = (int) event.y() - windowY;
@@ -321,7 +386,7 @@ public final class ChampionsClickGuiScreen extends Screen {
 		int direction = vertical > 0 ? -1 : vertical < 0 ? 1 : 0;
 		if (direction == 0) return true;
 		if (mouseX < windowX + modulePanelWidth) {
-			int maximum = Math.max(0, console.moduleViews().size() - visibleModuleRows());
+			int maximum = Math.max(0, visibleModules().size() - visibleModuleRows());
 			moduleScroll = clamp(moduleScroll + direction, 0, maximum);
 		} else {
 			ActiveModuleView active = console.activeModuleView();
@@ -359,7 +424,7 @@ public final class ChampionsClickGuiScreen extends Screen {
 	}
 
 	private int visibleModuleRows() {
-		return Math.max(1, (windowHeight - TITLE_HEIGHT - ACTION_HEIGHT - 28) / MODULE_ROW_HEIGHT);
+		return Math.max(1, (windowHeight - MODULE_LIST_TOP - ACTION_HEIGHT - 8) / MODULE_ROW_HEIGHT);
 	}
 
 	private int visibleOptionRows() {
@@ -395,6 +460,8 @@ public final class ChampionsClickGuiScreen extends Screen {
 	private static int clamp(int value, int min, int max) {
 		return Math.max(min, Math.min(max, value));
 	}
+
+	private enum ModuleFilter { ALL, EXPLOITS }
 
 	private static int color(ConsoleLine.Tone tone) {
 		return switch (tone) {

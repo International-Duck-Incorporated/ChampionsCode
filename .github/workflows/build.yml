@@ -102,6 +102,9 @@ jobs:
               "dev/champions/client/java/JavaRuntimeManager.class",
               "dev/champions/client/ui/ChampionsClickGuiScreen.class",
               "dev/champions/client/ui/ChampionsCategoryGuiScreen.class",
+              "dev/champions/client/ui/ExploitWarningScreen.class",
+              "dev/champions/core/module/ExploitResearchModule.class",
+              "dev/champions/core/module/builtin/ExploitResearchWorkspaceModule.class",
               "dev/champions/core/java/RuntimeJavaCompiler.class",
           }
           missing = runtime_java_classes - names

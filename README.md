@@ -6,10 +6,10 @@ A **client-side Fabric mod for Minecraft Java Edition 26.3** that provides an
 msfconsole-inspired workflow for authorized, defensive server/plugin research,
 plus an explicitly enabled runtime Java addon development system.
 
-> **Status:** `0.1.0-alpha.13` - working foundation. The project builds, tests,
+> **Status:** `0.1.0-alpha.14` - working foundation. The project builds, tests,
 > and produces an installable Fabric JAR. It includes packet-flow, metadata
 > replay, inventory-integrity, passive transaction-flow, client-resilience,
-> passive motion, and bounded ports of compatible older-project module concepts.
+> passive motion, bounded older-project ports, and a separately warned exploit-research workspace.
 
 ## What is implemented
 
@@ -18,10 +18,12 @@ plus an explicitly enabled runtime Java addon development system.
 Press **F8** in game to open the movable terminal window. Drag its title bar to
 reposition it and drag the bottom-right corner to resize it. Terminal output can
 be selected with the mouse and copied with Ctrl+C or the Copy button. It has
-separate **Console** and **Java** tabs; the key can be rebound as **Open Champions
-Console** under the Champions Mod controls category. Run `clickgui` for the
-sorted-list interface, or `categorygui` for the separate movable category-window
-interface.
+separate **Console**, **Java**, and **Exploits** tabs; the key can be rebound as
+**Open Champions Console** under the Champions Mod controls category. Entering
+Exploits displays a legal-risk warning. Run `clickgui` for the sorted-list
+interface, or `categorygui` for the separate movable category-window interface.
+All custom drag handlers use Minecraft 26.3's one-based mouse-button values;
+windows are also clamped below the viewport size so a draggable margin remains.
 
 - `clickgui`, `categorygui`, `show modules`, `search`, `use`, `info`, `show options`
 - `set`, `unset`, `run`, `back`, `status`, `reload`
@@ -44,6 +46,7 @@ Included modules:
 | `auxiliary/audit/dependency_posture` | Reviews a bounded administrator-supplied `name@version` inventory for missing pins, conflicts, and moving builds. |
 | `auxiliary/audit/chat_normalization` | Canonicalizes one local sample for defensive filter testing without generating bypass variants or sending chat. |
 | `auxiliary/audit/chat_game_fairness` | Classifies one supplied game prompt and reports automation exposure without solving or answering it. |
+| `auxiliary/exploits/research_workspace` | Records scope, authorization basis, expected impact, and stop conditions without executing an exploit. It carries the extra popup gate. |
 | `auxiliary/scanner/chat_plugin_enumerator` | Filters default commands. SILENT marks non-default roots without sending; AGGRESSIVE probes only safe advertised blank/version/v paths and captures bounded responses. |
 | `auxiliary/observe/wire_lens` | Aggregates packet class names, directions, rates, and bursts without retaining payloads. |
 | `auxiliary/replay/session_trace` | Renders a bounded packet-metadata timeline for ordering analysis; it cannot reinject traffic. |
@@ -66,6 +69,26 @@ slots, items, and payloads remain unavailable, so it cannot establish desync or
 exploitability. Motion evidence uses rendered remote-player positions and
 intentionally broad thresholds; lag, teleports, vehicles, and interpolation can
 explain its notes.
+
+### Exploit research workspace
+
+The red **Exploits** workspace appears in the terminal, as a ClickGUI filter,
+and as an `exploits` category window. Entering it requires a modal acknowledgement
+that exploit research can create legal, contractual, privacy, availability, and
+data-integrity risk. Every exploit-research module run displays a fresh warning
+popup, then revalidates exact-target authorization and the one-run `CONFIRM`
+phrase. Entry acknowledgements, cancellations, and per-run decisions are audited.
+
+Alpha.14 includes only `auxiliary/exploits/research_workspace`, a non-executing
+intake checklist for an engagement ID, legal basis, scope, expected impact, and
+stop conditions. Future modules use the `ExploitResearchModule` marker to inherit
+the extra gate. The tab does not weaken the existing module capability boundary
+or permit credential theft, destructive payloads, unauthorized scanning, stealth,
+chat-filter bypasses, packet fabrication, anticheat evasion, or arbitrary command
+execution.
+
+See [`docs/exploit-research.md`](docs/exploit-research.md) for the research intake
+format and implementation review requirements.
 
 ### Runtime Java addons
 
@@ -116,6 +139,9 @@ assess.
 8. Older-project ports are clean-room defensive rewrites. Plugin matches are
    leads rather than vulnerability claims; chat tools neither evade filters nor
    answer games; dependency review uses only bounded administrator-supplied text.
+9. Entering an Exploits interface and every exploit-research run require separate
+   legal-risk acknowledgements. Per-run acknowledgement never replaces target
+   authorization, scope, one-run confirmation, or audit logging.
 
 The research modules intentionally do **not** include exploit delivery,
 credential or token collection, stealth, arbitrary remote scanning, packet
@@ -138,7 +164,7 @@ or companion process. It runs alongside other compatible Fabric mods.
 
 1. Install Fabric Loader for Minecraft 26.3.
 2. Put Fabric API for 26.3 in the instance's `mods` folder.
-3. Put `champions-mod-0.1.0-alpha.13.jar` in the same folder.
+3. Put `champions-mod-0.1.0-alpha.14.jar` in the same folder.
 4. Start Minecraft and press **F8**.
 
 ## First authorized run
@@ -218,6 +244,21 @@ run
 Chat Normalization and Chat Game Fairness accept only a synthetic or redacted
 `SAMPLE`. They do not inspect chat history or send messages.
 
+The Exploits tab first displays the legal-risk popup. The initial workspace is a
+non-executing research checklist:
+
+```text
+show exploits
+use auxiliary/exploits/research_workspace
+set RESEARCH_ID LAB-001
+set SCOPE current disposable lab server
+set STOP_CONDITIONS any unexpected state change or service impact
+set CONFIRM I_HAVE_AUTHORIZATION
+run
+```
+
+Running it displays a second, per-run popup before the normal authorization gate.
+
 For an authorized remote lab/server:
 
 1. Connect to that server normally.
@@ -283,6 +324,7 @@ src/client/java/dev/champions/client/
 
 See [`docs/runtime-java.md`](docs/runtime-java.md),
 [`docs/module-authoring.md`](docs/module-authoring.md),
+[`docs/exploit-research.md`](docs/exploit-research.md),
 [`docs/research-influences.md`](docs/research-influences.md),
 [`docs/legacy-module-review.md`](docs/legacy-module-review.md),
 [`docs/roadmap.md`](docs/roadmap.md), and [`PUBLISHING.md`](PUBLISHING.md) for

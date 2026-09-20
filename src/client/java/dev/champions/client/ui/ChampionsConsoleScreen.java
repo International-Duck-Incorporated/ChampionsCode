@@ -14,6 +14,8 @@ import net.minecraft.network.chat.Component;
 import java.util.ArrayList;
 import java.util.List;
 
+import static dev.champions.core.ui.MinecraftPointerButtons.PRIMARY;
+
 public final class ChampionsConsoleScreen extends Screen {
 	private static final int MARGIN = 12;
 	private static final int TITLE_HEIGHT = 28;
@@ -30,6 +32,7 @@ public final class ChampionsConsoleScreen extends Screen {
 	private EditBox input;
 	private Button consoleTab;
 	private Button javaTab;
+	private Button exploitsTab;
 	private Button copyButton;
 	private Button clearButton;
 	private Button closeButton;
@@ -60,12 +63,16 @@ public final class ChampionsConsoleScreen extends Screen {
 
 	@Override
 	protected void init() {
-		int defaultWidth = Math.min(900, Math.max(360, width - 32));
-		int defaultHeight = Math.min(540, Math.max(240, height - 30));
-		int minimumWidth = Math.min(360, width);
-		int minimumHeight = Math.min(240, height);
-		windowWidth = savedWidth < 0 ? Math.min(defaultWidth, width) : clamp(savedWidth, minimumWidth, width);
-		windowHeight = savedHeight < 0 ? Math.min(defaultHeight, height) : clamp(savedHeight, minimumHeight, height);
+		int maximumWidth = Math.max(220, width - Math.min(32, Math.max(0, width / 6)));
+		int maximumHeight = Math.max(180, height - Math.min(30, Math.max(0, height / 6)));
+		maximumWidth = Math.min(width, maximumWidth);
+		maximumHeight = Math.min(height, maximumHeight);
+		int minimumWidth = Math.min(360, maximumWidth);
+		int minimumHeight = Math.min(240, maximumHeight);
+		int defaultWidth = Math.min(900, maximumWidth);
+		int defaultHeight = Math.min(540, maximumHeight);
+		windowWidth = savedWidth < 0 ? defaultWidth : clamp(savedWidth, minimumWidth, maximumWidth);
+		windowHeight = savedHeight < 0 ? defaultHeight : clamp(savedHeight, minimumHeight, maximumHeight);
 		if (savedX < 0 || savedY < 0) {
 			windowX = (width - windowWidth) / 2;
 			windowY = (height - windowHeight) / 2;
@@ -89,6 +96,8 @@ public final class ChampionsConsoleScreen extends Screen {
 			.bounds(windowX + MARGIN, windowY + 34, 72, 18).build());
 		javaTab = addRenderableWidget(Button.builder(Component.literal("Java"), button -> selectTab(WorkspaceTab.JAVA))
 			.bounds(windowX + MARGIN + 78, windowY + 34, 72, 18).build());
+		exploitsTab = addRenderableWidget(Button.builder(Component.literal("Exploits"), button -> requestExploitTab())
+			.bounds(windowX + MARGIN + 156, windowY + 34, 82, 18).build());
 		copyButton = addRenderableWidget(Button.builder(Component.literal("Copy"), button -> copyTerminalText(true))
 			.bounds(windowX + windowWidth - 196, inputY, 54, 18).build());
 		clearButton = addRenderableWidget(Button.builder(Component.literal("Clear"), button -> {
@@ -108,20 +117,30 @@ public final class ChampionsConsoleScreen extends Screen {
 		graphics.fill(windowX, windowY, windowX + windowWidth, windowY + HEADER_HEIGHT, 0xFF0B1726);
 		graphics.fill(windowX, windowY + TITLE_HEIGHT - 1, windowX + windowWidth, windowY + TITLE_HEIGHT, 0xFF24435D);
 		graphics.fill(windowX, windowY + HEADER_HEIGHT - 2, windowX + windowWidth, windowY + HEADER_HEIGHT, 0xFF18D9C7);
-		graphics.fill(activeTab == WorkspaceTab.CONSOLE ? windowX + MARGIN : windowX + MARGIN + 78, windowY + 52,
-			activeTab == WorkspaceTab.CONSOLE ? windowX + MARGIN + 72 : windowX + MARGIN + 150, windowY + 54, 0xFFFBBF24);
+		int activeTabX = windowX + MARGIN + switch (activeTab) {
+			case CONSOLE -> 0;
+			case JAVA -> 78;
+			case EXPLOITS -> 156;
+		};
+		int activeTabWidth = activeTab == WorkspaceTab.EXPLOITS ? 82 : 72;
+		graphics.fill(activeTabX, windowY + 52, activeTabX + activeTabWidth, windowY + 54, 0xFFFBBF24);
 		graphics.fill(windowX, windowY + windowHeight - FOOTER_HEIGHT, windowX + windowWidth, windowY + windowHeight, 0xFF0B1726);
 		graphics.fill(windowX + MARGIN - 4, windowY + HEADER_HEIGHT + 5,
 			windowX + windowWidth - MARGIN + 4, windowY + windowHeight - FOOTER_HEIGHT - 4, 0xB30B1220);
 
 		graphics.text(font, "CHAMPIONS TERMINAL", windowX + MARGIN, windowY + 9, 0xFF18D9C7, false);
 		graphics.text(font, "drag title | resize corner", windowX + windowWidth - 133, windowY + 9, 0xFF7E8A9E, false);
-		String modeLine = activeTab == WorkspaceTab.JAVA
-			? "RUNTIME JAVA | UNRESTRICTED | JDK 25 | HASH-GATED"
-			: "DEFENSIVE RESEARCH | CURRENT CONNECTION | AUDITED";
-		graphics.text(font, fit(modeLine, Math.max(40, windowWidth - 176)), windowX + 164, windowY + 39,
-			activeTab == WorkspaceTab.JAVA ? 0xFFFB7185 : 0xFF6EE7B7, false);
-		graphics.text(font, activeTab == WorkspaceTab.JAVA ? "java >" : "champions >",
+		String modeLine = switch (activeTab) {
+			case JAVA -> "RUNTIME JAVA | UNRESTRICTED | JDK 25 | HASH-GATED";
+			case EXPLOITS -> "EXPLOIT RESEARCH | LEGAL RISK | AUTHORIZATION-GATED | AUDITED";
+			case CONSOLE -> "DEFENSIVE RESEARCH | CURRENT CONNECTION | AUDITED";
+		};
+		int modeColor = activeTab == WorkspaceTab.CONSOLE ? 0xFF6EE7B7 : 0xFFFB7185;
+		if (windowWidth > 330) {
+			graphics.text(font, fit(modeLine, Math.max(40, windowWidth - 270)), windowX + 258, windowY + 39,
+				modeColor, false);
+		}
+		graphics.text(font, activeTab == WorkspaceTab.JAVA ? "java >" : activeTab == WorkspaceTab.EXPLOITS ? "exploits >" : "champions >",
 			windowX + MARGIN, windowY + windowHeight - 22, 0xFFFBBF24, false);
 
 		List<VisualLine> visual = buildVisualLines(Math.max(80, windowWidth - MARGIN * 2 - 10));
@@ -209,19 +228,19 @@ public final class ChampionsConsoleScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (event.button() == 0 && inResizeGrip(event.x(), event.y())) {
+		if (event.button() == PRIMARY && inResizeGrip(event.x(), event.y())) {
 			resizing = true;
 			setDragging(true);
 			return true;
 		}
-		if (event.button() == 0 && inTitleBar(event.x(), event.y())) {
+		if (event.button() == PRIMARY && inTitleBar(event.x(), event.y())) {
 			moving = true;
 			dragOffsetX = (int) event.x() - windowX;
 			dragOffsetY = (int) event.y() - windowY;
 			setDragging(true);
 			return true;
 		}
-		if (event.button() == 0 && inOutput(event.x(), event.y())) {
+		if (event.button() == PRIMARY && inOutput(event.x(), event.y())) {
 			int position = textPositionAt(event.x(), event.y());
 			if (doubleClick) {
 				VisualLine line = visualLineAt(event.y());
@@ -237,7 +256,7 @@ public final class ChampionsConsoleScreen extends Screen {
 			}
 			return true;
 		}
-		if (event.button() == 0) clearSelection();
+		if (event.button() == PRIMARY) clearSelection();
 		return super.mouseClicked(event, doubleClick);
 	}
 
@@ -301,6 +320,8 @@ public final class ChampionsConsoleScreen extends Screen {
 		consoleTab.setY(windowY + 34);
 		javaTab.setX(windowX + MARGIN + 78);
 		javaTab.setY(windowY + 34);
+		exploitsTab.setX(windowX + MARGIN + 156);
+		exploitsTab.setY(windowY + 34);
 		input.setX(windowX + MARGIN + 82);
 		input.setY(inputY);
 		input.setWidth(Math.max(40, windowWidth - 296));
@@ -340,18 +361,46 @@ public final class ChampionsConsoleScreen extends Screen {
 	}
 
 	private void selectTab(WorkspaceTab tab) {
+		if (tab == WorkspaceTab.EXPLOITS) {
+			requestExploitTab();
+			return;
+		}
+		activateTab(tab);
+	}
+
+	private void requestExploitTab() {
+		if (activeTab == WorkspaceTab.EXPLOITS) return;
+		CurrentTargetNotice target = currentTargetNotice();
+		minecraft.setScreenAndShow(ExploitWarningScreen.forEntry(this, "Champions Exploits tab", () -> {
+			activateTab(WorkspaceTab.EXPLOITS);
+			console.recordAudit("exploit_workspace", target.target(), "workspace", "acknowledged",
+				"Legal-risk warning acknowledged on terminal tab entry");
+			console.emit(ConsoleLine.warning("Exploit workspace warning acknowledged. Every module run requires another popup."));
+		}, () -> console.recordAudit("exploit_workspace", target.target(), "workspace", "cancelled",
+			"Legal-risk warning declined on terminal tab entry")));
+	}
+
+	private void activateTab(WorkspaceTab tab) {
 		activeTab = tab;
-		input.setValue("");
+		if (input != null) input.setValue("");
 		clearSelection();
 		updateInputHint();
-		setFocused(input);
+		if (input != null) setFocused(input);
+	}
+
+	private CurrentTargetNotice currentTargetNotice() {
+		ChampionConsole.CurrentTargetView target = console.currentTargetView();
+		return new CurrentTargetNotice(target.available() ? target.target() : "unknown");
 	}
 
 	private void updateInputHint() {
 		if (input == null) return;
-		input.setHint(Component.literal(activeTab == WorkspaceTab.JAVA
-			? "status | hash | confirm <sha256> | compile | start | reload | stop"
-			: "clickgui | help"));
+		String hint = switch (activeTab) {
+			case JAVA -> "status | hash | confirm <sha256> | compile | start | reload | stop";
+			case EXPLOITS -> "show exploits | use auxiliary/exploits/research_workspace | info | run";
+			case CONSOLE -> "clickgui | help";
+		};
+		input.setHint(Component.literal(hint));
 	}
 
 	private void submitInput() {
@@ -484,7 +533,8 @@ public final class ChampionsConsoleScreen extends Screen {
 		};
 	}
 
-	private enum WorkspaceTab { CONSOLE, JAVA }
+	private enum WorkspaceTab { CONSOLE, JAVA, EXPLOITS }
 
+	private record CurrentTargetNotice(String target) {}
 	private record VisualLine(ConsoleLine.Tone tone, String text, int offset) {}
 }

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.0-alpha.14 - 2026-09-20
+
+- Added a dedicated Exploits workspace to the terminal, a ClickGUI Exploits
+  filter, and an `exploits` category window.
+- Added a modal legal and operational risk warning when entering an Exploits
+  interface and a fresh mandatory popup before every exploit-research run.
+- Added centralized per-run warning acknowledgement, cancellation, selection
+  revalidation, exact-target authorization, and audit events.
+- Added `ExploitResearchModule` and a non-executing research workspace module
+  for engagement ID, legal basis, scope, expected impact, and stop conditions.
+- Fixed dragging throughout the terminal, ClickGUI, category panels, and settings
+  window by using Minecraft 26.3's one-based primary and secondary mouse-button
+  values instead of the older zero-based assumptions.
+- Prevented default and restored window sizes from consuming the complete
+  viewport, preserving visible movement space at common GUI scales.
+- Added tests for fresh per-run exploit warning acknowledgement and Minecraft
+  26.3 pointer-button values.
+
 ## 0.1.0-alpha.13 - 2026-09-20
 
 - Retrieved and inventoried the older source archives and loose Java modules,
