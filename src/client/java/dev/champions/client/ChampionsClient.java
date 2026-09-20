@@ -2,6 +2,7 @@ package dev.champions.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.champions.client.java.JavaRuntimeManager;
+import dev.champions.client.ui.ChampionsCategoryGuiScreen;
 import dev.champions.client.ui.ChampionsClickGuiScreen;
 import dev.champions.client.ui.ChampionsConsoleScreen;
 import dev.champions.api.java.RuntimeJavaCommands;
@@ -41,7 +42,11 @@ public final class ChampionsClient implements ClientModInitializer {
 			Minecraft client = Minecraft.getInstance();
 			client.execute(() -> client.setScreenAndShow(new ChampionsClickGuiScreen(console, new ChampionsConsoleScreen(console))));
 		};
-		console = new ChampionConsole(configDirectory, contextSupplier, chatRuntime, javaCommands, openClickGui);
+		Runnable openCategoryGui = () -> {
+			Minecraft client = Minecraft.getInstance();
+			client.execute(() -> client.setScreenAndShow(new ChampionsCategoryGuiScreen(console, new ChampionsConsoleScreen(console))));
+		};
+		console = new ChampionConsole(configDirectory, contextSupplier, chatRuntime, javaCommands, openClickGui, openCategoryGui);
 		javaRuntime = new JavaRuntimeManager(configDirectory, contextSupplier, console);
 		javaRuntimeReference.set(javaRuntime);
 		ClientReceiveMessageEvents.GAME.register(chatRuntime::onGameMessage);

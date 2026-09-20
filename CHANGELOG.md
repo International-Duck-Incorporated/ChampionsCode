@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.0-alpha.12 - 2026-09-20
+
+- Added an original multi-window category interface inspired by the general
+  layout concept of classic utility-client module menus.
+- Added movable, collapsible, width-resizable Audit, Observe, Replay, Scanner,
+  and Champions control windows with remembered layouts and z-order.
+- Added a movable and resizable settings window with direct option editing,
+  authorization arming, module execution, scrolling, and live run status.
+- Added the `categorygui` command with `windowgui` and `panelgui` aliases while
+  keeping the existing sorted-list `clickgui` interface.
+- Added in-GUI navigation between the terminal, list GUI, category GUI, and
+  current-target authorization control.
+
 ## 0.1.0-alpha.11 - 2026-09-20
 
 - Added `authorize current` and `deauthorize current` for persistent in-game

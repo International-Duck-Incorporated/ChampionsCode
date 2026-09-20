@@ -43,9 +43,11 @@ Reviewed on 2026-09-19:
 - [AUTISM Client](https://github.com/AutismDevelopment/Autism-Client) - a
   GPL-3.0 modular client with packet, payload, macro, and addon systems. Only
   the general ideas of structured modules, bounded capture, explicit settings,
-  and testable workflows were considered. Champions does not adopt its packet
-  queue/editor/sender, custom-payload, multi-client coordination, account,
-  anti-fingerprinting, or exploit-automation surfaces.
+  testable workflows, and independently movable category windows were considered.
+  Champions' category interface is an original implementation using its own
+  rendering, controls, module model, and visual design. Champions does not adopt
+  its packet queue/editor/sender, custom-payload, multi-client coordination,
+  account, anti-fingerprinting, or exploit-automation surfaces.
 - [wakDuper](https://github.com/me-jndildap/wakDuper) - a 1.21.1 GUI/packet
   manipulation client whose repository marks its code all-rights-reserved.
   Champions copies no source and excludes soft close, GUI desynchronization,

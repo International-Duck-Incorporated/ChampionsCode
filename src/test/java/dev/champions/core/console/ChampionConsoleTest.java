@@ -32,12 +32,15 @@ class ChampionConsoleTest {
 		assertTrue(console.history().contains("java reload"));
 	}
 
-	@Test void opensClickGuiAndExposesStructuredModuleOptions() {
-		AtomicBoolean opened = new AtomicBoolean();
+	@Test void opensGuiModesAndExposesStructuredModuleOptions() {
+		AtomicBoolean openedList = new AtomicBoolean();
+		AtomicBoolean openedCategories = new AtomicBoolean();
 		ChampionConsole console = new ChampionConsole(temp, ChampionConsoleTest::context,
-			ActiveModuleRuntime.disabled(), command -> {}, () -> opened.set(true));
+			ActiveModuleRuntime.disabled(), command -> {}, () -> openedList.set(true), () -> openedCategories.set(true));
 		console.submit("clickgui");
-		assertTrue(opened.get());
+		console.submit("categorygui");
+		assertTrue(openedList.get());
+		assertTrue(openedCategories.get());
 		assertEquals(10, console.moduleViews().size());
 		List<String> ids = console.moduleViews().stream().map(ChampionConsole.ModuleView::id).toList();
 		assertEquals(ids.stream().sorted().toList(), ids);

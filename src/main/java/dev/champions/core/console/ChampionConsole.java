@@ -34,6 +34,7 @@ public final class ChampionConsole {
 	private final ActiveModuleRuntime activeRuntime;
 	private final RuntimeJavaCommands runtimeJava;
 	private final Runnable openClickGui;
+	private final Runnable openCategoryGui;
 	private final List<ConsoleLine> lines = new ArrayList<>();
 	private final List<String> history = new ArrayList<>();
 	private ResearchModule activeModule;
@@ -41,24 +42,30 @@ public final class ChampionConsole {
 	private final Map<String, String> activeOptions = new LinkedHashMap<>();
 
 	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier) {
-		this(configDirectory, contextSupplier, ActiveModuleRuntime.disabled(), RuntimeJavaCommands.disabled(), () -> {});
+		this(configDirectory, contextSupplier, ActiveModuleRuntime.disabled(), RuntimeJavaCommands.disabled(), () -> {}, () -> {});
 	}
 
 	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier, ActiveModuleRuntime activeRuntime) {
-		this(configDirectory, contextSupplier, activeRuntime, RuntimeJavaCommands.disabled(), () -> {});
+		this(configDirectory, contextSupplier, activeRuntime, RuntimeJavaCommands.disabled(), () -> {}, () -> {});
 	}
 
 	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier,
 		ActiveModuleRuntime activeRuntime, RuntimeJavaCommands runtimeJava) {
-		this(configDirectory, contextSupplier, activeRuntime, runtimeJava, () -> {});
+		this(configDirectory, contextSupplier, activeRuntime, runtimeJava, () -> {}, () -> {});
 	}
 
 	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier,
 		ActiveModuleRuntime activeRuntime, RuntimeJavaCommands runtimeJava, Runnable openClickGui) {
+		this(configDirectory, contextSupplier, activeRuntime, runtimeJava, openClickGui, () -> {});
+	}
+
+	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier,
+		ActiveModuleRuntime activeRuntime, RuntimeJavaCommands runtimeJava, Runnable openClickGui, Runnable openCategoryGui) {
 		this.contextSupplier = contextSupplier;
 		this.activeRuntime = activeRuntime;
 		this.runtimeJava = runtimeJava;
 		this.openClickGui = openClickGui;
+		this.openCategoryGui = openCategoryGui;
 		this.authorization = new AuthorizationPolicy(configDirectory);
 		this.audit = new AuditLog(configDirectory);
 		banner();
@@ -79,6 +86,7 @@ public final class ChampionConsole {
 			switch (command) {
 				case "help", "?" -> help(args);
 				case "clickgui" -> openClickGui.run();
+				case "categorygui", "windowgui", "panelgui" -> openCategoryGui.run();
 				case "banner" -> banner();
 				case "clear" -> lines.clear();
 				case "show" -> show(args);
@@ -170,7 +178,7 @@ public final class ChampionConsole {
 		switch (topic) {
 			case "console", "commands" -> {
 				add(ConsoleLine.accent("Console command reference"));
-				add(ConsoleLine.info("  clickgui | show modules | search <text> | use <module> | info | back"));
+				add(ConsoleLine.info("  clickgui | categorygui | show modules | search <text> | use <module> | info | back"));
 				add(ConsoleLine.info("  show options | set <name> <value> | unset <name> | run"));
 				add(ConsoleLine.info("  authorize current | deauthorize current | show targets"));
 				add(ConsoleLine.info("  status | reload | clear | banner"));
@@ -183,7 +191,8 @@ public final class ChampionConsole {
 			}
 			default -> {
 				add(ConsoleLine.accent("Quick start"));
-				add(ConsoleLine.info("  clickgui - open modules, options, and current-target authorization"));
+				add(ConsoleLine.info("  clickgui - open the sorted list interface"));
+				add(ConsoleLine.info("  categorygui - open movable category windows"));
 				add(ConsoleLine.info("  authorize current - authorize the connected server in game"));
 				add(ConsoleLine.info("  help console - command reference | help java - runtime Java reference"));
 				add(ConsoleLine.muted("  Modules remain authorization-gated and audited."));

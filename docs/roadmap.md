@@ -4,7 +4,7 @@
 
 - Minecraft 26.3/Fabric client project
 - Movable, resizable F8 terminal with selectable and copyable output
-- Sorted, movable, resizable ClickGUI module and option browser opened from the terminal
+- Sorted-list ClickGUI plus a separate movable multi-window category and settings interface
 - Built-in passive modules
 - One bounded active module with SILENT marking and filtered AGGRESSIVE blank/version/v probes
 - Payload-free packet flow and bounded metadata timeline

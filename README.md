@@ -6,7 +6,7 @@ A **client-side Fabric mod for Minecraft Java Edition 26.3** that provides an
 msfconsole-inspired workflow for authorized, defensive server/plugin research,
 plus an explicitly enabled runtime Java addon development system.
 
-> **Status:** `0.1.0-alpha.11` - working foundation. The project builds, tests,
+> **Status:** `0.1.0-alpha.12` - working foundation. The project builds, tests,
 > and produces an installable Fabric JAR. It now includes packet-flow, metadata
 > replay, inventory-integrity, passive transaction-flow, client-resilience, and
 > passive motion foundations.
@@ -19,12 +19,14 @@ Press **F8** in game to open the movable terminal window. Drag its title bar to
 reposition it and drag the bottom-right corner to resize it. Terminal output can
 be selected with the mouse and copied with Ctrl+C or the Copy button. It has
 separate **Console** and **Java** tabs; the key can be rebound as **Open Champions
-Console** under the Champions Mod controls category. Run `clickgui` in the
-Console tab to open the movable and resizable module and option browser.
+Console** under the Champions Mod controls category. Run `clickgui` for the
+sorted-list interface, or `categorygui` for the separate movable category-window
+interface.
 
-- `clickgui`, `show modules`, `search`, `use`, `info`, `show options`
+- `clickgui`, `categorygui`, `show modules`, `search`, `use`, `info`, `show options`
 - `set`, `unset`, `run`, `back`, `status`, `reload`
-- Sorted ClickGUI module list, structured option editors, confirmation arming, explicit run status, and run controls
+- Sorted-list ClickGUI with structured option editors, confirmation arming, explicit run status, and run controls
+- Multi-window category GUI with independently movable, collapsible, and resizable category panels
 - Module registry with typed options and structured findings
 - Exact-host authorization allowlist
 - One-run `CONFIRM` phrase
@@ -129,7 +131,7 @@ or companion process. It runs alongside other compatible Fabric mods.
 
 1. Install Fabric Loader for Minecraft 26.3.
 2. Put Fabric API for 26.3 in the instance's `mods` folder.
-3. Put `champions-mod-0.1.0-alpha.11.jar` in the same folder.
+3. Put `champions-mod-0.1.0-alpha.12.jar` in the same folder.
 4. Start Minecraft and press **F8**.
 
 ## First authorized run
