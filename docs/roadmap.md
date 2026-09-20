@@ -17,7 +17,8 @@
   defensive chat normalization, and non-solving chat-game fairness analysis
 - Separately warned Exploits workspace with entry and per-run legal-risk popups
 - Minecraft 26.3 one-based pointer handling for movable terminal and GUI windows
-- Unit tests and CI build
+- CI build plus automatic immutable-tagged GitHub prereleases on main pushes
+- Unit tests
 
 ## Candidate 0.2 work
 

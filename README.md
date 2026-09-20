@@ -6,7 +6,7 @@ A **client-side Fabric mod for Minecraft Java Edition 26.3** that provides an
 msfconsole-inspired workflow for authorized, defensive server/plugin research,
 plus an explicitly enabled runtime Java addon development system.
 
-> **Status:** `0.1.0-alpha.14` - working foundation. The project builds, tests,
+> **Status:** `0.1.0-alpha.15` - working foundation. The project builds, tests,
 > and produces an installable Fabric JAR. It includes packet-flow, metadata
 > replay, inventory-integrity, passive transaction-flow, client-resilience,
 > passive motion, bounded older-project ports, and a separately warned exploit-research workspace.
@@ -164,7 +164,7 @@ or companion process. It runs alongside other compatible Fabric mods.
 
 1. Install Fabric Loader for Minecraft 26.3.
 2. Put Fabric API for 26.3 in the instance's `mods` folder.
-3. Put `champions-mod-0.1.0-alpha.14.jar` in the same folder.
+3. Put `champions-mod-0.1.0-alpha.15.jar` in the same folder.
 4. Start Minecraft and press **F8**.
 
 ## First authorized run
@@ -299,6 +299,13 @@ requests targeting `main`, and manual dispatch. It uses Java 25, verifies the
 configured Fabric 26.3 dependency versions, runs the clean build and test suite,
 checks the packaged `fabric.mod.json` and client mixin configuration, generates
 SHA-256 sums, and uploads both JARs as a workflow artifact.
+
+After a successful push to `main`, a separate write-scoped job creates a tag such
+as `v0.1.0-alpha.15`, publishes or refreshes the matching GitHub release as a
+**prerelease**, and attaches the binary JAR, source JAR, and `SHA256SUMS.txt`.
+Pull requests and manual workflow runs build artifacts but do not publish. Tags
+are immutable across commits: if the version tag already points elsewhere, the
+release job stops and requires a version bump.
 
 ## Project layout
 

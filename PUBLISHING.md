@@ -7,11 +7,19 @@ credentials. After extracting it, open PowerShell in the extracted project root
 ```powershell
 git init
 git add .
-git commit -m "Champions Mod 0.1.0-alpha.14"
+git commit -m "Champions Mod 0.1.0-alpha.15"
 git remote add origin https://github.com/International-Duck-Incorporated/ChampionsCode.git
 git branch -M main
 git push -u origin main
 ```
+
+A successful push to `main` now creates `v<version>` automatically and publishes
+the build as a GitHub prerelease. The release contains the binary JAR, source JAR,
+and SHA-256 manifest. The version in `gradle.properties` must include a
+prerelease suffix such as `-alpha.15`. Reusing a tag for a different commit is
+rejected, so bump the version before each new prerelease push.
+
+Pull requests and manually dispatched builds never publish a release.
 
 If Git asks for your identity before the commit, configure it first:
 

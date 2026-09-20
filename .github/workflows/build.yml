@@ -23,10 +23,34 @@ jobs:
     name: Build Champions Mod for Minecraft 26.3
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      mod_version: ${{ steps.version.outputs.version }}
+      release_tag: ${{ steps.version.outputs.tag }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+
+      - name: Read and validate prerelease version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version=//p' gradle.properties)"
+          if [[ -z "$version" ]]; then
+            echo "Missing version in gradle.properties" >&2
+            exit 1
+          fi
+          if [[ "$version" != *-* ]]; then
+            echo "Automatic releases require a prerelease version such as 0.1.0-alpha.15" >&2
+            exit 1
+          fi
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$ ]]; then
+            echo "Invalid prerelease version: $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
 
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v6
@@ -133,3 +157,72 @@ jobs:
             build/libs/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
+
+  prerelease:
+    name: Publish GitHub prerelease
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MOD_VERSION: ${{ needs.build.outputs.mod_version }}
+      RELEASE_TAG: ${{ needs.build.outputs.release_tag }}
+
+    steps:
+      - name: Checkout release commit and tags
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download verified build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: champions-mod-mc26.3-${{ github.sha }}
+          path: release-assets
+
+      - name: Validate release assets and immutable tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RELEASE_TAG" = "v$MOD_VERSION"
+          test -f "release-assets/champions-mod-${MOD_VERSION}.jar"
+          test -f "release-assets/champions-mod-${MOD_VERSION}-sources.jar"
+          test -f "release-assets/SHA256SUMS.txt"
+          (
+            cd release-assets
+            sha256sum -c SHA256SUMS.txt
+          )
+
+          existing_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha' 2>/dev/null || true)"
+          if [[ -n "$existing_sha" && "$existing_sha" != "$GITHUB_SHA" ]]; then
+            echo "Tag $RELEASE_TAG already points to $existing_sha. Bump version before releasing $GITHUB_SHA." >&2
+            exit 1
+          fi
+
+      - name: Create or refresh GitHub prerelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t assets < <(find release-assets -maxdepth 1 -type f \
+            \( -name 'champions-mod-*.jar' -o -name 'SHA256SUMS.txt' \) -print | sort)
+          if [[ "${#assets[@]}" -ne 3 ]]; then
+            echo "Expected binary JAR, source JAR, and SHA256SUMS.txt; found ${#assets[@]} assets" >&2
+            printf '%s\n' "${assets[@]}" >&2
+            exit 1
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --title "Champions Mod $MOD_VERSION" \
+              --prerelease
+          else
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "Champions Mod $MOD_VERSION" \
+              --prerelease \
+              --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber

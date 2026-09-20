@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.0-alpha.15 - 2026-09-20
+
+- Added an automatic GitHub prerelease job after successful pushes to `main`.
+- The workflow reads and validates the prerelease version from
+  `gradle.properties`, creates a `v<version>` tag, and marks the release as a
+  prerelease.
+- The release uploads the verified binary JAR, source JAR, and SHA-256 manifest.
+- Pull requests and manual workflow runs continue to build without publishing.
+- Added immutable-tag protection: re-running the same commit is supported, while
+  reusing a version tag for a different commit requires a version bump.
+- Limited write permission to the prerelease job; the build job remains
+  read-only.
+
 ## 0.1.0-alpha.14 - 2026-09-20
 
 - Added a dedicated Exploits workspace to the terminal, a ClickGUI Exploits
