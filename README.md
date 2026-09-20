@@ -1,4 +1,4 @@
-# Champions Mod
+# ChampionsCode
 
 <img src="docs/branding/ChampionsCode.png" alt="Champions Mod logo" width="180">
 
