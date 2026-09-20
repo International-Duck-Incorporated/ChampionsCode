@@ -10,6 +10,8 @@
 - Pull requests and manual workflow runs continue to build without publishing.
 - Added immutable-tag protection: re-running the same commit is supported, while
   reusing a version tag for a different commit requires a version bump.
+- Correctly treats the GitHub API's `404 Not Found` response as an absent tag so
+  the first prerelease can create it.
 - Limited write permission to the prerelease job; the build job remains
   read-only.
 

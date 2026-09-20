@@ -196,7 +196,10 @@ jobs:
             sha256sum -c SHA256SUMS.txt
           )
 
-          existing_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha' 2>/dev/null || true)"
+          existing_sha=""
+          if tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha' 2>/dev/null)"; then
+            existing_sha="$tag_sha"
+          fi
           if [[ -n "$existing_sha" && "$existing_sha" != "$GITHUB_SHA" ]]; then
             echo "Tag $RELEASE_TAG already points to $existing_sha. Bump version before releasing $GITHUB_SHA." >&2
             exit 1
