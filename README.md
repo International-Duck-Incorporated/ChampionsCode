@@ -6,10 +6,10 @@ A **client-side Fabric mod for Minecraft Java Edition 26.3** that provides an
 msfconsole-inspired workflow for authorized, defensive server/plugin research,
 plus an explicitly enabled runtime Java addon development system.
 
-> **Status:** `0.1.0-alpha.12` - working foundation. The project builds, tests,
-> and produces an installable Fabric JAR. It now includes packet-flow, metadata
-> replay, inventory-integrity, passive transaction-flow, client-resilience, and
-> passive motion foundations.
+> **Status:** `0.1.0-alpha.13` - working foundation. The project builds, tests,
+> and produces an installable Fabric JAR. It includes packet-flow, metadata
+> replay, inventory-integrity, passive transaction-flow, client-resilience,
+> passive motion, and bounded ports of compatible older-project module concepts.
 
 ## What is implemented
 
@@ -40,6 +40,10 @@ Included modules:
 | `auxiliary/scanner/server_fingerprint` | Reports metadata already disclosed to the connected client. |
 | `auxiliary/audit/connection_posture` | Reviews passive session and transport indicators. |
 | `auxiliary/audit/plugin_surface` | Inventories command roots advertised to the current player. It does not execute them or claim conclusive plugin detection. |
+| `auxiliary/audit/plugin_risk_review` | Maps advertised roots to non-conclusive defensive review profiles without sending commands. |
+| `auxiliary/audit/dependency_posture` | Reviews a bounded administrator-supplied `name@version` inventory for missing pins, conflicts, and moving builds. |
+| `auxiliary/audit/chat_normalization` | Canonicalizes one local sample for defensive filter testing without generating bypass variants or sending chat. |
+| `auxiliary/audit/chat_game_fairness` | Classifies one supplied game prompt and reports automation exposure without solving or answering it. |
 | `auxiliary/scanner/chat_plugin_enumerator` | Filters default commands. SILENT marks non-default roots without sending; AGGRESSIVE probes only safe advertised blank/version/v paths and captures bounded responses. |
 | `auxiliary/observe/wire_lens` | Aggregates packet class names, directions, rates, and bursts without retaining payloads. |
 | `auxiliary/replay/session_trace` | Renders a bounded packet-metadata timeline for ordering analysis; it cannot reinject traffic. |
@@ -109,6 +113,9 @@ assess.
 6. `CONFIRM` must be set to `I_HAVE_AUTHORIZATION` for each module run, and is
    consumed afterward.
 7. Runs are recorded in `audit.jsonl` without secret option values.
+8. Older-project ports are clean-room defensive rewrites. Plugin matches are
+   leads rather than vulnerability claims; chat tools neither evade filters nor
+   answer games; dependency review uses only bounded administrator-supplied text.
 
 The research modules intentionally do **not** include exploit delivery,
 credential or token collection, stealth, arbitrary remote scanning, packet
@@ -131,7 +138,7 @@ or companion process. It runs alongside other compatible Fabric mods.
 
 1. Install Fabric Loader for Minecraft 26.3.
 2. Put Fabric API for 26.3 in the instance's `mods` folder.
-3. Put `champions-mod-0.1.0-alpha.12.jar` in the same folder.
+3. Put `champions-mod-0.1.0-alpha.13.jar` in the same folder.
 4. Start Minecraft and press **F8**.
 
 ## First authorized run
@@ -194,6 +201,23 @@ set CONFIRM I_HAVE_AUTHORIZATION
 run
 ```
 
+Bounded older-project ports use the same gate. For example:
+
+```text
+use auxiliary/audit/plugin_risk_review
+set PROFILE all
+set CONFIRM I_HAVE_AUTHORIZATION
+run
+
+use auxiliary/audit/dependency_posture
+set COMPONENTS Geyser@2.9.3,ViaVersion@5.4.0
+set CONFIRM I_HAVE_AUTHORIZATION
+run
+```
+
+Chat Normalization and Chat Game Fairness accept only a synthetic or redacted
+`SAMPLE`. They do not inspect chat history or send messages.
+
 For an authorized remote lab/server:
 
 1. Connect to that server normally.
@@ -224,8 +248,10 @@ Generated files:
 ```
 
 The mod and source JARs are written to `build/libs/`. Tests cover command
-parsing, authorization, bounded telemetry/transaction correlation, deterministic
-runtime-source hashing, manifest validation, and JDK compilation.
+parsing, authorization, bounded telemetry/transaction correlation, defensive
+normalization and prompt classification, declared-inventory posture, passive
+plugin review, deterministic runtime-source hashing, manifest validation, and
+JDK compilation.
 
 The `Fabric 26.3 build` GitHub Actions workflow runs on pushes to `main`, pull
 requests targeting `main`, and manual dispatch. It uses Java 25, verifies the
@@ -258,6 +284,7 @@ src/client/java/dev/champions/client/
 See [`docs/runtime-java.md`](docs/runtime-java.md),
 [`docs/module-authoring.md`](docs/module-authoring.md),
 [`docs/research-influences.md`](docs/research-influences.md),
+[`docs/legacy-module-review.md`](docs/legacy-module-review.md),
 [`docs/roadmap.md`](docs/roadmap.md), and [`PUBLISHING.md`](PUBLISHING.md) for
 the runtime Java lifecycle and risk model, extension rules, clean-room design
 notes, planned work, and PowerShell publishing steps.

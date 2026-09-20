@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.0-alpha.13 - 2026-09-20
+
+- Retrieved and inventoried the older source archives and loose Java modules,
+  including 108 distinct source-archive module wrapper names across revisions.
+- Added Plugin Risk Review, a passive mapping from advertised command roots to
+  non-conclusive defensive hardening profiles.
+- Added Declared Dependency Posture for bounded administrator-supplied
+  `name@version` inventory checks without file or network access.
+- Added defensive Chat Normalization without bypass generation or resend logic.
+- Added Chat Game Fairness classification without solving, monitoring live chat,
+  or sending answers.
+- Documented duplicate, adapted, and excluded legacy modules, provenance limits,
+  and the clean-room boundary.
+- Excluded command abuse, credential theft, chat-filter bypass, automatic game
+  answers, malicious configuration generation, SQLi, SSRF, deserialization,
+  path traversal, griefing, destructive operations, and RCE delivery.
+
 ## 0.1.0-alpha.12 - 2026-09-20
 
 - Added an original multi-window category interface inspired by the general

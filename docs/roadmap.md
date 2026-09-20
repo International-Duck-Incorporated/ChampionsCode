@@ -13,6 +13,8 @@
 - Passive, non-verdict remote-player motion evidence
 - In-game exact-target authorization management, one-run confirmation, and audit log
 - Hash-gated runtime Java addon compilation with a persistent reload lifecycle
+- Clean-room older-project ports for plugin review, declared dependency posture,
+  defensive chat normalization, and non-solving chat-game fairness analysis
 - Unit tests and CI build
 
 ## Candidate 0.2 work
@@ -21,7 +23,8 @@
 - Per-module risk/capability declarations shown in the UI
 - Better searchable output and copy-to-clipboard controls
 - Runtime Java lifecycle diagnostics and safer callback cleanup patterns
-- Offline analysis of administrator-supplied server/plugin inventories
+- Offline JAR/SBOM import for administrator-supplied inventories, building on
+  the implemented bounded text inventory review
 - Test-server fixtures for reproducible plugin configuration audits
 
 ## Out of scope

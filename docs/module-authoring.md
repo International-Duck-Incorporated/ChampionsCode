@@ -2,7 +2,7 @@
 
 Champions has two module types:
 
-- `ResearchModule` receives an immutable `ModuleContext` and performs passive analysis.
+- `ResearchModule` receives an immutable `ModuleContext` and performs passive analysis of that snapshot plus bounded, explicit option values.
 - `ActiveResearchModule` may request a narrow, enumerated capability from
   `ActiveModuleRuntime` after the console's target and confirmation gates pass.
 

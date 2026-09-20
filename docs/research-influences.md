@@ -60,6 +60,19 @@ Reviewed on 2026-09-19:
   vocabulary informed only a clean-room, class-metadata correlation view; no
   GUI retention, packet scheduler, fabrication UI, or source code is reused.
 
+Reviewed on 2026-09-20:
+
+- The user's older Venom4Plugin source archives and loose module bundles - a
+  Minecraft 26.1.2 Meteor addon series containing 108 distinct module wrapper
+  names across revisions, plus chat-filter and chat-game PoCs. Champions copied
+  no source. Four bounded defensive concepts were reimplemented: passive plugin
+  review leads, administrator-declared dependency posture, defensive chat
+  canonicalization, and non-solving chat-game fairness classification. Command
+  abuse, credential theft, bypass transforms, auto-answering, malicious config
+  generation, SQLi, SSRF, deserialization, RCE, griefing, and destructive paths
+  were excluded. See `legacy-module-review.md` for the complete inventory and
+  per-family disposition.
+
 ## Resulting original module families
 
 - **Wire Lens** - payload-free packet class/direction/rate summaries.
@@ -69,6 +82,10 @@ Reviewed on 2026-09-19:
   no IDs, revisions, slot data, packet gating, fabrication, or exploit verdict.
 - **Client Resilience** - observe-only burst/error/custom-payload warnings.
 - **Motion Evidence** - broad remote-player telemetry with no cheat verdict.
+- **Plugin Risk Review** - advertised-root leads mapped to non-conclusive hardening profiles.
+- **Declared Dependency Posture** - bounded review of administrator-supplied component pins.
+- **Chat Normalization Audit** - defensive canonicalization without bypass generation.
+- **Chat Game Fairness Review** - prompt classification without solving or sending.
 
 If a future integration uses third-party source or binaries, its exact license,
 copyright notice, source link, compatibility, and dependency boundary must be
