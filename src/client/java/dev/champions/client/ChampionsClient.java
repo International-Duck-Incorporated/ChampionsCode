@@ -1,5 +1,7 @@
 package dev.champions.client;
 
+import com.internationalduck.championscode.module.exploit.ExampleExploitModule;
+import com.internationalduck.championscode.module.payload.ExamplePayloadModule;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.champions.client.java.JavaRuntimeManager;
 import dev.champions.client.ui.ChampionsCategoryGuiScreen;
@@ -55,6 +57,11 @@ public final class ChampionsClient implements ClientModInitializer {
 		};
 		console = new ChampionConsole(configDirectory, contextSupplier, chatRuntime, javaCommands,
 			openClickGui, openCategoryGui, exploitWarningPrompt);
+		// Client-side drop-in modules (see docs/exploit-and-payload-files.md):
+		// one console.registerModule(...) line per file dropped into the
+		// exploit or payload folder.
+		console.registerModule(new ExampleExploitModule());
+		console.registerModule(new ExamplePayloadModule());
 		javaRuntime = new JavaRuntimeManager(configDirectory, contextSupplier, console);
 		javaRuntimeReference.set(javaRuntime);
 		ClientReceiveMessageEvents.GAME.register(chatRuntime::onGameMessage);

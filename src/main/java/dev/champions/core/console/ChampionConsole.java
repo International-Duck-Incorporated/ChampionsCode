@@ -88,6 +88,15 @@ public final class ChampionConsole {
 		banner();
 	}
 
+	/**
+	 * Registers an additional module after construction. Intended for client-side
+	 * drop-in modules (the exploit and payload folders), which the core source
+	 * set cannot reach; the client entrypoint calls this once per drop-in module.
+	 */
+	public synchronized void registerModule(ResearchModule module) {
+		registry.register(module);
+	}
+
 	public synchronized void submit(String rawInput) {
 		String input = rawInput == null ? "" : rawInput.strip();
 		if (input.isEmpty()) return;

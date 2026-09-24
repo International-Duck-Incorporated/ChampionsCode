@@ -1,11 +1,36 @@
-﻿
+
 ## [Unreleased]
+
+### Added
+- Plug-and-play `exploit` and `payload` drop-in folders under
+  `src/client/java/com/internationalduck/championscode/module/`, with
+  package-level conventions in each `package-info.java`.
+- `ExampleExploitModule` and `ExamplePayloadModule`: fully commented example
+  files in the two folders showing the complete plug-and-play path (module
+  contract, options, findings, registration).
+- `ChampionConsole.registerModule(...)` hook so client-side drop-in modules
+  can register from the `ChampionsClient` entrypoint, which the core
+  `ModuleRegistry` cannot reach across the split source sets.
+- `docs/exploit-and-payload-files.md` describing what belongs in each folder,
+  the plug-and-play rules, and how registered files surface in the console
+  and GUIs.
 
 ### Changed
 - Migrated the official ChampionsCode repository from GitHub to GitLab.
 - Updated ChampionsCode-owned repository, release, issue, and clone links to GitLab.
 - Retained external project links to their original upstream repositories.
 - Added the project branding asset to the repository.
+- Moved the rate-limit, boundary-validation, and custom-payload security test
+  modules from `src/main/java` into the new client-side `exploit` and
+  `payload` folders so their client-only imports resolve under the split
+  source sets.
+
+### Fixed
+- Completed the three security test modules from the previous commit (missing
+  closing braces) and updated them from Yarn names (`MinecraftClient`,
+  `PlayerMoveC2SPacket`, `PacketByteBuf`) to the project's 26.3 mappings
+  (`Minecraft`, `ServerboundMovePlayerPacket`, `FriendlyByteBuf`), so both
+  source sets compile and the JUnit suite passes.
 # Changelog
 
 ## 0.1.0-alpha.16 - 2026-09-20
