@@ -1,3 +1,11 @@
+﻿
+## [Unreleased]
+
+### Changed
+- Migrated the official ChampionsCode repository from GitHub to GitLab.
+- Updated ChampionsCode-owned repository, release, issue, and clone links to GitLab.
+- Retained external project links to their original upstream repositories.
+- Added the project branding asset to the repository.
 # Changelog
 
 ## 0.1.0-alpha.16 - 2026-09-20
@@ -203,3 +211,4 @@
 - Added exact-host authorization, one-run confirmation, and JSONL audit logs.
 - Added the bounded, read-only ChampionScript runtime and demo script.
 - Added unit tests, CI configuration, icon, documentation, and MIT license.
+

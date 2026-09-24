@@ -1,4 +1,4 @@
-# Publishing to GitHub from PowerShell
+﻿# Publishing to GitHub from PowerShell
 
 The source archive intentionally does not contain a `.git` directory or stored
 credentials. After extracting it, open PowerShell in the extracted project root
@@ -8,7 +8,7 @@ credentials. After extracting it, open PowerShell in the extracted project root
 git init
 git add .
 git commit -m "ChampionsCode 0.1.0-alpha.16"
-git remote add origin https://github.com/International-Duck-Incorporated/ChampionsCode.git
+git remote add origin https://gitlab.com/international-duck-incorporated/ChampionsCode.git
 git branch -M main
 git push -u origin main
 ```
@@ -31,7 +31,7 @@ git config --global user.email "YOUR_GITHUB_EMAIL"
 If `origin` already exists, replace the `git remote add` command with:
 
 ```powershell
-git remote set-url origin https://github.com/International-Duck-Incorporated/ChampionsCode.git
+git remote set-url origin https://gitlab.com/international-duck-incorporated/ChampionsCode.git
 ```
 
 ## Local verification
@@ -46,3 +46,4 @@ The GitHub Actions workflow performs the same build for pushes and pull
 requests. Do not commit Minecraft account/session data, access tokens,
 `.minecraft` contents, local Gradle caches, IDE settings, or generated `build/`
 output. Those common paths are already covered by `.gitignore`.
+
