@@ -13,12 +13,16 @@ import net.minecraft.network.chat.HoverEvent;
 import java.net.URI;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * One-shot startup check that announces newer releases in chat. It runs only
  * outside development environments, only when the player has joined a session,
  * fails silently when the feed is unreachable, and never sends anything.
  */
 public final class UpdateNotifier {
+	private static final Logger LOG = LoggerFactory.getLogger("champions-update");
 	private final UpdateService updateService;
 	private final UpdateSettings settings;
 	private final AtomicBoolean done = new AtomicBoolean();
@@ -37,9 +41,19 @@ public final class UpdateNotifier {
 				return;
 			}
 			if (!done.compareAndSet(false, true)) return;
+			LOG.info("update check starting (feed: {})", "GitLab releases");
 			updateService.checkLatest().whenComplete((check, error) -> {
-				if (error != null || check.isEmpty()) return;
+				if (error != null) {
+					LOG.warn("update check failed: {}", String.valueOf(error.getMessage()));
+					return;
+				}
+				if (check.isEmpty()) {
+					LOG.warn("update check returned no result");
+					return;
+				}
 				UpdateCheck result = check.get();
+				LOG.info("update check done: latest {}, newer available: {}",
+					result.latestVersion(), result.newerAvailable());
 				if (!result.newerAvailable()) return;
 				client.execute(() -> client.gui.chatListener().handleSystemMessage(message(result), false));
 			});

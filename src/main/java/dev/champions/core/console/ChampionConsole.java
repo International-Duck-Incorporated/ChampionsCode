@@ -28,8 +28,12 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /** Stateful msfconsole-inspired command shell for defensive, authorized modules. */
 public final class ChampionConsole {
+	private static final Logger LOG = LoggerFactory.getLogger("champions-console");
 	private static final int MAX_LINES = 1_000;
 	private static final int MAX_HISTORY = 100;
 	private final ModuleRegistry registry = new ModuleRegistry();
@@ -42,6 +46,7 @@ public final class ChampionConsole {
 	private final Runnable openCategoryGui;
 	private final ExploitWarningPrompt exploitWarningPrompt;
 	private final UpdateService updateService;
+	private final Runnable closeUi;
 	private final List<ConsoleLine> lines = new ArrayList<>();
 	private final List<String> history = new ArrayList<>();
 	private ResearchModule activeModule;
@@ -88,6 +93,14 @@ public final class ChampionConsole {
 	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier,
 		ActiveModuleRuntime activeRuntime, RuntimeJavaCommands runtimeJava, Runnable openClickGui,
 		Runnable openCategoryGui, ExploitWarningPrompt exploitWarningPrompt, UpdateService updateService) {
+		this(configDirectory, contextSupplier, activeRuntime, runtimeJava, openClickGui,
+			openCategoryGui, exploitWarningPrompt, updateService, () -> {});
+	}
+
+	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier,
+		ActiveModuleRuntime activeRuntime, RuntimeJavaCommands runtimeJava, Runnable openClickGui,
+		Runnable openCategoryGui, ExploitWarningPrompt exploitWarningPrompt, UpdateService updateService,
+		Runnable closeUi) {
 		this.contextSupplier = contextSupplier;
 		this.activeRuntime = activeRuntime;
 		this.runtimeJava = runtimeJava;
@@ -95,6 +108,7 @@ public final class ChampionConsole {
 		this.openCategoryGui = openCategoryGui;
 		this.exploitWarningPrompt = exploitWarningPrompt == null ? ExploitWarningPrompt.unavailable() : exploitWarningPrompt;
 		this.updateService = updateService == null ? UpdateService.disabled() : updateService;
+		this.closeUi = closeUi == null ? () -> {} : closeUi;
 		this.authorization = new AuthorizationPolicy(configDirectory);
 		this.audit = new AuditLog(configDirectory);
 		banner();
@@ -107,6 +121,7 @@ public final class ChampionConsole {
 	 */
 	public synchronized void registerModule(ResearchModule module) {
 		registry.register(module);
+		LOG.info("drop-in module registered: {}", module.id());
 	}
 
 	public synchronized void submit(String rawInput) {
@@ -114,6 +129,7 @@ public final class ChampionConsole {
 		if (input.isEmpty()) return;
 		addHistory(input);
 		add(ConsoleLine.accent(prompt() + " > " + redactForEcho(input)));
+		LOG.info("command: {}", redactForEcho(input));
 
 		List<String> args;
 		try { args = CommandTokenizer.tokenize(input); }
@@ -140,6 +156,11 @@ public final class ChampionConsole {
 				case "deauthorize" -> manageCurrentAuthorization(args, false);
 				case "reload" -> reload();
 				case "update" -> update(args);
+				case "exit", "close", "quit" -> {
+					add(ConsoleLine.muted("Closing terminal."));
+					LOG.info("terminal closed via {} command", command);
+					closeUi.run();
+				}
 				case "java" -> runtimeJava.submit(commandRemainder(input));
 				default -> add(ConsoleLine.error("Unknown command: " + command + ". Type help."));
 			}
@@ -305,7 +326,7 @@ public final class ChampionConsole {
 				add(ConsoleLine.info("  show options | set <name> <value> | unset <name> | run"));
 				add(ConsoleLine.info("  authorize current | deauthorize current | show targets"));
 				add(ConsoleLine.info("  update check | update download <version>"));
-				add(ConsoleLine.info("  status | reload | clear | banner"));
+				add(ConsoleLine.info("  status | reload | clear | banner | exit"));
 			}
 			case "java" -> {
 				add(ConsoleLine.accent("Runtime Java command reference"));
@@ -458,6 +479,7 @@ public final class ChampionConsole {
 		activeOptions.put("CONFIRM", ""); // one-run secret, consumed even on denial
 		if (module.requiresAuthorization() && !decision.allowed()) {
 			add(ConsoleLine.error("Authorization gate denied: " + decision.reason()));
+			LOG.warn("authorization denied for {}: {}", module.id(), decision.reason());
 			audit.record("module_run", AuthorizationPolicy.normalizeHost(context.serverAddress()), module.id(), "denied", decision.reason());
 			return;
 		}
@@ -466,6 +488,7 @@ public final class ChampionConsole {
 		long started = System.nanoTime();
 		boolean activeAction = module instanceof ActiveResearchModule active && active.performsActiveAction(options);
 		add(ConsoleLine.accent("[*] Running " + module.id() + " against current connection"));
+		LOG.info("module {} starting against {}", module.id(), decision.normalizedTarget());
 		try {
 			if (module instanceof ActiveResearchModule active) {
 				if (activeAction) {
@@ -537,12 +560,14 @@ public final class ChampionConsole {
 		if (error != null) {
 			Throwable cause = error.getCause() == null ? error : error.getCause();
 			add(ConsoleLine.error("Module stopped safely: " + safeMessage(cause)));
+			LOG.warn("module {} stopped after error: {}", module.id(), safeMessage(cause));
 			audit.record("module_run", target, module.id(), "error", safeMessage(cause));
 			return;
 		}
 		for (Finding finding : result.findings()) renderFinding(finding);
 		long elapsed = (System.nanoTime() - started) / 1_000_000L;
 		add(ConsoleLine.success("[+] " + result.summary() + " (" + elapsed + " ms)"));
+		LOG.info("module {} completed in {} ms: {}", module.id(), elapsed, result.summary());
 		audit.record("module_run", target, module.id(), "completed", result.summary());
 	}
 

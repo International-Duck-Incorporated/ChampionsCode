@@ -52,6 +52,82 @@ java {
 	targetCompatibility = JavaVersion.VERSION_25
 }
 
+// The sources JAR is documentation, not a mod. Excluding fabric.mod.json keeps
+// mod loaders from discovering and loading it if it is dropped into a mods
+// folder by mistake (which happened during beta testing).
+tasks.named('sourcesJar') {
+	exclude('fabric.mod.json')
+}
+
+// Fabric Loom writes the "Fabric-Loom-Client-Only-Entries" manifest attribute in
+// file-system walk order, which is not stable across machines and clean builds:
+// three builds of identical sources produced three different jar hashes that
+// differed ONLY in the ordering of that attribute. This hook rewrites the jar
+// one final time with the attribute's entries sorted and every other property
+// (entry order, timestamps, compression method) preserved, so clean builds are
+// bit-for-bit reproducible.
+import java.util.jar.Manifest
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
+import java.util.zip.CRC32
+tasks.named('jar') { jarTask ->
+	doLast {
+		File jarFile = jarTask.archiveFile.get().asFile
+		if (jarFile == null || !jarFile.exists()) return
+		List<Map.Entry<ZipEntry, byte[]>> original = new ArrayList<>()
+		new ZipInputStream(new FileInputStream(jarFile)).withCloseable { zip ->
+			ZipEntry entry
+			while ((entry = zip.getNextEntry()) != null) {
+				original.add(Map.entry(entry, zip.readAllBytes()))
+			}
+		}
+		boolean changed = false
+		for (int i = 0; i < original.size(); i++) {
+			ZipEntry entry = original.get(i).key
+			if (entry.name != 'META-INF/MANIFEST.MF') continue
+			Manifest manifest = new Manifest(new ByteArrayInputStream(original.get(i).value))
+			String attr = manifest.mainAttributes.getValue('Fabric-Loom-Client-Only-Entries')
+			if (attr == null) continue
+			String[] parts = attr.split(';')
+			Arrays.sort(parts)
+			String sorted = String.join(';', parts)
+			if (sorted == attr) continue
+			manifest.mainAttributes.putValue('Fabric-Loom-Client-Only-Entries', sorted)
+			ByteArrayOutputStream rendered = new ByteArrayOutputStream()
+			manifest.write(rendered)
+			original.set(i, Map.entry(entry, rendered.toByteArray()))
+			changed = true
+		}
+		if (!changed) return
+		File tmp = new File(jarFile.parentFile, jarFile.name + '.reproducible.tmp')
+		ZipOutputStream zipOut = new ZipOutputStream(new FileOutputStream(tmp))
+		try {
+			for (pair in original) {
+				ZipEntry src = pair.key
+				byte[] data = pair.value
+				ZipEntry out = new ZipEntry(src.name)
+				out.time = src.time
+				out.method = src.method
+				if (src.method == ZipEntry.STORED) {
+					out.size = data.length
+					CRC32 crc = new CRC32()
+					crc.update(data)
+					out.crc = crc.value
+				}
+				zipOut.putNextEntry(out)
+				zipOut.write(data)
+				zipOut.closeEntry()
+			}
+		} finally {
+			zipOut.close()
+		}
+		java.nio.file.Files.move(tmp.toPath(), jarFile.toPath(),
+			java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+		println "reproducible-repack: sorted Fabric-Loom-Client-Only-Entries in ${jarFile.name}"
+	}
+}
+
 def packagedLicenseName = "LICENSE_${project.name}"
 jar {
 	from('LICENSE') { rename { packagedLicenseName } }

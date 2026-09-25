@@ -55,6 +55,13 @@ public final class ChampionsClickGuiScreen extends Screen {
 	private ConsoleLine observedConsoleTail;
 	private ConsoleLine.Tone lastActionTone = ConsoleLine.Tone.INFO;
 	private String lastAction = "Select a module, configure its options, then press Run now.";
+	private String searchQuery = "";
+	private boolean pendingSearchFocus;
+	private String dropdownOption;
+	private int dropdownX;
+	private int dropdownY;
+	private int dropdownScroll;
+	private boolean dropdownIsUuid;
 
 	public ChampionsClickGuiScreen(ChampionConsole console, Screen parent) {
 		super(Component.literal("ChampionsCode ClickGUI"));
@@ -67,6 +74,7 @@ public final class ChampionsClickGuiScreen extends Screen {
 	@Override
 	protected void init() {
 		windowWidgets.clear();
+		dropdownOption = null;
 		int maximumWidth = Math.min(width, Math.max(260, width - Math.min(30, Math.max(0, width / 6))));
 		int maximumHeight = Math.min(height, Math.max(220, height - Math.min(28, Math.max(0, height / 6))));
 		int minimumWidth = Math.min(440, maximumWidth);
@@ -111,6 +119,24 @@ public final class ChampionsClickGuiScreen extends Screen {
 			button -> requestExploitFilter())
 			.bounds(windowX + 70, windowY + 34, 74, 18).build());
 		exploits.active = moduleFilter != ModuleFilter.EXPLOITS;
+		EditBox search = new EditBox(font, windowX + 148, windowY + 34, Math.max(60, modulePanelWidth - 158), 18,
+			Component.literal("Search"));
+		search.setMaxLength(64);
+		search.setHint(Component.literal("Search..."));
+		search.setValue(searchQuery);
+		search.setResponder(value -> {
+			if (value.equals(searchQuery)) return;
+			searchQuery = value;
+			moduleScroll = 0;
+			pendingSearchFocus = true;
+			rebuildWidgets();
+		});
+		track(search);
+		if (pendingSearchFocus) {
+			pendingSearchFocus = false;
+			setInitialFocus(search);
+			search.moveCursorToEnd(false);
+		}
 	}
 
 	private void buildModuleButtons() {
@@ -167,7 +193,13 @@ public final class ChampionsClickGuiScreen extends Screen {
 	}
 
 	private List<ModuleView> visibleModules() {
-		return moduleFilter == ModuleFilter.EXPLOITS ? console.exploitModuleViews() : console.moduleViews();
+		List<ModuleView> modules = moduleFilter == ModuleFilter.EXPLOITS ? console.exploitModuleViews() : console.moduleViews();
+		String query = searchQuery.strip().toLowerCase(java.util.Locale.ROOT);
+		if (query.isEmpty()) return modules;
+		return modules.stream()
+			.filter(module -> module.id().toLowerCase(java.util.Locale.ROOT).contains(query)
+				|| module.name().toLowerCase(java.util.Locale.ROOT).contains(query))
+			.toList();
 	}
 
 	private String currentTarget() {
@@ -200,13 +232,30 @@ public final class ChampionsClickGuiScreen extends Screen {
 				track(arm);
 			} else {
 				int editorX = rightX + editorOffset;
-				EditBox editor = new EditBox(font, editorX, y, Math.max(64, rightX + rightWidth - editorX), 18,
+				int editorWidth = Math.max(64, rightX + rightWidth - editorX);
+				boolean playerOption = isPlayerOption(option);
+				if (playerOption) editorWidth = Math.max(48, editorWidth - 24);
+				EditBox editor = new EditBox(font, editorX, y, editorWidth, 18,
 					Component.literal(option.name()));
 				editor.setMaxLength(256);
 				editor.setValue(option.value());
 				editor.setHint(Component.literal("<unset>"));
 				editor.setResponder(value -> console.setOptionFromUi(option.name(), value));
 				track(editor);
+				if (playerOption) {
+					final int toggleX = editorX + editorWidth + 2;
+					track(Button.builder(Component.literal("v"), button -> {
+						if (option.name().equals(dropdownOption)) {
+							dropdownOption = null;
+							return;
+						}
+						dropdownOption = option.name();
+						dropdownIsUuid = isUuidOption(option);
+						dropdownX = toggleX;
+						dropdownY = y + 20;
+						dropdownScroll = 0;
+					}).bounds(toggleX, y, 22, 18).build());
+				}
 			}
 		}
 	}
@@ -252,7 +301,6 @@ public final class ChampionsClickGuiScreen extends Screen {
 
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
-		graphics.fill(0, 0, width, height, 0x33000000);
 		int shownHeight = minimized ? TITLE_HEIGHT : windowHeight;
 		graphics.fill(windowX - 3, windowY - 3, windowX + windowWidth + 3, windowY + shownHeight + 3, 0x88000000);
 		graphics.fill(windowX, windowY, windowX + windowWidth, windowY + shownHeight, 0xF20A0F18);
@@ -271,6 +319,9 @@ public final class ChampionsClickGuiScreen extends Screen {
 			windowX + windowWidth, windowY + windowHeight, 0xFF0B1726);
 
 		String moduleHeading = moduleFilter == ModuleFilter.EXPLOITS ? "EXPLOITS - EXTRA WARNING GATE" : "MODULES - SORTED BY CATEGORY";
+		if (moduleFilter != ModuleFilter.EXPLOITS && !searchQuery.strip().isEmpty()) {
+			moduleHeading = "MODULES - SEARCH: \"" + searchQuery.strip().toUpperCase(java.util.Locale.ROOT) + "\"";
+		}
 		graphics.text(font, fit(moduleHeading, modulePanelWidth - 20), windowX + 10, windowY + 58, 0xFFFBBF24, false);
 		List<ModuleView> modules = visibleModules();
 		if (modules.size() > visibleModuleRows()) {
@@ -295,6 +346,83 @@ public final class ChampionsClickGuiScreen extends Screen {
 		renderRunStatus(graphics);
 		renderResizeGrip(graphics);
 		super.extractRenderState(graphics, mouseX, mouseY, delta);
+		renderPlayerDropdown(graphics, mouseX, mouseY);
+	}
+
+	private void renderPlayerDropdown(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+		if (dropdownOption == null) return;
+		List<String> names = dev.champions.client.SessionPlayers.names();
+		int rowHeight = 14;
+		int visibleRows = Math.min(8, Math.max(1, names.size()));
+		dropdownScroll = clamp(dropdownScroll, 0, Math.max(0, names.size() - visibleRows));
+		boolean scrollable = names.size() > visibleRows;
+		int width = 130;
+		for (String name : names) width = Math.min(190, Math.max(width, font.width(name) + 30));
+		int height = names.isEmpty() ? rowHeight + 6 : visibleRows * rowHeight + (scrollable ? 10 : 0);
+		graphics.fill(dropdownX, dropdownY, dropdownX + width, dropdownY + height, 0xF20B1726);
+		graphics.fill(dropdownX, dropdownY, dropdownX + width, dropdownY + 1, 0xFF18D9C7);
+		if (names.isEmpty()) {
+			graphics.text(font, "No players seen this session", dropdownX + 6, dropdownY + 5, 0xFF7E8A9E, false);
+			return;
+		}
+		int end = Math.min(names.size(), dropdownScroll + visibleRows);
+		for (int i = dropdownScroll; i < end; i++) {
+			String name = names.get(i);
+			int rowY = dropdownY + (i - dropdownScroll) * rowHeight;
+			boolean hovered = mouseX >= dropdownX && mouseX < dropdownX + width && mouseY >= rowY && mouseY < rowY + rowHeight;
+			if (hovered) graphics.fill(dropdownX + 1, rowY, dropdownX + width - 1, rowY + rowHeight, 0xFF24435D);
+			boolean online = dev.champions.client.SessionPlayers.isOnline(name);
+			graphics.text(font, name, dropdownX + 6, rowY + 3, online ? 0xFF6EE7B7 : 0xFF7E8A9E, false);
+			if (!online) {
+				graphics.text(font, "left", dropdownX + width - font.width("left") - 4, rowY + 3, 0xFF56637A, false);
+			}
+		}
+		if (scrollable) {
+			graphics.text(font, (dropdownScroll + 1) + "-" + end + "/" + names.size(),
+				dropdownX + 6, dropdownY + height - 9, 0xFF7E8A9E, false);
+		}
+	}
+
+	private boolean inDropdown(double mouseX, double mouseY) {
+		if (dropdownOption == null) return false;
+		List<String> names = dev.champions.client.SessionPlayers.names();
+		int visibleRows = Math.min(8, Math.max(1, names.size()));
+		int height = names.isEmpty() ? 20 : visibleRows * 14 + (names.size() > visibleRows ? 10 : 0);
+		return mouseX >= dropdownX && mouseX < dropdownX + 190 && mouseY >= dropdownY && mouseY < dropdownY + height;
+	}
+
+	private boolean selectFromDropdown(double mouseX, double mouseY) {
+		if (dropdownOption == null) return false;
+		List<String> names = dev.champions.client.SessionPlayers.names();
+		if (names.isEmpty()) return false;
+		int visibleRows = Math.min(8, Math.max(1, names.size()));
+		int end = Math.min(names.size(), dropdownScroll + visibleRows);
+		for (int i = dropdownScroll; i < end; i++) {
+			int rowY = dropdownY + (i - dropdownScroll) * 14;
+			if (mouseY >= rowY && mouseY < rowY + 14) {
+				String name = names.get(i);
+				String value = dropdownIsUuid ? dev.champions.client.SessionPlayers.uuid(name) : name;
+				if (value == null) value = "";
+				console.setOptionFromUi(dropdownOption, value);
+				setActivity("Set " + dropdownOption + " to " + value + ".");
+				dropdownOption = null;
+				rebuildWidgets();
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean isPlayerOption(OptionView option) {
+		if (option.secret()) return false;
+		String haystack = (option.name() + " " + option.description()).toLowerCase(java.util.Locale.ROOT);
+		return haystack.contains("player") || haystack.contains("username")
+			|| haystack.contains("uuid") || haystack.contains("nickname");
+	}
+
+	private static boolean isUuidOption(OptionView option) {
+		String haystack = (option.name() + " " + option.description()).toLowerCase(java.util.Locale.ROOT);
+		return haystack.contains("uuid");
 	}
 
 	private void renderOptionLabels(GuiGraphicsExtractor graphics, ActiveModuleView active, int rightX, int rightWidth) {
@@ -346,6 +474,13 @@ public final class ChampionsClickGuiScreen extends Screen {
 	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
 		if (event.button() == PRIMARY) {
+			if (dropdownOption != null) {
+				if (inDropdown(event.x(), event.y())) {
+					selectFromDropdown(event.x(), event.y());
+					return true;
+				}
+				dropdownOption = null;
+			}
 			WindowChrome.Control control = WindowChrome.controlAt(windowX, windowY, windowWidth, TITLE_HEIGHT, event.x(), event.y());
 			if (control != WindowChrome.Control.NONE) {
 				handleWindowControl(control);
@@ -416,6 +551,12 @@ public final class ChampionsClickGuiScreen extends Screen {
 	public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
 		if (!insideWindow(mouseX, mouseY) || minimized) return false;
 		int direction = vertical > 0 ? -1 : vertical < 0 ? 1 : 0;
+		if (direction == 0) return true;
+		if (dropdownOption != null && inDropdown(mouseX, mouseY)) {
+			int maximum = Math.max(0, dev.champions.client.SessionPlayers.names().size() - 8);
+			dropdownScroll = clamp(dropdownScroll + direction, 0, maximum);
+			return true;
+		}
 		if (direction == 0) return true;
 		if (mouseX < windowX + modulePanelWidth) {
 			int maximum = Math.max(0, visibleModules().size() - visibleModuleRows());

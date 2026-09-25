@@ -24,7 +24,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public final class ModuleRegistry {
+	private static final Logger LOG = LoggerFactory.getLogger("champions-modules");
 	private final Map<String, ResearchModule> modules = new LinkedHashMap<>();
 
 	public ModuleRegistry() {
@@ -52,6 +56,7 @@ public final class ModuleRegistry {
 		if (modules.putIfAbsent(id, module) != null) {
 			throw new IllegalArgumentException("Duplicate module id: " + id);
 		}
+		LOG.info("module registered: {} ({})", id, module.getClass().getName());
 	}
 
 	public Optional<ResearchModule> find(String id) {

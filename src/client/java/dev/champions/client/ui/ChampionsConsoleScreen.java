@@ -80,7 +80,7 @@ public final class ChampionsConsoleScreen extends Screen {
 
 		input = new EditBox(font, inputX(), inputY(), inputWidth(), 18, Component.literal("ChampionsCode command"));
 		input.setMaxLength(2048);
-		input.setHint(Component.literal("help | show modules | clickgui | categorygui | java status"));
+		input.setHint(Component.literal("help | show modules | clickgui | categorygui | java status | exit"));
 		input.setCanLoseFocus(false);
 		input.setBordered(false);
 		input.setTextColor(0xFFF1F1F1);
@@ -92,7 +92,6 @@ public final class ChampionsConsoleScreen extends Screen {
 
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
-		graphics.fill(0, 0, width, height, 0x44000000);
 		int shownHeight = minimized ? TITLE_HEIGHT : windowHeight;
 		graphics.fill(windowX - 4, windowY - 4, windowX + windowWidth + 4, windowY + shownHeight + 4, 0x99000000);
 		graphics.fill(windowX, windowY, windowX + windowWidth, windowY + shownHeight, 0xFF090909);
@@ -342,7 +341,9 @@ public final class ChampionsConsoleScreen extends Screen {
 	}
 
 	private int inputY() {
-		return windowY + windowHeight - 24;
+		// Borderless EditBox renders its text at getY() (see EditBox.updateTextPosition),
+		// so the box must start exactly on the prompt line to keep both aligned.
+		return windowY + windowHeight - 19;
 	}
 
 	private int inputWidth() {

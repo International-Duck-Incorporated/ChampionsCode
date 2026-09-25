@@ -29,12 +29,16 @@ warning-gated **Exploits** filter remains available, or run `categorygui` for th
 movable category-window interface. F7 and F8 can both be rebound under the
 ChampionsCode controls category. The sorted ClickGUI, category panels, and module
 settings window also provide close, maximize/restore, and minimize controls. All
-custom drag handlers use Minecraft 26.3's one-based mouse-button values.
+custom drag handlers use Minecraft 26.3's one-based mouse-button values. None of
+these screens dim the world behind them while open, and the main menu carries a
+small ARMED identification box with the installed version.
 
 - `clickgui`, `categorygui`, `show modules`, `search`, `use`, `info`, `show options`
-- `set`, `unset`, `run`, `back`, `status`, `reload`
+- `set`, `unset`, `run`, `back`, `status`, `reload`, `exit` (closes the terminal)
 - `update check`, `update download <version>` (see [Updates](#updates))
-- Sorted-list ClickGUI with structured option editors, confirmation arming, explicit run status, and run controls
+- Sorted-list ClickGUI with a module search box, structured option editors, a
+  recently-seen players dropdown (including players who left) for player
+  identity options, confirmation arming, explicit run status, and run controls
 - Multi-window category GUI with independently movable, collapsible, and resizable category panels
 - Module registry with typed options and structured findings
 - Exact-host authorization allowlist

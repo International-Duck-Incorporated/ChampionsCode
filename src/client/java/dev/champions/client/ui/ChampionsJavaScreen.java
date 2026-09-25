@@ -164,7 +164,6 @@ public final class ChampionsJavaScreen extends Screen {
 
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
-		graphics.fill(0, 0, width, height, 0x55000000);
 		int shownHeight = minimized ? TITLE_HEIGHT : windowHeight;
 		graphics.fill(windowX - 3, windowY - 3, windowX + windowWidth + 3, windowY + shownHeight + 3, 0x990A0016);
 		graphics.fill(windowX, windowY, windowX + windowWidth, windowY + shownHeight, 0xFA080611);

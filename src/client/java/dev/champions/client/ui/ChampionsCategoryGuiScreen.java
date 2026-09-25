@@ -184,7 +184,6 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
-		graphics.fill(0, 0, width, height, 0x66000000);
 		graphics.text(font, "CHAMPIONSCODE CATEGORY GUI", 8, 8, 0xFF18D9C7, false);
 		graphics.text(font, "drag headers | right-click header to collapse | drag corners to resize", 142, 8, 0xFF8EA0B8, false);
 		for (String id : Z_ORDER) renderPanel(graphics, id, mouseX, mouseY);

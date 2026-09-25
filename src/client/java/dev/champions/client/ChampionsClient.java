@@ -4,6 +4,7 @@ import com.internationalduck.championscode.module.exploit.ExampleExploitModule;
 import com.internationalduck.championscode.module.payload.ExamplePayloadModule;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.champions.client.java.JavaRuntimeManager;
+import dev.champions.client.ui.ArmedTitleOverlay;
 import dev.champions.client.ui.ChampionsCategoryGuiScreen;
 import dev.champions.client.ui.ChampionsClickGuiScreen;
 import dev.champions.client.ui.ChampionsConsoleScreen;
@@ -55,6 +56,10 @@ public final class ChampionsClient implements ClientModInitializer {
 			Minecraft client = Minecraft.getInstance();
 			client.execute(() -> client.setScreenAndShow(new ChampionsCategoryGuiScreen(console, new ChampionsConsoleScreen(console))));
 		};
+		Runnable closeUi = () -> {
+			Minecraft client = Minecraft.getInstance();
+			client.execute(() -> client.setScreenAndShow(null));
+		};
 		ExploitWarningPrompt exploitWarningPrompt = request -> {
 			Minecraft client = Minecraft.getInstance();
 			client.execute(() -> client.setScreenAndShow(ExploitWarningScreen.forRun(client.gui.screen(), request)));
@@ -62,7 +67,7 @@ public final class ChampionsClient implements ClientModInitializer {
 		UpdateSettings updateSettings = new UpdateSettings(configDirectory);
 		UpdateService updateService = new GitLabUpdateService();
 		console = new ChampionConsole(configDirectory, contextSupplier, chatRuntime, javaCommands,
-			openClickGui, openCategoryGui, exploitWarningPrompt, updateService);
+			openClickGui, openCategoryGui, exploitWarningPrompt, updateService, closeUi);
 		// Client-side drop-in modules (see docs/exploit-and-payload-files.md):
 		// one console.registerModule(...) line per file dropped into the
 		// exploit or payload folder.
@@ -90,10 +95,19 @@ public final class ChampionsClient implements ClientModInitializer {
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			chatRuntime.tick(client);
 			PlayerMotionTelemetry.tick(client);
+			SessionPlayers.capture(client);
 			while (openConsole.consumeClick()) client.setScreenAndShow(new ChampionsConsoleScreen(console));
 			while (openJavaStudio.consumeClick()) client.setScreenAndShow(new ChampionsJavaScreen(console, javaRuntime));
 		});
-		LOGGER.info("ChampionsCode initialized: defensive modules and hash-gated runtime Java developer system ready");
+		ArmedTitleOverlay.register();
+		String version = FabricLoader.getInstance().getModContainer(MOD_ID)
+			.map(container -> container.getMetadata().getVersion().getFriendlyString())
+			.orElse("unknown");
+		LOGGER.info("ChampionsCode {} initialized (environment: {}): defensive modules, " +
+			"hash-gated runtime Java and update checks ready",
+			version,
+			FabricLoader.getInstance().getEnvironmentType());
+		LOGGER.info("keybinds: F8 console, F7 Java Studio; commands: clickgui, categorygui, exit");
 	}
 
 	public static Identifier id(String path) {

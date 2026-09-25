@@ -1,7 +1,27 @@
+# Changelog
 
 ## [Unreleased]
 
 ### Added
+- F8 terminal `exit` command (aliases: `close`, `quit`) that closes the terminal
+  screen, alongside the existing window close control.
+- ClickGUI module search box: type to filter the module list by id or name.
+- ClickGUI players dropdown for options that take a player identity (name or
+  description mentions player/username/UUID/nickname): lists every player seen
+  during the session, including players who left, with online players
+  highlighted. For UUID options the dropdown inserts the player's dashed UUID.
+  The registry is built passively from the client's own player list and never
+  sends anything.
+- ARMED identification box on the main menu showing the ChampionsCode brand,
+  status, and installed version.
+- More logging: module registration (builtin and drop-in), console commands
+  (secrets redacted), module run start/finish with duration, authorization
+  denials, and update-check outcomes. Secrets and confirmation phrases are
+  never logged.
+- `docs/writing-your-own-modules.md`: a hands-on cookbook for writing your own
+  modules, with a complete worked drop-in example, the builtin-module route,
+  the runtime-Java route, a testing pattern, and the guardrails that always
+  apply.
 - `auxiliary/scanner/server_ping` module: opens one standard server-list
   status connection to the currently authorized, allowlisted server and
   reports what any unauthenticated pinger observes without joining (protocol,
@@ -26,6 +46,18 @@
   when a matching `v<version>` tag is pushed.
 
 ### Changed
+- Fixed the terminal input-line offset: the typed text now sits exactly on the
+  `champions@minecraft:~$` prompt line (borderless Minecraft 26.3 EditBox
+  renders text at the box top, so the box now starts on the prompt line).
+- The terminal, ClickGUI, category GUI, and Java Studio no longer dim the world
+  behind them while open. The legal-risk warning popup keeps its dimming to
+  stay unmistakable.
+- Clean builds are now bit-for-bit reproducible: the built JAR is repacked
+  once with the order of the `Fabric-Loom-Client-Only-Entries` manifest
+  attribute sorted; everything else (entry order, timestamps, compression) is
+  preserved.
+- The sources JAR no longer contains `fabric.mod.json`, so loaders ignore it
+  if it is dropped into a mods folder by mistake.
 - README install and CI sections now point at GitLab Releases and the GitLab
   CI pipeline, with version-neutral release file names.
 - Rewrote `PUBLISHING.md` around the tag-based GitLab release flow.

@@ -89,6 +89,25 @@ class ChampionConsoleTest {
 		assertEquals(2, dev.champions.core.ui.MinecraftPointerButtons.SECONDARY);
 	}
 
+	@Test void exitCommandInvokesCloseHookOnceAndStaysHarmlessWithoutOne() {
+		AtomicInteger closed = new AtomicInteger();
+		ChampionConsole console = new ChampionConsole(temp, ChampionConsoleTest::context,
+			ActiveModuleRuntime.disabled(), command -> {}, () -> {}, () -> {},
+			ExploitWarningPrompt.unavailable(), null, closed::incrementAndGet);
+		console.submit("exit");
+		assertEquals(1, closed.get());
+		assertTrue(console.lines().stream().anyMatch(line -> line.text().contains("Closing terminal.")));
+		// The aliases close and quit hit the same hook.
+		console.submit("close");
+		console.submit("quit");
+		assertEquals(3, closed.get());
+
+		// Consoles built without a close hook (all shorter constructors) must not throw.
+		ChampionConsole defaultConsole = new ChampionConsole(temp, ChampionConsoleTest::context);
+		defaultConsole.submit("exit");
+		assertTrue(defaultConsole.lines().stream().anyMatch(line -> line.text().contains("Closing terminal.")));
+	}
+
 	private static ModuleContext context() {
 		return new ModuleContext(true, true, true, true, "singleplayer", "vanilla", "26.3", 1, 0, 1,
 			"enabled", "Tester", "0, 0, 0", "minecraft:overworld", 60, 1, 1, List.of());
