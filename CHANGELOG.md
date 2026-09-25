@@ -2,6 +2,16 @@
 ## [Unreleased]
 
 ### Added
+- Startup update checks against the project's public GitLab releases feed with
+  a clickable in-game notice, disableable via `checkOnStart=false` in
+  `config/champions-mod/update.properties`. The check only contacts
+  `gitlab.com`, never the connected server session, and is skipped in
+  development environments.
+- F8 console `update check` and `update download <version>` commands.
+  Downloads fetch the latest release JAR into the `mods` folder only after
+  verifying its SHA-256 against the release's `SHA256SUMS.txt` and never
+  replace a loaded JAR; update checks and downloads are recorded in the local
+  audit log.
 - `.gitlab-ci.yml`: a GitLab CI pipeline that builds, tests, and verifies the
   mod on `main` and merge requests, and publishes a full GitLab Release
   (binary JAR, source JAR, `SHA256SUMS.txt`) with changelog-derived notes

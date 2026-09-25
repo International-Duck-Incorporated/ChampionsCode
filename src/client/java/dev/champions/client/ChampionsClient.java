@@ -9,9 +9,13 @@ import dev.champions.client.ui.ChampionsClickGuiScreen;
 import dev.champions.client.ui.ChampionsConsoleScreen;
 import dev.champions.client.ui.ChampionsJavaScreen;
 import dev.champions.client.ui.ExploitWarningScreen;
+import dev.champions.client.update.GitLabUpdateService;
+import dev.champions.client.update.UpdateNotifier;
+import dev.champions.client.update.UpdateSettings;
 import dev.champions.api.java.RuntimeJavaCommands;
 import dev.champions.core.console.ChampionConsole;
 import dev.champions.core.console.ExploitWarningPrompt;
+import dev.champions.core.update.UpdateService;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -55,8 +59,10 @@ public final class ChampionsClient implements ClientModInitializer {
 			Minecraft client = Minecraft.getInstance();
 			client.execute(() -> client.setScreenAndShow(ExploitWarningScreen.forRun(client.gui.screen(), request)));
 		};
+		UpdateSettings updateSettings = new UpdateSettings(configDirectory);
+		UpdateService updateService = new GitLabUpdateService();
 		console = new ChampionConsole(configDirectory, contextSupplier, chatRuntime, javaCommands,
-			openClickGui, openCategoryGui, exploitWarningPrompt);
+			openClickGui, openCategoryGui, exploitWarningPrompt, updateService);
 		// Client-side drop-in modules (see docs/exploit-and-payload-files.md):
 		// one console.registerModule(...) line per file dropped into the
 		// exploit or payload folder.
@@ -66,6 +72,7 @@ public final class ChampionsClient implements ClientModInitializer {
 		javaRuntimeReference.set(javaRuntime);
 		ClientReceiveMessageEvents.GAME.register(chatRuntime::onGameMessage);
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> javaRuntime.close());
+		new UpdateNotifier(updateService, updateSettings).register();
 
 		KeyMapping.Category category = KeyMapping.Category.register(id("security_research"));
 		KeyMapping openConsole = KeyMappingHelper.registerKeyMapping(new KeyMapping(

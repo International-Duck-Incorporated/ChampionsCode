@@ -5,6 +5,10 @@ published artifacts live only in
 [GitLab Releases](https://gitlab.com/international-duck-incorporated/ChampionsCode/-/releases);
 no binaries are committed to the repository.
 
+Release asset names are load-bearing: the in-game updater matches
+`champions-mod-<version>.jar` and `SHA256SUMS.txt` by exact name (see
+`docs/update-system.md`), so keep those file names stable.
+
 ## Release flow
 
 1. Update the version in `gradle.properties`. It must keep a prerelease

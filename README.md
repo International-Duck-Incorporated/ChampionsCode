@@ -33,12 +33,14 @@ custom drag handlers use Minecraft 26.3's one-based mouse-button values.
 
 - `clickgui`, `categorygui`, `show modules`, `search`, `use`, `info`, `show options`
 - `set`, `unset`, `run`, `back`, `status`, `reload`
+- `update check`, `update download <version>` (see [Updates](#updates))
 - Sorted-list ClickGUI with structured option editors, confirmation arming, explicit run status, and run controls
 - Multi-window category GUI with independently movable, collapsible, and resizable category panels
 - Module registry with typed options and structured findings
 - Exact-host authorization allowlist
 - One-run `CONFIRM` phrase
 - Append-only JSONL audit log
+- Startup update notice and SHA-256-verified update downloads
 - Command history, scrolling, colors, and redaction of the confirmation phrase
 
 Included modules:
@@ -217,6 +219,27 @@ they want. Do not put the `-sources.jar` file in the Minecraft `mods` folder.
 4. Do not install `champions-mod-<version>-sources.jar`; it is provided only
    for developers and source browsing.
 5. Start Minecraft. Press **F8** for the terminal or **F7** for Java Studio.
+
+## Updates
+
+ChampionsCode reads this project's public GitLab releases feed once at
+startup and, when a newer release exists, posts a clickable notice in chat.
+The check talks only to `gitlab.com`, never to the connected server session,
+and can be disabled with `checkOnStart=false` in
+`config/champions-mod/update.properties`.
+
+Updates are then applied explicitly from the F8 terminal:
+
+- `update check` compares the running version against the latest release and
+  links the release page.
+- `update download <version>` downloads the latest release JAR into the
+  `mods` folder after verifying its SHA-256 against the release's
+  `SHA256SUMS.txt`. Nothing is hot-swapped: remove the old mod JAR and
+  restart Minecraft to complete the update.
+
+Both commands are recorded in the local audit log, and downloads fail closed:
+if a release lists no checksum manifest, or the downloaded bytes do not match
+it exactly, nothing is written to `mods`.
 
 ## First authorized run
 

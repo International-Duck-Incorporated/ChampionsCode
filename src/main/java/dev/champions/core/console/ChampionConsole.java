@@ -13,6 +13,9 @@ import dev.champions.core.module.active.ActiveResearchModule;
 import dev.champions.core.security.AuditLog;
 import dev.champions.core.security.AuthorizationPolicy;
 import dev.champions.core.security.AuthorizationPolicy.AuthorizationDecision;
+import dev.champions.core.update.UpdateCheck;
+import dev.champions.core.update.UpdateResult;
+import dev.champions.core.update.UpdateService;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -38,6 +41,7 @@ public final class ChampionConsole {
 	private final Runnable openClickGui;
 	private final Runnable openCategoryGui;
 	private final ExploitWarningPrompt exploitWarningPrompt;
+	private final UpdateService updateService;
 	private final List<ConsoleLine> lines = new ArrayList<>();
 	private final List<String> history = new ArrayList<>();
 	private ResearchModule activeModule;
@@ -77,12 +81,20 @@ public final class ChampionConsole {
 	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier,
 		ActiveModuleRuntime activeRuntime, RuntimeJavaCommands runtimeJava, Runnable openClickGui,
 		Runnable openCategoryGui, ExploitWarningPrompt exploitWarningPrompt) {
+		this(configDirectory, contextSupplier, activeRuntime, runtimeJava, openClickGui,
+			openCategoryGui, exploitWarningPrompt, UpdateService.disabled());
+	}
+
+	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier,
+		ActiveModuleRuntime activeRuntime, RuntimeJavaCommands runtimeJava, Runnable openClickGui,
+		Runnable openCategoryGui, ExploitWarningPrompt exploitWarningPrompt, UpdateService updateService) {
 		this.contextSupplier = contextSupplier;
 		this.activeRuntime = activeRuntime;
 		this.runtimeJava = runtimeJava;
 		this.openClickGui = openClickGui;
 		this.openCategoryGui = openCategoryGui;
 		this.exploitWarningPrompt = exploitWarningPrompt == null ? ExploitWarningPrompt.unavailable() : exploitWarningPrompt;
+		this.updateService = updateService == null ? UpdateService.disabled() : updateService;
 		this.authorization = new AuthorizationPolicy(configDirectory);
 		this.audit = new AuditLog(configDirectory);
 		banner();
@@ -127,6 +139,7 @@ public final class ChampionConsole {
 				case "authorize" -> manageCurrentAuthorization(args, true);
 				case "deauthorize" -> manageCurrentAuthorization(args, false);
 				case "reload" -> reload();
+				case "update" -> update(args);
 				case "java" -> runtimeJava.submit(commandRemainder(input));
 				default -> add(ConsoleLine.error("Unknown command: " + command + ". Type help."));
 			}
@@ -205,6 +218,84 @@ public final class ChampionConsole {
 	public record OptionView(String name, String value, boolean required, boolean secret, boolean configured, String description) {}
 	public record CurrentTargetView(boolean available, String target, boolean authorized) {}
 
+	private void update(List<String> args) {
+		String action = args.size() > 1 ? args.get(1).toLowerCase(Locale.ROOT) : "check";
+		switch (action) {
+			case "check" -> {
+				add(ConsoleLine.info("Checking this project's public GitLab releases..."));
+				updateService.checkLatest().whenComplete((check, error) -> {
+					if (error != null) {
+						String reason = causeOf(error);
+						emit(ConsoleLine.warning("Update check failed: " + reason));
+						recordAudit("update_check", "client", "update", "error", reason);
+						return;
+					}
+					if (check.isEmpty()) {
+						emit(ConsoleLine.muted("The update feed listed no releases."));
+						return;
+					}
+					UpdateCheck result = check.get();
+					recordAudit("update_check", "client", "update", result.newerAvailable() ? "available" : "current", result.latestVersion());
+					if (result.newerAvailable()) {
+						emit(ConsoleLine.success("ChampionsCode " + result.latestVersion() + " is available (running " + result.currentVersion() + ")."));
+						emit(ConsoleLine.info("Release page: " + result.releasePageUrl()));
+						emit(ConsoleLine.info("Run 'update download " + result.latestVersion() + "' to fetch the verified JAR into the mods folder."));
+					} else {
+						emit(ConsoleLine.success("ChampionsCode " + result.currentVersion() + " is up to date (latest release: " + result.latestVersion() + ")."));
+					}
+				});
+			}
+			case "download" -> {
+				if (args.size() < 3 || args.get(2).isBlank()) {
+					add(ConsoleLine.error("Usage: update download <version> - run 'update check' first."));
+					return;
+				}
+				String target = args.get(2);
+				add(ConsoleLine.info("Resolving release " + target + " from the update feed..."));
+				updateService.checkLatest().whenComplete((check, error) -> {
+					if (error != null) {
+						String reason = causeOf(error);
+						emit(ConsoleLine.error("Update download failed: " + reason));
+						recordAudit("update_download", "client", "update", "error", reason);
+						return;
+					}
+					if (check.isEmpty()) {
+						emit(ConsoleLine.error("The update feed listed no releases."));
+						return;
+					}
+					UpdateCheck result = check.get();
+					if (!result.latestVersion().equals(target)) {
+						emit(ConsoleLine.error("Only the latest release can be downloaded; the latest is " + result.latestVersion() + "."));
+						return;
+					}
+					if (result.matchesCurrent()) {
+						emit(ConsoleLine.info("ChampionsCode " + target + " is already the running version."));
+						return;
+					}
+					emit(ConsoleLine.info("Downloading champions-mod-" + target + ".jar ..."));
+					updateService.download(result).whenComplete((download, downloadError) -> {
+						boolean verified = downloadError == null && download != null && download.success();
+						String detail = downloadError != null ? causeOf(downloadError)
+							: download.message();
+						emit(verified ? ConsoleLine.success(detail) : ConsoleLine.error(detail));
+						if (verified) {
+							emit(ConsoleLine.warning("Remove the old champions-mod JAR from the mods folder and restart Minecraft to complete the update."));
+						}
+						recordAudit("update_download", "client", "update", verified ? "completed" : "error",
+							target + (download != null && !download.savedPath().isEmpty() ? " -> " + download.savedPath() : ""));
+					});
+				});
+			}
+			default -> add(ConsoleLine.error("Unknown update action: " + action + ". Use 'update check' or 'update download <version>'."));
+		}
+	}
+
+	private static String causeOf(Throwable error) {
+		Throwable cause = error instanceof java.util.concurrent.CompletionException completion && completion.getCause() != null
+			? completion.getCause() : error;
+		return safeMessage(cause);
+	}
+
 	private void help(List<String> args) {
 		String topic = args.size() > 1 ? args.get(1).toLowerCase(Locale.ROOT) : "quick";
 		switch (topic) {
@@ -213,6 +304,7 @@ public final class ChampionConsole {
 				add(ConsoleLine.info("  clickgui | categorygui | show modules|exploits | search <text> | use <module> | info | back"));
 				add(ConsoleLine.info("  show options | set <name> <value> | unset <name> | run"));
 				add(ConsoleLine.info("  authorize current | deauthorize current | show targets"));
+				add(ConsoleLine.info("  update check | update download <version>"));
 				add(ConsoleLine.info("  status | reload | clear | banner"));
 			}
 			case "java" -> {
