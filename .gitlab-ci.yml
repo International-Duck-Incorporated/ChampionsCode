@@ -24,10 +24,9 @@ variables:
   MINECRAFT_VERSION: "26.3"
 
 build:
-  name: "Build ChampionsCode for Minecraft 26.3"
   stage: build
   image: eclipse-temurin:25-jdk
-  timeout: 30m
+  timeout: 30 minutes
   before_script:
     - apt-get update -qq
     - apt-get install -y -qq --no-install-recommends python3 >/dev/null
@@ -138,10 +137,9 @@ build:
     expire_in: 30 days
 
 release:
-  name: "Publish GitLab release"
   stage: release
   image: registry.gitlab.com/gitlab-org/cli:latest
-  timeout: 10m
+  timeout: 10 minutes
   rules:
     - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+/'
   needs:
