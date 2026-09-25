@@ -41,7 +41,7 @@ public final class ChatPluginEnumeratorModule implements ActiveResearchModule {
 		return List.of(
 			new ModuleOption("RHOST", "CURRENT", true, false, "Must match the current allowlisted connection"),
 			new ModuleOption("CONFIRM", "", true, true, "One-run authorization phrase: I_HAVE_AUTHORIZATION"),
-			new ModuleOption("MODE", "silent", true, false, "silent or aggressive (agresive is also accepted)"),
+			new ModuleOption("MODE", "silent", true, false, "silent (chat only) or aggressive (command probes)", List.of("SILENT", "AGGRESSIVE")),
 			new ModuleOption("MAX_COMMANDS", "8", false, false, "Maximum non-default roots considered, 1-12"),
 			new ModuleOption("TIMEOUT_TICKS", "30", false, false, "Per-probe capture window, 20-100 ticks"),
 			new ModuleOption("MAX_MESSAGES", "4", false, false, "Maximum game messages per probe, 1-8"),

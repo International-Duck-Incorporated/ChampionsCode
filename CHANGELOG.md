@@ -3,6 +3,26 @@
 ## [Unreleased]
 
 ### Added
+- Windowed workspace: the terminal, ClickGUI, category GUI, and Java Studio are
+  now independent windows of one shared desktop instead of replacing each
+  other. Open several at once, drag each by its title bar, and use the per-window
+  close controls. F7/F8 toggle their window while the workspace is open; ESC or
+  closing the last window closes everything. Navigation buttons ("Terminal",
+  "List GUI", "ClickGUI") open or focus the matching window instead of swapping
+  screens.
+- Dropdowns for fixed-choice options: modules declare allowed values (the chat
+  plugin enumerator's MODE is SILENT/AGGRESSIVE), the console's `set` validates
+  them case-insensitively (storing the canonical spelling), and the ClickGUI
+  renders them as dropdowns instead of free-text fields.
+- Player dropdown and option-layout fixes in the ClickGUI: dropdowns now stay on
+  screen (clamped horizontally, flipped above the field when the list would run
+  past the bottom), the dropdown's UUID detection matches the option name only
+  (fixing UUIDs being inserted into username fields), option labels and
+  descriptions clip to the label column, and narrow windows switch to a stacked
+  label/description/editor layout.
+- `auxiliary/lookup/player_identity` auto-routing: a UUID pasted into USERNAME
+  (or a username into UUID) is detected and resolved instead of failing
+  validation.
 - F8 terminal `exit` command (aliases: `close`, `quit`) that closes the terminal
   screen, alongside the existing window close control.
 - ClickGUI module search box: type to filter the module list by id or name.

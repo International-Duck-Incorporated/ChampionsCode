@@ -1,6 +1,7 @@
 package dev.champions.client.ui;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import dev.champions.client.ChampionsScreens;
 import dev.champions.core.console.ChampionConsole;
 import dev.champions.core.console.ConsoleLine;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -16,7 +17,7 @@ import java.util.List;
 import static dev.champions.core.ui.MinecraftPointerButtons.PRIMARY;
 
 /** A movable desktop-style terminal for ChampionsCode commands. */
-public final class ChampionsConsoleScreen extends Screen {
+public final class ChampionsConsoleScreen extends Screen implements WorkspaceWindow {
 	private static final int TITLE_HEIGHT = 24;
 	private static final int PADDING = 10;
 	private static final int INPUT_AREA_HEIGHT = 28;
@@ -28,6 +29,7 @@ public final class ChampionsConsoleScreen extends Screen {
 	private static int savedHeight = -1;
 
 	private final ChampionConsole console;
+	private WorkspaceHost host;
 	private EditBox input;
 	private int windowX;
 	private int windowY;
@@ -57,6 +59,16 @@ public final class ChampionsConsoleScreen extends Screen {
 	public ChampionsConsoleScreen(ChampionConsole console) {
 		super(Component.literal("ChampionsCode Terminal"));
 		this.console = console;
+	}
+
+	/** When hosted inside the workspace, close/navigation actions go through the host. */
+	public void host(WorkspaceHost host) {
+		this.host = host;
+	}
+
+	@Override
+	public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
+		// No vanilla blur/menu background: the terminal is one window on the workspace desktop.
 	}
 
 	@Override
@@ -285,6 +297,10 @@ public final class ChampionsConsoleScreen extends Screen {
 
 	@Override
 	public void onClose() {
+		if (host != null) {
+			host.requestClose(ChampionsScreens.TERMINAL);
+			return;
+		}
 		minecraft.setScreenAndShow(null);
 	}
 
@@ -298,7 +314,10 @@ public final class ChampionsConsoleScreen extends Screen {
 				input.setVisible(!minimized);
 			}
 			case MAXIMIZE -> toggleMaximize();
-			case CLOSE -> minecraft.setScreenAndShow(null);
+			case CLOSE -> {
+			if (host != null) host.requestClose(ChampionsScreens.TERMINAL);
+			else minecraft.setScreenAndShow(null);
+		}
 			default -> {}
 		}
 	}
@@ -377,6 +396,11 @@ public final class ChampionsConsoleScreen extends Screen {
 		int shownHeight = minimized ? TITLE_HEIGHT : windowHeight;
 		return mouseX >= windowX && mouseX < windowX + windowWidth
 			&& mouseY >= windowY && mouseY < windowY + shownHeight;
+	}
+
+	@Override
+	public boolean coversPoint(double mouseX, double mouseY) {
+		return insideWindow(mouseX, mouseY);
 	}
 
 	private void renderResizeGrip(GuiGraphicsExtractor graphics) {

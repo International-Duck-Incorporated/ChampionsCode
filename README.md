@@ -23,23 +23,33 @@ Drag the title bar to move it, drag the bottom-right corner to resize it, and us
 the top-right minimize, maximize, and close controls. Terminal output remains
 mouse-selectable and can be copied with Ctrl+C.
 
-The terminal no longer contains workspace tabs. Press **F7** to open the separate
-ChampionsCode Java Studio. Run `clickgui` for the sorted-list interface, where the
-warning-gated **Exploits** filter remains available, or run `categorygui` for the
-movable category-window interface. F7 and F8 can both be rebound under the
-ChampionsCode controls category. The sorted ClickGUI, category panels, and module
-settings window also provide close, maximize/restore, and minimize controls. All
-custom drag handlers use Minecraft 26.3's one-based mouse-button values. None of
-these screens dim the world behind them while open, and the main menu carries a
-small ARMED identification box with the installed version.
+All UIs live together in one windowed workspace: press **F8** for the terminal,
+**F7** for the Java Studio, run `clickgui` for the sorted-list interface (where the
+warning-gated **Exploits** filter remains available), or `categorygui` for the
+movable category-window interface. Every UI is an independent window that stays
+open next to the others - open the terminal, pull the ClickGUI alongside it, and
+add Java Studio or the category panels, all visible and usable at once. Each
+window keeps its own drag, resize, minimize, maximize, and close controls; F7/F8
+toggle their window while the workspace is open, and ESC (or closing the last
+window) closes the whole workspace. F7 and F8 can both be rebound under the
+ChampionsCode controls category. All custom drag handlers use Minecraft 26.3's
+one-based mouse-button values. None of these screens dim the world behind them
+while open, and the main menu carries a small ARMED identification box with the
+installed version.
 
 - `clickgui`, `categorygui`, `show modules`, `search`, `use`, `info`, `show options`
 - `set`, `unset`, `run`, `back`, `status`, `reload`, `exit` (closes the terminal)
 - `update check`, `update download <version>` (see [Updates](#updates))
 - Sorted-list ClickGUI with a module search box, structured option editors, a
   recently-seen players dropdown (including players who left) for player
-  identity options, confirmation arming, explicit run status, and run controls
+  identity options, dropdowns for fixed-choice options (for example the chat
+  plugin enumerator's MODE), confirmation arming, explicit run status, and run
+  controls. Dropdowns stay on screen (clamped and flipped when space runs out)
+  and option labels never run under their editors.
 - Multi-window category GUI with independently movable, collapsible, and resizable category panels
+- `auxiliary/lookup/player_identity` accepts a username or UUID in either input
+  field: pasted UUIDs are detected and routed automatically, so a UUID that ends
+  up in the username field still resolves
 - Module registry with typed options and structured findings
 - Exact-host authorization allowlist
 - One-run `CONFIRM` phrase
@@ -402,10 +412,12 @@ src/main/java/dev/champions/
 
 src/client/java/dev/champions/client/
 ├── ChampionsClient.java
+├── ChampionsScreens.java
 ├── MinecraftResearchContext.java
 ├── PacketTelemetry.java
 ├── InventoryTelemetry.java
 ├── PlayerMotionTelemetry.java
+├── SessionPlayers.java
 ├── java/JavaRuntimeManager.java
 ├── mixin/ChampionsConnectionMixin.java
 └── ui/
@@ -413,6 +425,9 @@ src/client/java/dev/champions/client/
     ├── ChampionsJavaScreen.java
     ├── ChampionsClickGuiScreen.java
     ├── ChampionsCategoryGuiScreen.java
+    ├── ChampionsWorkspaceScreen.java
+    ├── WorkspaceHost.java
+    ├── WorkspaceWindow.java
     └── WindowChrome.java
 ```
 

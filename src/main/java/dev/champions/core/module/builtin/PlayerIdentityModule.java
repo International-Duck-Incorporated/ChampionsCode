@@ -48,8 +48,8 @@ public final class PlayerIdentityModule implements ActiveResearchModule {
 
 	@Override public List<ModuleOption> options() {
 		return List.of(
-			new ModuleOption("USERNAME", "", false, false, "Player name to resolve (leave empty when using UUID)"),
-			new ModuleOption("UUID", "", false, false, "Player UUID to resolve, dashed or compact (leave empty when using USERNAME)")
+			new ModuleOption("USERNAME", "", false, false, "Player name to resolve (a pasted UUID is detected and routed automatically)"),
+			new ModuleOption("UUID", "", false, false, "Player UUID to resolve, dashed or compact (a pasted name is detected too)")
 		);
 	}
 
@@ -57,6 +57,17 @@ public final class PlayerIdentityModule implements ActiveResearchModule {
 	public CompletionStage<ModuleResult> runActive(ModuleContext context, Map<String, String> options, ActiveModuleRuntime runtime) {
 		String username = options.getOrDefault("USERNAME", "").strip();
 		String uuid = options.getOrDefault("UUID", "").strip();
+		// Accept a UUID typed into USERNAME (and a username typed into UUID):
+		// players are used to pasting whichever they have, so route by shape.
+		if (uuid.isEmpty() && !username.isEmpty() && !MojangProfileClient.validUsername(username)
+			&& MojangProfileClient.normalizeUuid(username) != null) {
+			uuid = username;
+			username = "";
+		} else if (username.isEmpty() && !uuid.isEmpty() && MojangProfileClient.normalizeUuid(uuid) == null
+			&& MojangProfileClient.validUsername(uuid)) {
+			username = uuid;
+			uuid = "";
+		}
 		if (!username.isEmpty() && !uuid.isEmpty()) {
 			return completed(error("Set exactly one of USERNAME or UUID, not both.",
 				"Clear the option you do not need and rerun."));
@@ -67,16 +78,18 @@ public final class PlayerIdentityModule implements ActiveResearchModule {
 		}
 		if (!username.isEmpty() && !MojangProfileClient.validUsername(username)) {
 			return completed(error("'" + username + "' is not a valid Minecraft username.",
-				"Usernames are 1-16 characters of letters, digits, and underscores."));
+				"Usernames are 1-16 characters of letters, digits, and underscores; paste a UUID into UUID to resolve an account by id."));
 		}
 		if (!uuid.isEmpty() && MojangProfileClient.normalizeUuid(uuid) == null) {
 			return completed(error("'" + uuid + "' is not a valid UUID.",
 				"Provide a 32-digit hex UUID, dashed or compact."));
 		}
+		final String name = username;
+		final String id = uuid;
 		return CompletableFuture.supplyAsync(() -> {
-			MojangProfileClient.LookupResult result = username.isEmpty()
-				? MojangProfileClient.byUuid(gateway, uuid)
-				: MojangProfileClient.byName(gateway, username);
+			MojangProfileClient.LookupResult result = name.isEmpty()
+				? MojangProfileClient.byUuid(gateway, id)
+				: MojangProfileClient.byName(gateway, name);
 			return switch (result.outcome()) {
 				case FOUND -> found(result.identity());
 				case NOT_FOUND -> new ModuleResult("No Mojang profile found", List.of(

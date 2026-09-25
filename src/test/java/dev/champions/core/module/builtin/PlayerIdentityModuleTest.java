@@ -64,6 +64,25 @@ class PlayerIdentityModuleTest {
 		assertEquals("Mojang profile resolved for Notch", result.summary());
 	}
 
+	@Test void routesAUuidPastedIntoTheUsernameField() {
+		// Regression: the ClickGUI player dropdown once inserted UUIDs into the
+		// USERNAME field; pasted UUIDs must resolve instead of failing validation.
+		PlayerIdentityModule module = new PlayerIdentityModule(resolvedGateway());
+		ModuleResult dashed = module.runActive(session(), options("069a79f4-44e9-4726-a5be-fca90e38aaf5", ""), null)
+			.toCompletableFuture().join();
+		assertEquals("Mojang profile resolved for Notch", dashed.summary());
+		ModuleResult compact = module.runActive(session(), options(NOTCH_ID, ""), null)
+			.toCompletableFuture().join();
+		assertEquals("Mojang profile resolved for Notch", compact.summary());
+	}
+
+	@Test void routesAUsernamePastedIntoTheUuidField() {
+		PlayerIdentityModule module = new PlayerIdentityModule(resolvedGateway());
+		ModuleResult result = module.runActive(session(), options("", "Notch"), null)
+			.toCompletableFuture().join();
+		assertEquals("Mojang profile resolved for Notch", result.summary());
+	}
+
 	@Test void reportsMissingProfilesWithoutError() {
 		PlayerIdentityModule module = new PlayerIdentityModule(url -> new MojangProfileClient.GatewayReply(204, ""));
 		ModuleResult result = module.runActive(session(), options("Ghost", ""), null).toCompletableFuture().join();
@@ -89,7 +108,7 @@ class PlayerIdentityModuleTest {
 		assertEquals("Lookup did not complete",
 			module.runActive(session(), options("invalid name!", ""), null).toCompletableFuture().join().summary());
 		assertEquals("Lookup did not complete",
-			module.runActive(session(), options("", "zzz"), null).toCompletableFuture().join().summary());
+			module.runActive(session(), options("", "not a uuid!"), null).toCompletableFuture().join().summary());
 	}
 
 	@Test void isNotAuthorizationGatedAndSendsNothingToTheSession() {

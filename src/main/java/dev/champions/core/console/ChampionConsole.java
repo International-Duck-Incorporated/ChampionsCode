@@ -198,8 +198,8 @@ public final class ChampionConsole {
 		List<OptionView> options = activeModule.options().stream().map(option -> {
 			String value = activeOptions.getOrDefault(option.name(), "");
 			boolean configured = !value.isBlank();
-			return new OptionView(option.name(), option.secret() ? "" : value,
-				option.required(), option.secret(), configured, option.description());
+			return new OptionView(option.name(), option.secret() ? "" : value, option.defaultValue(),
+				option.required(), option.secret(), configured, option.description(), option.choices());
 		}).toList();
 		return new ActiveModuleView(activeModule.id(), activeModule.name(), activeModule.description(), options,
 			activeModule instanceof ExploitResearchModule);
@@ -215,9 +215,24 @@ public final class ChampionConsole {
 	public synchronized boolean setOptionFromUi(String name, String value) {
 		if (activeModule == null || name == null) return false;
 		String normalized = name.toUpperCase(Locale.ROOT);
-		if (!activeOptions.containsKey(normalized)) return false;
-		activeOptions.put(normalized, value == null ? "" : value);
+		ModuleOption option = findOption(normalized);
+		if (option == null) return false;
+		String stored = value == null ? "" : value;
+		if (option.constrained()) {
+			String resolved = option.resolveChoice(stored);
+			if (resolved == null) return false;
+			stored = resolved;
+		}
+		activeOptions.put(normalized, stored);
 		return true;
+	}
+
+	private ModuleOption findOption(String normalizedName) {
+		if (activeModule == null) return null;
+		for (ModuleOption option : activeModule.options()) {
+			if (option.name().equals(normalizedName)) return option;
+		}
+		return null;
 	}
 
 	public synchronized void runFromUi() { runActive(); }
@@ -236,7 +251,7 @@ public final class ChampionConsole {
 
 	public record ModuleView(String id, String name, String description, boolean selected, boolean exploitResearch) {}
 	public record ActiveModuleView(String id, String name, String description, List<OptionView> options, boolean exploitResearch) {}
-	public record OptionView(String name, String value, boolean required, boolean secret, boolean configured, String description) {}
+	public record OptionView(String name, String value, String defaultValue, boolean required, boolean secret, boolean configured, String description, List<String> choices) {}
 	public record CurrentTargetView(boolean available, String target, boolean authorized) {}
 
 	private void update(List<String> args) {
@@ -437,10 +452,20 @@ public final class ChampionConsole {
 		if (activeModule == null) { add(ConsoleLine.error("Select a module first.")); return; }
 		if (args.size() < 3) { add(ConsoleLine.error("Usage: set <option> <value>")); return; }
 		String name = args.get(1).toUpperCase(Locale.ROOT);
-		if (!activeOptions.containsKey(name)) { add(ConsoleLine.error("Unknown option: " + name)); return; }
+		ModuleOption option = findOption(name);
+		if (option == null) { add(ConsoleLine.error("Unknown option: " + name)); return; }
 		String value = String.join(" ", args.subList(2, args.size()));
+		if (option.constrained()) {
+			String resolved = option.resolveChoice(value);
+			if (resolved == null) {
+				add(ConsoleLine.error("Invalid value for " + name + ": " + value + ". Choose one of: "
+					+ String.join(", ", option.choices()) + "."));
+				return;
+			}
+			value = resolved;
+		}
 		activeOptions.put(name, value);
-		boolean secret = activeModule.options().stream().anyMatch(o -> o.name().equals(name) && o.secret());
+		boolean secret = option.secret();
 		add(ConsoleLine.success(name + " => " + (secret ? "<armed for one run>" : value)));
 	}
 

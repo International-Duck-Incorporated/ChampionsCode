@@ -25,7 +25,7 @@ import static dev.champions.core.ui.MinecraftPointerButtons.PRIMARY;
 import static dev.champions.core.ui.MinecraftPointerButtons.SECONDARY;
 
 /** Original multi-window category interface inspired by classic utility-client layouts. */
-public final class ChampionsCategoryGuiScreen extends Screen {
+public final class ChampionsCategoryGuiScreen extends Screen implements WorkspaceWindow {
 	private static final String CONTROLS = "$controls";
 	private static final int TITLE_HEIGHT = 20;
 	private static final int ROW_HEIGHT = 20;
@@ -39,6 +39,7 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 
 	private final ChampionConsole console;
 	private final Screen parent;
+	private WorkspaceHost host;
 	private final List<AbstractWidget> settingsWidgets = new ArrayList<>();
 	private Map<String, List<ModuleView>> categories = Map.of();
 	private String draggingPanel;
@@ -64,6 +65,16 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 		this.parent = parent;
 		List<ConsoleLine> lines = console.lines();
 		observedConsoleTail = lines.isEmpty() ? null : lines.getLast();
+	}
+
+	/** When hosted inside the workspace, close/navigation actions go through the host. */
+	public void host(WorkspaceHost host) {
+		this.host = host;
+	}
+
+	@Override
+	public void extractBackground(net.minecraft.client.gui.GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
+		// No vanilla blur/menu background: the category panels are windows on the workspace desktop.
 	}
 
 	@Override
@@ -169,8 +180,7 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 			rebuildWidgets();
 		}).bounds(settingsX + 10, actionsY, 68, 18).build());
 		run.active = console.runningModuleId().isBlank();
-		track(Button.builder(Component.literal("List GUI"), button ->
-			minecraft.setScreenAndShow(new ChampionsClickGuiScreen(console, this)))
+		track(Button.builder(Component.literal("List GUI"), button -> openListGui())
 			.bounds(settingsX + 84, actionsY, 62, 18).build());
 		track(Button.builder(Component.literal("Close settings"), button -> closeSettings())
 			.bounds(settingsX + settingsWidth - 104, actionsY, 94, 18).build());
@@ -402,7 +412,7 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 	private void requestExploitSelection(ModuleView module) {
 		CurrentTargetView current = console.currentTargetView();
 		String target = current.available() ? current.target() : "unknown";
-		minecraft.setScreenAndShow(ExploitWarningScreen.forEntry(this, "Category GUI: " + module.name(), () -> {
+		minecraft.setScreenAndShow(ExploitWarningScreen.forEntry(host != null ? host.self() : this, "Category GUI: " + module.name(), () -> {
 			console.recordAudit("exploit_workspace", target, module.id(), "acknowledged",
 				"Legal-risk warning acknowledged on category exploit selection");
 			selectModule(module);
@@ -413,7 +423,7 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 	private boolean activateControl(int row) {
 		switch (row) {
 			case 0 -> returnToTerminal();
-			case 1 -> minecraft.setScreenAndShow(new ChampionsClickGuiScreen(console, this));
+			case 1 -> openListGui();
 			case 2 -> {
 				CurrentTargetView target = console.currentTargetView();
 				setActivity(target.authorized() ? "Removing current target authorization..." : "Authorizing current target...");
@@ -425,7 +435,7 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 				setActivity("Closed category panels restored.");
 			}
 			case 4 -> resetPanelLayout();
-			case 5 -> minecraft.setScreenAndShow(null);
+			case 5 -> closeWindow();
 			default -> { return false; }
 		}
 		return true;
@@ -521,7 +531,7 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 			case MINIMIZE -> panel.collapsed = !panel.collapsed;
 			case MAXIMIZE -> togglePanelMaximize(panel);
 			case CLOSE -> {
-				if (id.equals(CONTROLS)) minecraft.setScreenAndShow(null);
+				if (id.equals(CONTROLS)) closeWindow();
 				else {
 					panel.hidden = true;
 					setActivity("Closed " + id + " panel. Use Restore closed panels to reopen it.");
@@ -609,7 +619,42 @@ public final class ChampionsCategoryGuiScreen extends Screen {
 	}
 
 	private void returnToTerminal() {
+		if (host != null) {
+			host.requestOpen(dev.champions.client.ChampionsScreens.TERMINAL);
+			return;
+		}
 		minecraft.setScreenAndShow(parent == null ? new ChampionsConsoleScreen(console) : parent);
+	}
+
+	private void openListGui() {
+		if (host != null) {
+			host.requestOpen(dev.champions.client.ChampionsScreens.CLICKGUI);
+			return;
+		}
+		minecraft.setScreenAndShow(new ChampionsClickGuiScreen(console, this));
+	}
+
+	private void closeWindow() {
+		if (host != null) {
+			host.requestClose(dev.champions.client.ChampionsScreens.CATEGORYGUI);
+			return;
+		}
+		minecraft.setScreenAndShow(null);
+	}
+
+	@Override
+	public boolean coversPoint(double mouseX, double mouseY) {
+		for (Map.Entry<String, PanelLayout> entry : SAVED_PANELS.entrySet()) {
+			PanelLayout panel = entry.getValue();
+			if (panel.hidden) continue;
+			if (contains(panel.x, panel.y, panel.width, panelHeight(entry.getKey(), panel), mouseX, mouseY)) return true;
+		}
+		if (console.activeModuleView() != null) {
+			int shownHeight = settingsMinimized ? 24 : settingsHeight;
+			if (mouseX >= settingsX && mouseX < settingsX + settingsWidth
+				&& mouseY >= settingsY && mouseY < settingsY + shownHeight) return true;
+		}
+		return false;
 	}
 
 	private void bringToFront(String id) {

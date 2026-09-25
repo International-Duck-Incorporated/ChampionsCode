@@ -28,15 +28,18 @@ public final class ArmedTitleOverlay {
 		String version = "v" + FabricLoader.getInstance().getModContainer("champions")
 			.map(container -> container.getMetadata().getVersion().getFriendlyString())
 			.orElse("unknown");
-		int boxWidth = 16 + Math.max(font.width(BRAND), font.width(STATUS) + font.width("  ") + font.width(version));
-		int boxHeight = 38;
-		int x = screenWidth - boxWidth - 8;
-		int y = 8;
-		graphics.fill(x, y, x + boxWidth, y + boxHeight, 0xE60B1726);
-		graphics.fill(x, y, x + 3, y + boxHeight, 0xFF18D9C7);
-		graphics.fill(x, y + 2, x + boxWidth, y + 3, 0xFF24435D);
+		// One line: BRAND  ARMED  vX.Y.Z. Opaque fill (no panorama bleed), a single
+		// teal accent bar on the left, plenty of padding.
+		int statusX = 10 + font.width(BRAND) + 8;
+		int versionX = statusX + font.width(STATUS) + 8;
+		int boxWidth = versionX + font.width(version) + 10;
+		int boxHeight = 20;
+		int x = screenWidth - boxWidth - 10;
+		int y = 10;
+		graphics.fill(x, y, x + boxWidth, y + boxHeight, 0xFF0B1726);
+		graphics.fill(x, y, x + 2, y + boxHeight, 0xFF18D9C7);
 		graphics.text(font, BRAND, x + 10, y + 6, 0xFF18D9C7, false);
-		graphics.text(font, STATUS, x + 10, y + 21, 0xFFFBBF24, true);
-		graphics.text(font, version, x + 10 + font.width(STATUS) + font.width("  "), y + 21, 0xFFA8B3C7, false);
+		graphics.text(font, STATUS, x + statusX, y + 6, 0xFFFBBF24, false);
+		graphics.text(font, version, x + versionX, y + 6, 0xFFA8B3C7, false);
 	}
 }

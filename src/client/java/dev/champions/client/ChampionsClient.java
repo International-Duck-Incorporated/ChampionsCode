@@ -5,10 +5,6 @@ import com.internationalduck.championscode.module.payload.ExamplePayloadModule;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.champions.client.java.JavaRuntimeManager;
 import dev.champions.client.ui.ArmedTitleOverlay;
-import dev.champions.client.ui.ChampionsCategoryGuiScreen;
-import dev.champions.client.ui.ChampionsClickGuiScreen;
-import dev.champions.client.ui.ChampionsConsoleScreen;
-import dev.champions.client.ui.ChampionsJavaScreen;
 import dev.champions.client.ui.ExploitWarningScreen;
 import dev.champions.client.update.GitLabUpdateService;
 import dev.champions.client.update.UpdateNotifier;
@@ -37,6 +33,8 @@ public final class ChampionsClient implements ClientModInitializer {
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 	private ChampionConsole console;
 	private JavaRuntimeManager javaRuntime;
+	private KeyMapping openConsoleKey;
+	private KeyMapping openJavaStudioKey;
 
 	@Override
 	public void onInitializeClient() {
@@ -48,17 +46,21 @@ public final class ChampionsClient implements ClientModInitializer {
 			JavaRuntimeManager manager = javaRuntimeReference.get();
 			if (manager != null) manager.submit(command);
 		};
+		// All UIs open as windows of one shared workspace, so opening one never
+		// closes another (see ChampionsScreens).
 		Runnable openClickGui = () -> {
 			Minecraft client = Minecraft.getInstance();
-			client.execute(() -> client.setScreenAndShow(new ChampionsClickGuiScreen(console, new ChampionsConsoleScreen(console))));
+			client.execute(() -> ChampionsScreens.open(client, console, () -> javaRuntime,
+				openConsoleKey, openJavaStudioKey, ChampionsScreens.CLICKGUI));
 		};
 		Runnable openCategoryGui = () -> {
 			Minecraft client = Minecraft.getInstance();
-			client.execute(() -> client.setScreenAndShow(new ChampionsCategoryGuiScreen(console, new ChampionsConsoleScreen(console))));
+			client.execute(() -> ChampionsScreens.open(client, console, () -> javaRuntime,
+				openConsoleKey, openJavaStudioKey, ChampionsScreens.CATEGORYGUI));
 		};
 		Runnable closeUi = () -> {
 			Minecraft client = Minecraft.getInstance();
-			client.execute(() -> client.setScreenAndShow(null));
+			client.execute(() -> ChampionsScreens.closeTerminal(client));
 		};
 		ExploitWarningPrompt exploitWarningPrompt = request -> {
 			Minecraft client = Minecraft.getInstance();
@@ -80,13 +82,13 @@ public final class ChampionsClient implements ClientModInitializer {
 		new UpdateNotifier(updateService, updateSettings).register();
 
 		KeyMapping.Category category = KeyMapping.Category.register(id("security_research"));
-		KeyMapping openConsole = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+		openConsoleKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
 			"key.champions.open_console",
 			InputConstants.Type.KEYBOARD,
 			InputConstants.KEY_F8,
 			category
 		));
-		KeyMapping openJavaStudio = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+		openJavaStudioKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
 			"key.champions.open_java_studio",
 			InputConstants.Type.KEYBOARD,
 			InputConstants.KEY_F7,
@@ -96,8 +98,10 @@ public final class ChampionsClient implements ClientModInitializer {
 			chatRuntime.tick(client);
 			PlayerMotionTelemetry.tick(client);
 			SessionPlayers.capture(client);
-			while (openConsole.consumeClick()) client.setScreenAndShow(new ChampionsConsoleScreen(console));
-			while (openJavaStudio.consumeClick()) client.setScreenAndShow(new ChampionsJavaScreen(console, javaRuntime));
+			while (openConsoleKey.consumeClick()) ChampionsScreens.open(client, console, () -> javaRuntime,
+				openConsoleKey, openJavaStudioKey, ChampionsScreens.TERMINAL);
+			while (openJavaStudioKey.consumeClick()) ChampionsScreens.open(client, console, () -> javaRuntime,
+				openConsoleKey, openJavaStudioKey, ChampionsScreens.JAVASTUDIO);
 		});
 		ArmedTitleOverlay.register();
 		String version = FabricLoader.getInstance().getModContainer(MOD_ID)
@@ -107,7 +111,7 @@ public final class ChampionsClient implements ClientModInitializer {
 			"hash-gated runtime Java and update checks ready",
 			version,
 			FabricLoader.getInstance().getEnvironmentType());
-		LOGGER.info("keybinds: F8 console, F7 Java Studio; commands: clickgui, categorygui, exit");
+		LOGGER.info("keybinds: F8 console, F7 Java Studio (toggle their window while the workspace is open); commands: clickgui, categorygui, java, exit");
 	}
 
 	public static Identifier id(String path) {

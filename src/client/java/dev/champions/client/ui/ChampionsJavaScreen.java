@@ -21,7 +21,7 @@ import java.util.List;
 import static dev.champions.core.ui.MinecraftPointerButtons.PRIMARY;
 
 /** A dedicated runtime Java workspace with an IDE-like layout and explicit safety gate. */
-public final class ChampionsJavaScreen extends Screen {
+public final class ChampionsJavaScreen extends Screen implements WorkspaceWindow {
 	private static final int TITLE_HEIGHT = 26;
 	private static final int SIDEBAR_WIDTH = 126;
 	private static final int RIGHT_PANEL_WIDTH = 164;
@@ -33,6 +33,7 @@ public final class ChampionsJavaScreen extends Screen {
 
 	private final ChampionConsole console;
 	private final JavaRuntimeManager runtime;
+	private WorkspaceHost host;
 	private final List<AbstractWidget> windowWidgets = new ArrayList<>();
 	private List<String> files = List.of();
 	private String selectedFile = "";
@@ -60,6 +61,16 @@ public final class ChampionsJavaScreen extends Screen {
 		super(Component.literal("ChampionsCode Java Studio"));
 		this.console = console;
 		this.runtime = runtime;
+	}
+
+	/** When hosted inside the workspace, close/navigation actions go through the host. */
+	public void host(WorkspaceHost host) {
+		this.host = host;
+	}
+
+	@Override
+	public void extractBackground(net.minecraft.client.gui.GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
+		// No vanilla blur/menu background: the studio is one window on the workspace desktop.
 	}
 
 	@Override
@@ -124,9 +135,9 @@ public final class ChampionsJavaScreen extends Screen {
 		int sideY = windowY + TITLE_HEIGHT + 54;
 		track(Button.builder(Component.literal("Workspace"), button -> refreshFileList(true))
 			.bounds(sideX, sideY, SIDEBAR_WIDTH - 24, 20).build());
-		track(Button.builder(Component.literal("Terminal"), button -> minecraft.setScreenAndShow(new ChampionsConsoleScreen(console)))
+		track(Button.builder(Component.literal("Terminal"), button -> openWindow(dev.champions.client.ChampionsScreens.TERMINAL))
 			.bounds(sideX, sideY + 26, SIDEBAR_WIDTH - 24, 20).build());
-		track(Button.builder(Component.literal("ClickGUI"), button -> minecraft.setScreenAndShow(new ChampionsClickGuiScreen(console, this)))
+		track(Button.builder(Component.literal("ClickGUI"), button -> openWindow(dev.champions.client.ChampionsScreens.CLICKGUI))
 			.bounds(sideX, sideY + 52, SIDEBAR_WIDTH - 24, 20).build());
 		track(Button.builder(Component.literal("Status"), button -> runRuntime("status"))
 			.bounds(sideX, sideY + 92, SIDEBAR_WIDTH - 24, 20).build());
@@ -153,7 +164,7 @@ public final class ChampionsJavaScreen extends Screen {
 			.bounds(rightX + 10, actionsY + 52, RIGHT_PANEL_WIDTH - 20, 20).build());
 		track(Button.builder(Component.literal("Stop"), button -> runRuntime("stop"))
 			.bounds(rightX + 10, actionsY + 78, RIGHT_PANEL_WIDTH - 20, 20).build());
-		track(Button.builder(Component.literal("Close"), button -> minecraft.setScreenAndShow(null))
+		track(Button.builder(Component.literal("Close"), button -> closeWindow())
 			.bounds(rightX + 10, actionsY + 104, RIGHT_PANEL_WIDTH - 20, 20).build());
 	}
 
@@ -305,7 +316,34 @@ public final class ChampionsJavaScreen extends Screen {
 
 	@Override
 	public void onClose() {
+		closeWindow();
+	}
+
+	private void closeWindow() {
+		if (host != null) {
+			host.requestClose(dev.champions.client.ChampionsScreens.JAVASTUDIO);
+			return;
+		}
 		minecraft.setScreenAndShow(null);
+	}
+
+	private void openWindow(String windowId) {
+		if (host != null) {
+			host.requestOpen(windowId);
+			return;
+		}
+		if (dev.champions.client.ChampionsScreens.TERMINAL.equals(windowId)) {
+			minecraft.setScreenAndShow(new ChampionsConsoleScreen(console));
+		} else {
+			minecraft.setScreenAndShow(new ChampionsClickGuiScreen(console, this));
+		}
+	}
+
+	@Override
+	public boolean coversPoint(double mouseX, double mouseY) {
+		int shownHeight = minimized ? TITLE_HEIGHT : windowHeight;
+		return mouseX >= windowX && mouseX < windowX + windowWidth
+			&& mouseY >= windowY && mouseY < windowY + shownHeight;
 	}
 
 	@Override public boolean isPauseScreen() { return false; }

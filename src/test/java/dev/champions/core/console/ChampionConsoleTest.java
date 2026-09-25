@@ -49,8 +49,12 @@ class ChampionConsoleTest {
 		assertNotNull(console.activeModuleView());
 		assertTrue(console.activeModuleView().options().stream().anyMatch(option -> option.name().equals("MODE")));
 		assertTrue(console.setOptionFromUi("MODE", "aggressive"));
-		assertEquals("aggressive", console.activeModuleView().options().stream()
+		// Constrained options store the canonical spelling of the accepted choice.
+		assertEquals("AGGRESSIVE", console.activeModuleView().options().stream()
 			.filter(option -> option.name().equals("MODE")).findFirst().orElseThrow().value());
+		// Choices are exposed so UIs can render dropdowns.
+		assertEquals(List.of("SILENT", "AGGRESSIVE"), console.activeModuleView().options().stream()
+			.filter(option -> option.name().equals("MODE")).findFirst().orElseThrow().choices());
 		console.submit("deauthorize current");
 		assertFalse(console.currentTargetView().authorized());
 		console.submit("authorize current");
@@ -113,3 +117,4 @@ class ChampionConsoleTest {
 			"enabled", "Tester", "0, 0, 0", "minecraft:overworld", 60, 1, 1, List.of());
 	}
 }
+
