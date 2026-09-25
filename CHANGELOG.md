@@ -1,6 +1,8 @@
 
 ## [Unreleased]
 
+## 0.1.0-beta.1 - 2026-09-25
+
 ### Added
 - Plug-and-play `exploit` and `payload` drop-in folders under
   `src/client/java/com/internationalduck/championscode/module/`, with
@@ -14,6 +16,9 @@
 - `docs/exploit-and-payload-files.md` describing what belongs in each folder,
   the plug-and-play rules, and how registered files surface in the console
   and GUIs.
+- README coverage for the drop-in folders: the two example modules in the
+  module table, a dedicated section on the folders and registration path, and
+  the refreshed Exploits workspace module list.
 
 ### Changed
 - Migrated the official ChampionsCode repository from GitHub to GitLab.

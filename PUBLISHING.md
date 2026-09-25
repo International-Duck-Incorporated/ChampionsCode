@@ -1,4 +1,4 @@
-﻿# Publishing to GitHub from PowerShell
+# Publishing to GitHub from PowerShell
 
 The source archive intentionally does not contain a `.git` directory or stored
 credentials. After extracting it, open PowerShell in the extracted project root
@@ -7,7 +7,7 @@ credentials. After extracting it, open PowerShell in the extracted project root
 ```powershell
 git init
 git add .
-git commit -m "ChampionsCode 0.1.0-alpha.16"
+git commit -m "ChampionsCode 0.1.0-beta.1"
 git remote add origin https://gitlab.com/international-duck-incorporated/ChampionsCode.git
 git branch -M main
 git push -u origin main
@@ -16,7 +16,7 @@ git push -u origin main
 A successful push to `main` now creates `v<version>` automatically and publishes
 the build as a GitHub prerelease. The release contains the binary JAR, source JAR,
 and SHA-256 manifest. The version in `gradle.properties` must include a
-prerelease suffix such as `-alpha.16`. Reusing a tag for a different commit is
+prerelease suffix such as `-beta.1`. Reusing a tag for a different commit is
 rejected, so bump the version before each new prerelease push.
 
 Pull requests and manually dispatched builds never publish a release.

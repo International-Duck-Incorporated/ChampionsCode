@@ -6,10 +6,12 @@ A **client-side Fabric mod for Minecraft Java Edition 26.3** that provides an
 msfconsole-inspired workflow for authorized, defensive server/plugin research,
 plus an explicitly enabled runtime Java addon development system.
 
-> **Status:** `0.1.0-alpha.16` - working foundation. The project builds, tests,
+> **Status:** `0.1.0-beta.1` - first beta. The project builds, tests,
 > and produces an installable Fabric JAR. It includes packet-flow, metadata
 > replay, inventory-integrity, passive transaction-flow, client-resilience,
-> passive motion, bounded older-project ports, and a separately warned exploit-research workspace.
+> passive motion, bounded older-project ports, a separately warned
+> exploit-research workspace, and plug-and-play exploit and payload drop-in
+> folders.
 
 ## What is implemented
 
@@ -58,6 +60,23 @@ Included modules:
 | `auxiliary/observe/transaction_echo` | Passively correlates menu-action and menu-update packet classes for coarse response timing, without retaining IDs or slot data. |
 | `auxiliary/audit/client_resilience` | Warns about packet-rate bursts, custom-payload concentration, connection errors, and timeline pressure. |
 | `auxiliary/observe/motion_evidence` | Passively summarizes broad remote-player motion evidence without verdicts, reporting, or punishment. |
+| `auxiliary/exploits/example_preflight` | Drop-in example for the exploit folder: passively reviews the session snapshot and sends nothing. |
+| `auxiliary/payloads/example_plan` | Drop-in example for the payload folder: builds bounded payload variants in memory and reports the plan without dispatching. |
+
+### Drop-in exploit and payload folders
+
+Active security-test files live in two plug-and-play packages inside the
+client source set:
+`src/client/java/com/internationalduck/championscode/module/exploit/` for
+exploit research and server-boundary tests, and
+`src/client/java/com/internationalduck/championscode/module/payload/` for
+bounded payload builders and inspectors. Each folder carries a fully
+commented `Example...Module.java` template plus a `package-info.java` with
+its conventions. Registered drop-ins are wired from the `ChampionsClient`
+entrypoint through `ChampionConsole.registerModule(...)`, because the core
+`ModuleRegistry` cannot see the client source set. See
+[`docs/exploit-and-payload-files.md`](docs/exploit-and-payload-files.md) for
+the layout, plug-and-play rules, and registration path.
 
 ### Telemetry boundaries
 
@@ -84,10 +103,12 @@ data-integrity risk. Every exploit-research module run displays a fresh warning
 popup, then revalidates exact-target authorization and the one-run `CONFIRM`
 phrase. Entry acknowledgements, cancellations, and per-run decisions are audited.
 
-Alpha.14 includes only `auxiliary/exploits/research_workspace`, a non-executing
-intake checklist for an engagement ID, legal basis, scope, expected impact, and
-stop conditions. Future modules use the `ExploitResearchModule` marker to inherit
-the extra gate. The tab does not weaken the existing module capability boundary
+The workspace currently contains `auxiliary/exploits/research_workspace`, a
+non-executing intake checklist for an engagement ID, legal basis, scope,
+expected impact, and stop conditions, plus
+`auxiliary/exploits/example_preflight`, the passive example module from the
+exploit drop-in folder. Future modules use the `ExploitResearchModule` marker
+to inherit the extra gate. The tab does not weaken the existing module capability boundary
 or permit credential theft, destructive payloads, unauthorized scanning, stealth,
 chat-filter bypasses, packet fabrication, anticheat evasion, or arbitrary command
 execution.
