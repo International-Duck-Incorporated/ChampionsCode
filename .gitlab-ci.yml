@@ -1,0 +1,180 @@
+# GitLab CI for ChampionsCode — port of the former GitHub Actions workflow.
+#
+# - Pushes to `main` and merge requests: clean build, tests, and packaging
+#   checks (Fabric target pins, fabric.mod.json metadata, runtime classes).
+# - Pushes of v<version> tags: the same build plus a published GitLab Release
+#   carrying the mod JAR, the sources JAR, and SHA256SUMS.txt, with release
+#   notes taken from the matching changelog section.
+#
+# The version in gradle.properties must keep a prerelease suffix (for example
+# -beta.1) and must match the pushed tag. Tags are immutable: reusing a tag
+# for a different commit requires a version bump first.
+
+stages:
+  - build
+  - release
+
+workflow:
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+/'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+variables:
+  MINECRAFT_VERSION: "26.3"
+
+build:
+  name: "Build ChampionsCode for Minecraft 26.3"
+  stage: build
+  image: eclipse-temurin:25-jdk
+  timeout: 30m
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y -qq --no-install-recommends python3 >/dev/null
+  script:
+    # 1. Read and validate the prerelease version.
+    - |
+      set -eu
+      version="$(sed -n 's/^version=//p' gradle.properties)"
+      if [ -z "$version" ]; then
+        echo "Missing version in gradle.properties" >&2
+        exit 1
+      fi
+      case "$version" in
+        *-*) ;;
+        *) echo "Automatic releases require a prerelease version such as 0.1.0-beta.1" >&2; exit 1 ;;
+      esac
+      if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$'; then
+        echo "Invalid prerelease version: $version" >&2
+        exit 1
+      fi
+      if [ -n "${CI_COMMIT_TAG:-}" ] && [ "$CI_COMMIT_TAG" != "v$version" ]; then
+        echo "Tag $CI_COMMIT_TAG does not match version $version" >&2
+        exit 1
+      fi
+    # 2. Verify the configured Fabric target and the wrapper download source.
+    - |
+      set -eu
+      grep -q '^distributionUrl=https\\://services.gradle.org/distributions/' gradle/wrapper/gradle-wrapper.properties
+      grep -Fxq "minecraft_version=${MINECRAFT_VERSION}" gradle.properties
+      grep -Fxq "loader_version=0.19.5" gradle.properties
+      grep -Fxq "fabric_api_version=0.161.0+26.3" gradle.properties
+      grep -Fq 'minecraft "com.mojang:minecraft:${project.minecraft_version}"' build.gradle
+      grep -Fq 'implementation "net.fabricmc:fabric-loader:${project.loader_version}"' build.gradle
+      grep -Fq 'implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"' build.gradle
+    # 3. Clean build and tests.
+    - chmod +x ./gradlew
+    - ./gradlew clean build --no-daemon --stacktrace
+    # 4. Verify the packaged mod metadata.
+    - |
+      python3 - <<'PY'
+      import json
+      import pathlib
+      import zipfile
+
+      libs = pathlib.Path("build/libs")
+      jars = sorted(path for path in libs.glob("champions-mod-*.jar") if not path.name.endswith("-sources.jar"))
+      if len(jars) != 1:
+          raise SystemExit(f"Expected one mod JAR, found: {[path.name for path in jars]}")
+
+      properties = {}
+      for line in pathlib.Path("gradle.properties").read_text(encoding="utf-8").splitlines():
+          if "=" in line and not line.lstrip().startswith("#"):
+              key, value = line.split("=", 1)
+              properties[key.strip()] = value.strip()
+
+      with zipfile.ZipFile(jars[0]) as archive:
+          metadata = json.loads(archive.read("fabric.mod.json"))
+          names = set(archive.namelist())
+
+      expected = {
+          "minecraft": "~26.3",
+          "fabricloader": ">=0.19.5",
+          "fabric-api": ">=0.161.0",
+          "java": ">=25",
+      }
+      if metadata.get("version") != properties.get("version"):
+          raise SystemExit(f"Version mismatch: {metadata.get('version')} != {properties.get('version')}")
+      for dependency, requirement in expected.items():
+          actual = metadata.get("depends", {}).get(dependency)
+          if actual != requirement:
+              raise SystemExit(f"Unexpected {dependency} requirement: {actual!r}")
+      if metadata.get("environment") != "client":
+          raise SystemExit("Mod must remain client-only")
+      if "champions.client.mixins.json" not in names:
+          raise SystemExit("Client mixin configuration is missing from the built JAR")
+
+      runtime_java_classes = {
+          "dev/champions/api/java/ChampionRuntimeAddon.class",
+          "dev/champions/api/java/ChampionJavaContext.class",
+          "dev/champions/client/java/JavaRuntimeManager.class",
+          "dev/champions/client/ui/ChampionsClickGuiScreen.class",
+          "dev/champions/client/ui/ChampionsCategoryGuiScreen.class",
+          "dev/champions/client/ui/ChampionsJavaScreen.class",
+          "dev/champions/client/ui/WindowChrome.class",
+          "dev/champions/client/ui/ExploitWarningScreen.class",
+          "dev/champions/core/module/ExploitResearchModule.class",
+          "dev/champions/core/module/builtin/ExploitResearchWorkspaceModule.class",
+          "dev/champions/core/java/RuntimeJavaCompiler.class",
+      }
+      missing = runtime_java_classes - names
+      if missing:
+          raise SystemExit(f"Runtime Java classes missing from JAR: {sorted(missing)}")
+      obsolete = sorted(name for name in names if "core/script/" in name or "ChampionScript" in name)
+      if obsolete:
+          raise SystemExit(f"Obsolete ChampionScript classes remain in JAR: {obsolete}")
+
+      print(f"Verified {jars[0].name} for Fabric Minecraft 26.3 and runtime Java packaging")
+      PY
+    # 5. Generate artifact checksums.
+    - |
+      cd build/libs
+      sha256sum *.jar | sort -k2 > SHA256SUMS.txt
+      cat SHA256SUMS.txt
+  artifacts:
+    paths:
+      - build/libs/champions-mod-*.jar
+      - build/libs/SHA256SUMS.txt
+    expire_in: 30 days
+
+release:
+  name: "Publish GitLab release"
+  stage: release
+  image: registry.gitlab.com/gitlab-org/cli:latest
+  timeout: 10m
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+/'
+  needs:
+    - job: build
+      artifacts: true
+  script:
+    # 1. Validate the assets and the version/tag pairing (POSIX sh: the CLI image is Alpine-based).
+    - |
+      set -eu
+      version="$(sed -n 's/^version=//p' gradle.properties)"
+      test -n "$version"
+      test "$CI_COMMIT_TAG" = "v$version"
+      test -f "build/libs/champions-mod-${version}.jar"
+      test -f "build/libs/champions-mod-${version}-sources.jar"
+      test -f "build/libs/SHA256SUMS.txt"
+      (cd build/libs && sha256sum -c SHA256SUMS.txt)
+    # 2. Extract this version's section from the changelog as release notes.
+    - |
+      version="$(sed -n 's/^version=//p' gradle.properties)"
+      awk -v ver="$version" '
+        !in_section && index($0, "## " ver " - ") == 1 { in_section = 1; next }
+        in_section && (/^## / || /^# /) { exit }
+        in_section { print }
+      ' CHANGELOG.md > release-notes.md
+      test -s release-notes.md || { echo "No changelog section found for $version" >&2; exit 1; }
+    # 3. Publish the release with the build artifacts attached.
+    - glab auth login --hostname "$CI_SERVER_HOST" --job-token "$CI_JOB_TOKEN" --api-protocol "$CI_SERVER_PROTOCOL"
+    - |
+      set -eu
+      version="$(sed -n 's/^version=//p' gradle.properties)"
+      glab release create "$CI_COMMIT_TAG" \
+        --name "ChampionsCode ${version}" \
+        -F release-notes.md \
+        "build/libs/champions-mod-${version}.jar#ChampionsCode ${version} (mod jar)" \
+        "build/libs/champions-mod-${version}-sources.jar#ChampionsCode ${version} (sources)" \
+        "build/libs/SHA256SUMS.txt#SHA256SUMS"

@@ -1,2 +1,0 @@
-03d3bee6baac85557897026a722007e97c2fef4ced7da178e04d5afce4e35bf2  champions-mod-0.1.0-alpha.16.jar
-762a0454fdddb01f56e8f54c58d6512d76ce79b8459f43f7ef5a92c45eca0066  champions-mod-0.1.0-alpha.16-sources.jar

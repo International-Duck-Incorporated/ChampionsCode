@@ -196,24 +196,25 @@ only one runtime JAR in the `mods` folder.
 
 ### Which release file should I download?
 
-GitHub releases contain two JAR files, but only one is the playable mod:
+GitLab releases contain two JAR files, but only one is the playable mod:
 
 | Release file | Purpose | Put in `mods`? |
 |---|---|---|
-| `champions-mod-0.1.0-alpha.16.jar` | Compiled Fabric mod used by Minecraft. | **Yes** |
-| `champions-mod-0.1.0-alpha.16-sources.jar` | Readable Java sources for IDE navigation, debugging, and developers. It is not a second mod. | **No** |
+| `champions-mod-<version>.jar` | Compiled Fabric mod used by Minecraft. | **Yes** |
+| `champions-mod-<version>-sources.jar` | Readable Java sources for IDE navigation, debugging, and developers. It is not a second mod. | **No** |
 
-Players should download `champions-mod-0.1.0-alpha.16.jar`. Do not put the
-`-sources.jar` file in the Minecraft `mods` folder. `SHA256SUMS.txt` contains the
-checksums used to verify both release files.
+Players should download the plain `champions-mod-<version>.jar` for the release
+they want. Do not put the `-sources.jar` file in the Minecraft `mods` folder.
+`SHA256SUMS.txt` contains the checksums used to verify both release files.
 
 ## Install
 
 1. Install Fabric Loader for Minecraft 26.3.
 2. Put Fabric API for 26.3 in the instance's `mods` folder.
-3. Download `champions-mod-0.1.0-alpha.16.jar` from the GitHub release and put it
-   in the same `mods` folder.
-4. Do not install `champions-mod-0.1.0-alpha.16-sources.jar`; it is provided only
+3. Download `champions-mod-<version>.jar` from the
+   [GitLab Releases page](https://gitlab.com/international-duck-incorporated/ChampionsCode/-/releases)
+   and put it in the same `mods` folder.
+4. Do not install `champions-mod-<version>-sources.jar`; it is provided only
    for developers and source browsing.
 5. Start Minecraft. Press **F8** for the terminal or **F7** for Java Studio.
 
@@ -345,18 +346,19 @@ authorization, bounded telemetry/transaction correlation, defensive normalizatio
 and prompt classification, declared-inventory posture, passive plugin review,
 deterministic runtime-source hashing, manifest validation, and JDK compilation.
 
-The `Fabric 26.3 build` GitHub Actions workflow runs on pushes to `main`, pull
-requests targeting `main`, and manual dispatch. It uses Java 25, verifies the
-configured Fabric 26.3 dependency versions, runs the clean build and test suite,
-checks the packaged `fabric.mod.json` and client mixin configuration, generates
-SHA-256 sums, and uploads both JARs as a workflow artifact.
+The GitLab CI pipeline (`.gitlab-ci.yml`) runs on pushes to `main` and on
+merge requests targeting `main`. It uses Java 25, verifies the configured
+Fabric 26.3 dependency versions, runs the clean build and test suite, checks
+the packaged `fabric.mod.json` and client mixin configuration, and generates
+SHA-256 sums for both JARs.
 
-After a successful push to `main`, a separate write-scoped job creates a tag such
-as `v0.1.0-alpha.16`, publishes or refreshes the matching GitHub release as a
-**prerelease**, and attaches the binary JAR, source JAR, and `SHA256SUMS.txt`.
-Pull requests and manual workflow runs build artifacts but do not publish. Tags
-are immutable across commits: if the version tag already points elsewhere, the
-release job stops and requires a version bump.
+After a `v<version>` tag that matches `gradle.properties` is pushed, a
+separate job publishes the matching GitLab Release and attaches the binary
+JAR, source JAR, and `SHA256SUMS.txt`. Release notes are extracted from the
+matching section of the changelog. Pushes to `main` and merge requests build
+artifacts but do not publish. Tags are immutable across commits: if the
+version tag already points elsewhere, the release job stops and requires a
+version bump.
 
 ## Project layout
 

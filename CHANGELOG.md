@@ -1,6 +1,24 @@
 
 ## [Unreleased]
 
+### Added
+- `.gitlab-ci.yml`: a GitLab CI pipeline that builds, tests, and verifies the
+  mod on `main` and merge requests, and publishes a full GitLab Release
+  (binary JAR, source JAR, `SHA256SUMS.txt`) with changelog-derived notes
+  when a matching `v<version>` tag is pushed.
+
+### Changed
+- README install and CI sections now point at GitLab Releases and the GitLab
+  CI pipeline, with version-neutral release file names.
+- Rewrote `PUBLISHING.md` around the tag-based GitLab release flow.
+
+### Removed
+- The committed `release/` artifact folder; GitLab Release assets are the
+  single source of published binaries, and a local `release/` folder is now
+  gitignored.
+- The `.github/workflows/build.yml` GitHub Actions workflow, superseded by
+  the GitLab CI pipeline.
+
 ## 0.1.0-beta.1 - 2026-09-25
 
 ### Added

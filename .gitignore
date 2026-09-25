@@ -38,3 +38,7 @@ hs_err_*.log
 replay_*.log
 *.hprof
 *.jfr
+
+# release artifacts (published via GitLab Releases instead)
+
+release/

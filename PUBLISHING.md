@@ -1,38 +1,38 @@
-# Publishing to GitHub from PowerShell
+# Publishing a release
 
-The source archive intentionally does not contain a `.git` directory or stored
-credentials. After extracting it, open PowerShell in the extracted project root
-(the directory containing `gradlew.bat`) and run:
+Releases are built and published by GitLab CI from the `main` branch. The
+published artifacts live only in
+[GitLab Releases](https://gitlab.com/international-duck-incorporated/ChampionsCode/-/releases);
+no binaries are committed to the repository.
 
-```powershell
-git init
-git add .
-git commit -m "ChampionsCode 0.1.0-beta.1"
-git remote add origin https://gitlab.com/international-duck-incorporated/ChampionsCode.git
-git branch -M main
-git push -u origin main
-```
+## Release flow
 
-A successful push to `main` now creates `v<version>` automatically and publishes
-the build as a GitHub prerelease. The release contains the binary JAR, source JAR,
-and SHA-256 manifest. The version in `gradle.properties` must include a
-prerelease suffix such as `-beta.1`. Reusing a tag for a different commit is
-rejected, so bump the version before each new prerelease push.
-
-Pull requests and manually dispatched builds never publish a release.
-
-If Git asks for your identity before the commit, configure it first:
+1. Update the version in `gradle.properties`. It must keep a prerelease
+   suffix (for example `-beta.1`) until the first stable release.
+2. Move the changelog's `[Unreleased]` section to a dated
+   `## <version> - <date>` heading and start a fresh `[Unreleased]`.
+3. Commit, tag, and push from PowerShell:
 
 ```powershell
-git config --global user.name "YOUR NAME"
-git config --global user.email "YOUR_GITHUB_EMAIL"
+git add -A
+git commit -m "Release <version>"
+git tag v<version>
+git push origin main v<version>
 ```
 
-If `origin` already exists, replace the `git remote add` command with:
+For the current beta this would read `0.1.0-beta.2` and `v0.1.0-beta.2`.
 
-```powershell
-git remote set-url origin https://gitlab.com/international-duck-incorporated/ChampionsCode.git
-```
+4. CI validates that the tag matches `gradle.properties`, verifies the
+   configured Fabric 26.3 dependency versions, runs the clean build and test
+   suite, checks the packaged `fabric.mod.json` and client mixin
+   configuration, generates the SHA-256 manifest, and publishes the GitLab
+   Release with the binary JAR, source JAR, and `SHA256SUMS.txt` attached.
+   Release notes are extracted automatically from the matching changelog
+   section.
+
+Tags are immutable: if `v<version>` already points at a different commit, the
+release job stops and the version must be bumped first. Pushes to `main` and
+merge requests only build and test; they never publish.
 
 ## Local verification
 
@@ -42,8 +42,7 @@ With Java 25 active:
 .\gradlew.bat clean build
 ```
 
-The GitHub Actions workflow performs the same build for pushes and pull
-requests. Do not commit Minecraft account/session data, access tokens,
-`.minecraft` contents, local Gradle caches, IDE settings, or generated `build/`
-output. Those common paths are already covered by `.gitignore`.
-
+CI runs the same build on every push. Do not commit Minecraft account/session
+data, access tokens, `.minecraft` contents, local Gradle caches, IDE settings,
+or generated `build/` output. Those common paths are already covered by
+`.gitignore`, which also ignores a local `release/` folder.
