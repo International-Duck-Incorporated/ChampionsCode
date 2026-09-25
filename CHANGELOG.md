@@ -2,6 +2,14 @@
 ## [Unreleased]
 
 ### Added
+- `auxiliary/scanner/server_ping` module: opens one standard server-list
+  status connection to the currently authorized, allowlisted server and
+  reports what any unauthenticated pinger observes without joining (protocol,
+  MOTD, player counts and sample, chat-security flags, mod-platform
+  disclosure). Single target only; no ranges or third-party hosts.
+- `auxiliary/lookup/player_identity` module: resolves one username or UUID
+  against Mojang's public profile API (current name, dashed UUID, skin/cape
+  textures). Contacts only Mojang endpoints, never the connected server.
 - Startup update checks against the project's public GitLab releases feed with
   a clickable in-game notice, disableable via `checkOnStart=false` in
   `config/champions-mod/update.properties`. The check only contacts

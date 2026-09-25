@@ -48,6 +48,8 @@ Included modules:
 | Module | Purpose |
 |---|---|
 | `auxiliary/scanner/server_fingerprint` | Reports metadata already disclosed to the connected client. |
+| `auxiliary/scanner/server_ping` | Opens one standard status ping to the currently authorized, allowlisted server and reports what any unauthenticated server-list pinger can see without joining: protocol, MOTD, player counts and sample, chat-security flags, and mod-platform disclosure. No ranges or third-party hosts. |
+| `auxiliary/lookup/player_identity` | Resolves one username or UUID via Mojang's public profile API (current name, dashed UUID, skin/cape textures). Contacts only Mojang endpoints, never the connected server. |
 | `auxiliary/audit/connection_posture` | Reviews passive session and transport indicators. |
 | `auxiliary/audit/plugin_surface` | Inventories command roots advertised to the current player. It does not execute them or claim conclusive plugin detection. |
 | `auxiliary/audit/plugin_risk_review` | Maps advertised roots to non-conclusive defensive review profiles without sending commands. |

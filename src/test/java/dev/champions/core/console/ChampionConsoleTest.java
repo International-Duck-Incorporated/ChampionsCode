@@ -42,7 +42,7 @@ class ChampionConsoleTest {
 		console.submit("categorygui");
 		assertTrue(openedList.get());
 		assertTrue(openedCategories.get());
-		assertEquals(15, console.moduleViews().size());
+		assertEquals(17, console.moduleViews().size());
 		List<String> ids = console.moduleViews().stream().map(ChampionConsole.ModuleView::id).toList();
 		assertEquals(ids.stream().sorted().toList(), ids);
 		assertTrue(console.selectModuleFromUi("auxiliary/scanner/chat_plugin_enumerator"));

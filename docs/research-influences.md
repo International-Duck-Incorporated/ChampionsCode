@@ -86,6 +86,15 @@ Reviewed on 2026-09-20:
 - **Declared Dependency Posture** - bounded review of administrator-supplied component pins.
 - **Chat Normalization Audit** - defensive canonicalization without bypass generation.
 - **Chat Game Fairness Review** - prompt classification without solving or sending.
+- **Server Status-Ping Audit** - clean-room, single-target mirror of what mass
+  server scanners (qubo-style tooling) observe from the outside; authorized
+  target only, no ranges or sweeps.
+- **Player Identity Lookup** - public Mojang profile resolution
+  (name/UUID/textures) with no session involvement.
+
+Both additions are clean-room feature implementations inspired by reviewing
+the behavior of third-party tools (H4MTool's bundled qubo scanner and the 2019
+"Parrot" client); no third-party source or binaries are included.
 
 If a future integration uses third-party source or binaries, its exact license,
 copyright notice, source link, compatibility, and dependency boundary must be

@@ -9,9 +9,11 @@ import dev.champions.core.module.builtin.ContainerIntegrityModule;
 import dev.champions.core.module.builtin.DependencyPostureModule;
 import dev.champions.core.module.builtin.ExploitResearchWorkspaceModule;
 import dev.champions.core.module.builtin.MotionEvidenceModule;
+import dev.champions.core.module.builtin.PlayerIdentityModule;
 import dev.champions.core.module.builtin.PluginRiskReviewModule;
 import dev.champions.core.module.builtin.PluginSurfaceModule;
 import dev.champions.core.module.builtin.ServerFingerprintModule;
+import dev.champions.core.module.builtin.ServerPingModule;
 import dev.champions.core.module.builtin.SessionTraceModule;
 import dev.champions.core.module.builtin.TransactionEchoModule;
 import dev.champions.core.module.builtin.WireLensModule;
@@ -41,6 +43,8 @@ public final class ModuleRegistry {
 		register(new TransactionEchoModule());
 		register(new ClientResilienceModule());
 		register(new MotionEvidenceModule());
+		register(new ServerPingModule());
+		register(new PlayerIdentityModule());
 	}
 
 	public void register(ResearchModule module) {
