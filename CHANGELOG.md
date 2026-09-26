@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## 0.1.0-beta.3 - 2026-09-26
+
+Re-release of the 0.1.0-beta.2 changes: the beta.2 tag pipeline built and
+tested cleanly, but the release job failed to attach its assets (the CLI
+file upload it used is not permitted for CI job tokens), so the release
+page shipped empty. This release publishes through the project's generic
+package registry with release-cli asset links instead, restoring the
+`downloads/champions-mod-<version>.jar` URLs the in-game updater matches.
+The mod content is identical to 0.1.0-beta.2; see that section below for
+the full notes.
+
 ## 0.1.0-beta.2 - 2026-09-26
 
 ### Added

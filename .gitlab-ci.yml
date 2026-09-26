@@ -2,9 +2,12 @@
 #
 # - Pushes to `main` and merge requests: clean build, tests, and packaging
 #   checks (Fabric target pins, fabric.mod.json metadata, runtime classes).
-# - Pushes of v<version> tags: the same build plus a published GitLab Release
-#   carrying the mod JAR, the sources JAR, and SHA256SUMS.txt, with release
-#   notes taken from the matching changelog section.
+# - Pushes of v<version> tags: the same build, the release files published to
+#   the project's generic package registry, and a GitLab Release linking the
+#   mod JAR, sources JAR, and SHA256SUMS.txt as assets, with release notes
+#   taken from the matching changelog section. (The first automated release
+#   attempt used glab's file upload, which job tokens are not allowed to do;
+#   packages plus release-cli asset links is the supported job-token path.)
 #
 # The version in gradle.properties must keep a prerelease suffix (for example
 # -beta.1) and must match the pushed tag. Tags are immutable: reusing a tag
@@ -29,7 +32,7 @@ build:
   timeout: 30 minutes
   before_script:
     - apt-get update -qq
-    - apt-get install -y -qq --no-install-recommends python3 >/dev/null
+    - apt-get install -y -qq --no-install-recommends python3 curl >/dev/null
   script:
     # 1. Read and validate the prerelease version.
     - |
@@ -130,6 +133,22 @@ build:
       cd build/libs
       sha256sum *.jar | sort -k2 > SHA256SUMS.txt
       cat SHA256SUMS.txt
+    # 6. On tag builds, publish the release files to the project's generic
+    #    package registry. Job tokens cannot upload release "uploads" (that is
+    #    what broke the first automated release), but they can push packages;
+    #    the release job then links these permanent URLs as release assets.
+    - |
+      set -eu
+      if [ -n "${CI_COMMIT_TAG:-}" ]; then
+        version="$(sed -n 's/^version=//p' gradle.properties)"
+        for file in "champions-mod-${version}.jar" "champions-mod-${version}-sources.jar" "SHA256SUMS.txt"; do
+          curl --fail --show-error --silent \
+            --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+            --upload-file "build/libs/${file}" \
+            "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/champions-mod/${version}/${file}"
+        done
+        echo "Published release files to the package registry for ${version}"
+      fi
   artifacts:
     paths:
       - build/libs/champions-mod-*.jar
@@ -138,7 +157,7 @@ build:
 
 release:
   stage: release
-  image: registry.gitlab.com/gitlab-org/cli:latest
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
   timeout: 10 minutes
   rules:
     - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+/'
@@ -165,14 +184,17 @@ release:
         in_section { print }
       ' CHANGELOG.md > release-notes.md
       test -s release-notes.md || { echo "No changelog section found for $version" >&2; exit 1; }
-    # 3. Publish the release with the build artifacts attached.
-    - glab auth login --hostname "$CI_SERVER_HOST" --job-token "$CI_JOB_TOKEN" --api-protocol "$CI_SERVER_PROTOCOL"
+    # 3. Publish the release. Asset links point at the package-registry copies
+    #    pushed by the build job; direct_asset_path keeps the
+    #    .../downloads/champions-mod-<version>.jar URLs the in-game updater
+    #    matches by exact name.
     - |
       set -eu
       version="$(sed -n 's/^version=//p' gradle.properties)"
-      glab release create "$CI_COMMIT_TAG" \
-        --name "ChampionsCode ${version}" \
-        -F release-notes.md \
-        "build/libs/champions-mod-${version}.jar#ChampionsCode ${version} (mod jar)" \
-        "build/libs/champions-mod-${version}-sources.jar#ChampionsCode ${version} (sources)" \
-        "build/libs/SHA256SUMS.txt#SHA256SUMS"
+      base="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/champions-mod/${version}"
+      release-cli create --name "ChampionsCode ${version}" \
+        --tag-name "$CI_COMMIT_TAG" \
+        --description "$(cat release-notes.md)" \
+        --assets-link "{\"name\":\"champions-mod-${version}.jar\",\"url\":\"${base}/champions-mod-${version}.jar\",\"direct_asset_path\":\"/champions-mod-${version}.jar\"}" \
+        --assets-link "{\"name\":\"champions-mod-${version}-sources.jar\",\"url\":\"${base}/champions-mod-${version}-sources.jar\",\"direct_asset_path\":\"/champions-mod-${version}-sources.jar\"}" \
+        --assets-link "{\"name\":\"SHA256SUMS\",\"url\":\"${base}/SHA256SUMS.txt\",\"direct_asset_path\":\"/SHA256SUMS.txt\"}"

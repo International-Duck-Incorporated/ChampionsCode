@@ -6,7 +6,7 @@ A **client-side Fabric mod for Minecraft Java Edition 26.3** that provides an
 msfconsole-inspired workflow for authorized, defensive server/plugin research,
 plus an explicitly enabled runtime Java addon development system.
 
-> **Status:** `0.1.0-beta.2` - second beta. The project builds, tests,
+> **Status:** `0.1.0-beta.3` - third beta (re-release of beta.2 with fixed release publishing). The project builds, tests,
 > and produces an installable Fabric JAR. It includes packet-flow, metadata
 > replay, inventory-integrity, passive transaction-flow, client-resilience,
 > passive motion, bounded older-project ports, a separately warned
