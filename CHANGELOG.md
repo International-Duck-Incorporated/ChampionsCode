@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## 0.1.0-beta.2 - 2026-09-26
+
 ### Added
 - Windowed workspace: the terminal, ClickGUI, category GUI, and Java Studio are
   now independent windows of one shared desktop instead of replacing each
