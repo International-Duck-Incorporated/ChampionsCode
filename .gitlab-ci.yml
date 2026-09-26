@@ -137,8 +137,10 @@ build:
     #    package registry. Job tokens cannot upload release "uploads" (that is
     #    what broke the first automated release), but they can push packages;
     #    the release job then links these permanent URLs as release assets.
+    #    Step 5 cd'd into build/libs; return to the project root first.
     - |
       set -eu
+      cd "${CI_PROJECT_DIR}"
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
         version="$(sed -n 's/^version=//p' gradle.properties)"
         for file in "champions-mod-${version}.jar" "champions-mod-${version}-sources.jar" "SHA256SUMS.txt"; do
