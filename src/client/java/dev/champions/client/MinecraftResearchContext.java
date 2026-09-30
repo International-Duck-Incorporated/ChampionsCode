@@ -3,12 +3,14 @@ package dev.champions.client;
 import com.mojang.brigadier.tree.CommandNode;
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import dev.champions.core.module.CommandDescriptor;
+import dev.champions.core.module.CommandPathDescriptor;
 import dev.champions.core.module.ModuleContext;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.network.Connection;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -42,7 +44,8 @@ final class MinecraftResearchContext {
 					node.getChildren().stream()
 						.filter(LiteralCommandNode.class::isInstance)
 						.map(CommandNode::getName)
-						.toList()))
+						.toList(),
+					captureDescendants(node)))
 				.sorted(java.util.Comparator.comparing(CommandDescriptor::root))
 				.toList()
 			: List.of();
@@ -71,5 +74,28 @@ final class MinecraftResearchContext {
 			InventoryTelemetry.capture(client),
 			PlayerMotionTelemetry.snapshot()
 		);
+	}
+
+	private static List<CommandPathDescriptor> captureDescendants(CommandNode<?> root) {
+		List<CommandPathDescriptor> result = new ArrayList<>();
+		captureChildren(root, List.of(), true, 0, result);
+		return List.copyOf(result);
+	}
+
+	private static void captureChildren(CommandNode<?> parent, List<String> prefix, boolean literalOnly,
+		int depth, List<CommandPathDescriptor> result) {
+		if (depth >= 5 || result.size() >= 64) return;
+		for (CommandNode<?> child : parent.getChildren().stream()
+			.sorted(java.util.Comparator.comparing(CommandNode::getName)).toList()) {
+			if (result.size() >= 64) return;
+			List<String> path = new ArrayList<>(prefix);
+			path.add(child.getName());
+			boolean literal = child instanceof LiteralCommandNode<?>;
+			boolean allLiteral = literalOnly && literal;
+			result.add(new CommandPathDescriptor(path,
+				literal ? CommandPathDescriptor.NodeKind.LITERAL : CommandPathDescriptor.NodeKind.ARGUMENT,
+				allLiteral, child.getCommand() != null, child.getRedirect() != null));
+			captureChildren(child, path, allLiteral, depth + 1, result);
+		}
 	}
 }

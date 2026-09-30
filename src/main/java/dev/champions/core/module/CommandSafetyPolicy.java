@@ -31,6 +31,20 @@ public final class CommandSafetyPolicy {
 
 	private CommandSafetyPolicy() {}
 
+	public enum Classification { STANDARD_NAMESPACE, STANDARD_ROOT, BLOCKED, THIRD_PARTY_CANDIDATE, INVALID }
+
+	public static Classification classify(String root) {
+		String normalized = normalize(root);
+		if (!SAFE_ROOT.matcher(normalized).matches()) return Classification.INVALID;
+		String namespace = namespace(normalized);
+		String local = localName(normalized);
+		if (NEVER_PROBE_LOCAL_NAMES.contains(local)) return Classification.BLOCKED;
+		if ("minecraft".equals(namespace) || "bukkit".equals(namespace)
+			|| "paper".equals(namespace) || "spigot".equals(namespace)) return Classification.STANDARD_NAMESPACE;
+		if (DEFAULT_ROOTS.contains(local)) return Classification.STANDARD_ROOT;
+		return Classification.THIRD_PARTY_CANDIDATE;
+	}
+
 	public static boolean isNonDefaultCandidate(String root) {
 		String normalized = normalize(root);
 		if (!SAFE_ROOT.matcher(normalized).matches()) return false;

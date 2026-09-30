@@ -91,7 +91,18 @@ final class ChatCommandRuntime implements ActiveModuleRuntime {
 				yield child instanceof LiteralCommandNode<?> ? null
 					: "Metadata suffix is no longer an advertised literal child.";
 			}
+			case PATH -> validateLiteralPath(root, request.literalPath());
 		};
+	}
+
+	private static String validateLiteralPath(CommandNode<?> root, List<String> path) {
+		CommandNode<?> current = root;
+		for (String segment : path) {
+			CommandNode<?> child = current.getChild(segment);
+			if (!(child instanceof LiteralCommandNode<?>)) return "Probe path is no longer an advertised literal chain.";
+			current = child;
+		}
+		return null;
 	}
 
 	private void complete(Status status, String detail) {

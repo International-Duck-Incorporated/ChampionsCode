@@ -1,0 +1,476 @@
+diff --git a/src/client/java/dev/champions/client/ChatCommandRuntime.java b/src/client/java/dev/champions/client/ChatCommandRuntime.java
+index 945a966..cbaf9ad 100644
+--- a/src/client/java/dev/champions/client/ChatCommandRuntime.java
++++ b/src/client/java/dev/champions/client/ChatCommandRuntime.java
+@@ -91,9 +91,20 @@ final class ChatCommandRuntime implements ActiveModuleRuntime {
+ 				yield child instanceof LiteralCommandNode<?> ? null
+ 					: "Metadata suffix is no longer an advertised literal child.";
+ 			}
++			case PATH -> validateLiteralPath(root, request.literalPath());
+ 		};
+ 	}
+ 
++	private static String validateLiteralPath(CommandNode<?> root, List<String> path) {
++		CommandNode<?> current = root;
++		for (String segment : path) {
++			CommandNode<?> child = current.getChild(segment);
++			if (!(child instanceof LiteralCommandNode<?>)) return "Probe path is no longer an advertised literal chain.";
++			current = child;
++		}
++		return null;
++	}
++
+ 	private void complete(Status status, String detail) {
+ 		Pending done = pending;
+ 		if (done == null) return;
+diff --git a/src/client/java/dev/champions/client/MinecraftResearchContext.java b/src/client/java/dev/champions/client/MinecraftResearchContext.java
+index f6bce87..9673881 100644
+--- a/src/client/java/dev/champions/client/MinecraftResearchContext.java
++++ b/src/client/java/dev/champions/client/MinecraftResearchContext.java
+@@ -3,12 +3,14 @@ package dev.champions.client;
+ import com.mojang.brigadier.tree.CommandNode;
+ import com.mojang.brigadier.tree.LiteralCommandNode;
+ import dev.champions.core.module.CommandDescriptor;
++import dev.champions.core.module.CommandPathDescriptor;
+ import dev.champions.core.module.ModuleContext;
+ import net.minecraft.client.Minecraft;
+ import net.minecraft.client.multiplayer.ClientPacketListener;
+ import net.minecraft.client.multiplayer.ServerData;
+ import net.minecraft.network.Connection;
+ 
++import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Locale;
+ 
+@@ -42,7 +44,8 @@ final class MinecraftResearchContext {
+ 					node.getChildren().stream()
+ 						.filter(LiteralCommandNode.class::isInstance)
+ 						.map(CommandNode::getName)
+-						.toList()))
++						.toList(),
++					captureDescendants(node)))
+ 				.sorted(java.util.Comparator.comparing(CommandDescriptor::root))
+ 				.toList()
+ 			: List.of();
+@@ -72,4 +75,27 @@ final class MinecraftResearchContext {
+ 			PlayerMotionTelemetry.snapshot()
+ 		);
+ 	}
++
++	private static List<CommandPathDescriptor> captureDescendants(CommandNode<?> root) {
++		List<CommandPathDescriptor> result = new ArrayList<>();
++		captureChildren(root, List.of(), true, 0, result);
++		return List.copyOf(result);
++	}
++
++	private static void captureChildren(CommandNode<?> parent, List<String> prefix, boolean literalOnly,
++		int depth, List<CommandPathDescriptor> result) {
++		if (depth >= 5 || result.size() >= 64) return;
++		for (CommandNode<?> child : parent.getChildren().stream()
++			.sorted(java.util.Comparator.comparing(CommandNode::getName)).toList()) {
++			if (result.size() >= 64) return;
++			List<String> path = new ArrayList<>(prefix);
++			path.add(child.getName());
++			boolean literal = child instanceof LiteralCommandNode<?>;
++			boolean allLiteral = literalOnly && literal;
++			result.add(new CommandPathDescriptor(path,
++				literal ? CommandPathDescriptor.NodeKind.LITERAL : CommandPathDescriptor.NodeKind.ARGUMENT,
++				allLiteral, child.getCommand() != null, child.getRedirect() != null));
++			captureChildren(child, path, allLiteral, depth + 1, result);
++		}
++	}
+ }
+diff --git a/src/main/java/dev/champions/core/module/CommandDescriptor.java b/src/main/java/dev/champions/core/module/CommandDescriptor.java
+index 13f531e..458dd7c 100644
+--- a/src/main/java/dev/champions/core/module/CommandDescriptor.java
++++ b/src/main/java/dev/champions/core/module/CommandDescriptor.java
+@@ -3,12 +3,26 @@ package dev.champions.core.module;
+ import java.util.List;
+ import java.util.Locale;
+ 
+-/** Safe summary of one server-advertised Brigadier root command. */
+-public record CommandDescriptor(String root, boolean executableWithoutArguments, List<String> literalChildren) {
++/** Bounded summary of one server-advertised Brigadier root and its descendants. */
++public record CommandDescriptor(
++	String root,
++	boolean executableWithoutArguments,
++	List<String> literalChildren,
++	List<CommandPathDescriptor> descendants
++) {
+ 	public CommandDescriptor {
+ 		root = root == null ? "" : root.toLowerCase(Locale.ROOT);
+ 		literalChildren = literalChildren == null ? List.of() : literalChildren.stream()
+ 			.map(value -> value.toLowerCase(Locale.ROOT)).distinct().sorted().toList();
++		descendants = descendants == null ? List.of() : List.copyOf(descendants);
++	}
++
++	/** Compatibility constructor for shallow snapshots and tests. */
++	public CommandDescriptor(String root, boolean executableWithoutArguments, List<String> literalChildren) {
++		this(root, executableWithoutArguments, literalChildren,
++			literalChildren == null ? List.of() : literalChildren.stream()
++				.map(name -> new CommandPathDescriptor(List.of(name), CommandPathDescriptor.NodeKind.LITERAL, true, false, false))
++				.toList());
+ 	}
+ 
+ 	public boolean hasLiteral(String name) {
+diff --git a/src/main/java/dev/champions/core/module/CommandPathDescriptor.java b/src/main/java/dev/champions/core/module/CommandPathDescriptor.java
+new file mode 100644
+index 0000000..8171326
+--- /dev/null
++++ b/src/main/java/dev/champions/core/module/CommandPathDescriptor.java
+@@ -0,0 +1,26 @@
++package dev.champions.core.module;
++
++import java.util.List;
++import java.util.Locale;
++
++/** One bounded descendant in a server-advertised Brigadier command tree. */
++public record CommandPathDescriptor(
++	List<String> segments,
++	NodeKind kind,
++	boolean literalOnly,
++	boolean executable,
++	boolean redirects
++) {
++	public CommandPathDescriptor {
++		segments = segments == null ? List.of() : segments.stream()
++			.map(value -> value == null ? "" : value.strip().toLowerCase(Locale.ROOT))
++			.filter(value -> !value.isEmpty())
++			.toList();
++		kind = kind == null ? NodeKind.ARGUMENT : kind;
++	}
++
++	public String path() { return String.join(" ", segments); }
++	public String leaf() { return segments.isEmpty() ? "" : segments.get(segments.size() - 1); }
++
++	public enum NodeKind { LITERAL, ARGUMENT }
++}
+diff --git a/src/main/java/dev/champions/core/module/CommandSafetyPolicy.java b/src/main/java/dev/champions/core/module/CommandSafetyPolicy.java
+index e932e6a..654673a 100644
+--- a/src/main/java/dev/champions/core/module/CommandSafetyPolicy.java
++++ b/src/main/java/dev/champions/core/module/CommandSafetyPolicy.java
+@@ -31,6 +31,20 @@ public final class CommandSafetyPolicy {
+ 
+ 	private CommandSafetyPolicy() {}
+ 
++	public enum Classification { STANDARD_NAMESPACE, STANDARD_ROOT, BLOCKED, THIRD_PARTY_CANDIDATE, INVALID }
++
++	public static Classification classify(String root) {
++		String normalized = normalize(root);
++		if (!SAFE_ROOT.matcher(normalized).matches()) return Classification.INVALID;
++		String namespace = namespace(normalized);
++		String local = localName(normalized);
++		if (NEVER_PROBE_LOCAL_NAMES.contains(local)) return Classification.BLOCKED;
++		if ("minecraft".equals(namespace) || "bukkit".equals(namespace)
++			|| "paper".equals(namespace) || "spigot".equals(namespace)) return Classification.STANDARD_NAMESPACE;
++		if (DEFAULT_ROOTS.contains(local)) return Classification.STANDARD_ROOT;
++		return Classification.THIRD_PARTY_CANDIDATE;
++	}
++
+ 	public static boolean isNonDefaultCandidate(String root) {
+ 		String normalized = normalize(root);
+ 		if (!SAFE_ROOT.matcher(normalized).matches()) return false;
+diff --git a/src/main/java/dev/champions/core/module/active/ActiveModuleRuntime.java b/src/main/java/dev/champions/core/module/active/ActiveModuleRuntime.java
+index 50fff3e..7354d91 100644
+--- a/src/main/java/dev/champions/core/module/active/ActiveModuleRuntime.java
++++ b/src/main/java/dev/champions/core/module/active/ActiveModuleRuntime.java
+@@ -3,16 +3,15 @@ package dev.champions.core.module.active;
+ import dev.champions.core.module.CommandSafetyPolicy;
+ 
+ import java.util.List;
++import java.util.Locale;
+ import java.util.Objects;
+ import java.util.concurrent.CompletableFuture;
+ import java.util.concurrent.CompletionStage;
++import java.util.regex.Pattern;
+ 
+-/**
+- * Narrow capability surface for active modules. Requests identify an advertised
+- * root and one constrained metadata-oriented probe variant; the client runtime
+- * revalidates every request against the live Brigadier tree before sending it.
+- */
++/** Narrow client capability for live-tree-validated, metadata-oriented chat probes. */
+ public interface ActiveModuleRuntime {
++	Pattern SAFE_LITERAL = Pattern.compile("[a-z0-9_.-]+");
+ 	CompletionStage<ChatTranscript> execute(ChatCommandRequest request);
+ 
+ 	static ActiveModuleRuntime disabled() {
+@@ -21,24 +20,38 @@ public interface ActiveModuleRuntime {
+ 	}
+ 
+ 	enum ProbeVariant {
+-		BLANK(""), VERSION("version"), V("v");
+-
++		BLANK(""), VERSION("version"), V("v"), PATH("");
+ 		private final String suffix;
+ 		ProbeVariant(String suffix) { this.suffix = suffix; }
+ 		public String suffix() { return suffix; }
+ 	}
+ 
+-	record ChatCommandRequest(String root, ProbeVariant variant, int timeoutTicks, int maxMessages) {
++	record ChatCommandRequest(String root, ProbeVariant variant, List<String> literalPath, int timeoutTicks, int maxMessages) {
+ 		public ChatCommandRequest {
+ 			root = CommandSafetyPolicy.normalize(root);
+ 			Objects.requireNonNull(variant, "variant");
++			literalPath = literalPath == null ? List.of() : literalPath.stream()
++				.map(value -> value == null ? "" : value.strip().toLowerCase(Locale.ROOT)).toList();
+ 			if (!CommandSafetyPolicy.mayProbe(root)) throw new IllegalArgumentException("Command root is not eligible for probing: " + root);
++			if (literalPath.stream().anyMatch(value -> !SAFE_LITERAL.matcher(value).matches()))
++				throw new IllegalArgumentException("Probe path must contain safe literal nodes only");
++			if (variant != ProbeVariant.PATH && !literalPath.isEmpty()) throw new IllegalArgumentException("Only PATH probes accept a literal path");
++			if (variant == ProbeVariant.PATH && literalPath.isEmpty()) throw new IllegalArgumentException("PATH probe requires at least one literal");
+ 			if (timeoutTicks < 20 || timeoutTicks > 100) throw new IllegalArgumentException("timeoutTicks must be 20-100");
+ 			if (maxMessages < 1 || maxMessages > 8) throw new IllegalArgumentException("maxMessages must be 1-8");
+ 		}
+ 
++		public ChatCommandRequest(String root, ProbeVariant variant, int timeoutTicks, int maxMessages) {
++			this(root, variant, List.of(), timeoutTicks, maxMessages);
++		}
++
++		public static ChatCommandRequest path(String root, List<String> literals, int timeoutTicks, int maxMessages) {
++			return new ChatCommandRequest(root, ProbeVariant.PATH, literals, timeoutTicks, maxMessages);
++		}
++
+ 		public String wireCommand() {
+-			return variant.suffix().isEmpty() ? root : root + " " + variant.suffix();
++			String suffix = variant == ProbeVariant.PATH ? String.join(" ", literalPath) : variant.suffix();
++			return suffix.isEmpty() ? root : root + " " + suffix;
+ 		}
+ 
+ 		public String displayCommand() { return "/" + wireCommand(); }
+diff --git a/src/main/java/dev/champions/core/module/builtin/ChatPluginEnumeratorModule.java b/src/main/java/dev/champions/core/module/builtin/ChatPluginEnumeratorModule.java
+index 5481104..277d251 100644
+--- a/src/main/java/dev/champions/core/module/builtin/ChatPluginEnumeratorModule.java
++++ b/src/main/java/dev/champions/core/module/builtin/ChatPluginEnumeratorModule.java
+@@ -1,6 +1,7 @@
+ package dev.champions.core.module.builtin;
+ 
+ import dev.champions.core.module.CommandDescriptor;
++import dev.champions.core.module.CommandPathDescriptor;
+ import dev.champions.core.module.CommandSafetyPolicy;
+ import dev.champions.core.module.Finding;
+ import dev.champions.core.module.ModuleContext;
+@@ -31,11 +32,12 @@ public final class ChatPluginEnumeratorModule implements ActiveResearchModule {
+ 		"(?i)\\b(?:version\\s*[:=]?\\s*|v)(v?\\d+(?:\\.\\d+){1,4}(?:[-+][0-9A-Za-z_.-]+)?)\\b");
+ 	private static final Pattern BARE_VERSION_TOKEN = Pattern.compile(
+ 		"(?<![A-Za-z0-9])v?(\\d+(?:\\.\\d+){1,4}(?:[-+][0-9A-Za-z_.-]+)?)(?![A-Za-z0-9])");
++	private static final Set<String> METADATA_LEAVES = Set.of("version", "v", "about", "info", "status", "help");
+ 
+ 	@Override public String id() { return "auxiliary/scanner/chat_plugin_enumerator"; }
+ 	@Override public String name() { return "Filtered chat plugin enumerator"; }
+ 	@Override public String description() {
+-		return "Filters vanilla/Bukkit default roots. SILENT only marks non-default candidates; AGGRESSIVE probes bounded, server-advertised blank/version/v paths and captures chat output.";
++		return "Maps bounded advertised command trees, classifies standard namespaces, and optionally probes only advertised literal metadata paths.";
+ 	}
+ 	@Override public List<ModuleOption> options() {
+ 		return List.of(
+@@ -43,6 +45,9 @@ public final class ChatPluginEnumeratorModule implements ActiveResearchModule {
+ 			new ModuleOption("CONFIRM", "", true, true, "One-run authorization phrase: I_HAVE_AUTHORIZATION"),
+ 			new ModuleOption("MODE", "silent", true, false, "silent (chat only) or aggressive (command probes)", List.of("SILENT", "AGGRESSIVE")),
+ 			new ModuleOption("MAX_COMMANDS", "8", false, false, "Maximum non-default roots considered, 1-12"),
++			new ModuleOption("MAX_DEPTH", "5", false, false, "Maximum advertised command-tree depth displayed/probed, 1-5"),
++			new ModuleOption("MAX_PROBES", "12", false, false, "Maximum active metadata probes, 1-24"),
++			new ModuleOption("INCLUDE_STANDARD", "true", false, false, "Classify and display standard Minecraft/Bukkit/Paper/Spigot surfaces"),
+ 			new ModuleOption("TIMEOUT_TICKS", "30", false, false, "Per-probe capture window, 20-100 ticks"),
+ 			new ModuleOption("MAX_MESSAGES", "4", false, false, "Maximum game messages per probe, 1-8"),
+ 			new ModuleOption("INCLUDE_RAW", "true", false, false, "Include bounded response excerpts")
+@@ -58,62 +63,83 @@ public final class ChatPluginEnumeratorModule implements ActiveResearchModule {
+ 	public CompletionStage<ModuleResult> runActive(ModuleContext context, Map<String, String> options, ActiveModuleRuntime runtime) {
+ 		Mode mode = parseMode(options.get("MODE"));
+ 		int maxCommands = boundedInt(options.get("MAX_COMMANDS"), 8, 1, 12);
++		int maxDepth = boundedInt(options.get("MAX_DEPTH"), 5, 1, 5);
++		int maxProbes = boundedInt(options.get("MAX_PROBES"), 12, 1, 24);
+ 		int timeout = boundedInt(options.get("TIMEOUT_TICKS"), 30, 20, 100);
+ 		int maxMessages = boundedInt(options.get("MAX_MESSAGES"), 4, 1, 8);
+ 		boolean includeRaw = Boolean.parseBoolean(options.getOrDefault("INCLUDE_RAW", "true"));
+-		List<CommandDescriptor> candidates = context.advertisedCommandDetails().stream()
++		boolean includeStandard = Boolean.parseBoolean(options.getOrDefault("INCLUDE_STANDARD", "true"));
++		List<CommandDescriptor> all = context.advertisedCommandDetails();
++		List<CommandDescriptor> candidates = all.stream()
+ 			.filter(command -> CommandSafetyPolicy.isNonDefaultCandidate(command.root()))
+ 			.sorted(java.util.Comparator.comparing(CommandDescriptor::root))
+ 			.limit(maxCommands)
+ 			.toList();
+-		int filtered = Math.max(0, context.advertisedCommandDetails().size() - candidates.size());
++		List<CommandDescriptor> standard = includeStandard ? all.stream()
++			.filter(command -> {
++				var classification = CommandSafetyPolicy.classify(command.root());
++				return classification == CommandSafetyPolicy.Classification.STANDARD_NAMESPACE
++					|| classification == CommandSafetyPolicy.Classification.STANDARD_ROOT;
++			})
++			.sorted(java.util.Comparator.comparing(CommandDescriptor::root)).toList() : List.of();
++		int filtered = Math.max(0, all.size() - candidates.size() - standard.size());
+ 
+ 		if (mode == Mode.SILENT) {
+-			return CompletableFuture.completedFuture(silentResult(candidates, filtered, context.advertisedCommandDetails().size()));
++			return CompletableFuture.completedFuture(silentResult(candidates, standard, filtered, all.size(), maxDepth));
+ 		}
+ 
+-		List<ChatCommandRequest> probes = buildProbePlan(candidates, timeout, maxMessages);
++		List<ChatCommandRequest> probes = buildProbePlan(candidates, timeout, maxMessages, maxDepth, maxProbes);
+ 		if (probes.isEmpty()) {
+-			return CompletableFuture.completedFuture(noProbeResult(candidates, filtered));
++			return CompletableFuture.completedFuture(noProbeResult(candidates, standard, filtered, maxDepth));
+ 		}
+ 		return executeSequentially(probes, runtime).thenApply(transcripts ->
+-			aggressiveResult(candidates, filtered, transcripts, includeRaw));
++			aggressiveResult(candidates, standard, filtered, transcripts, includeRaw, maxDepth));
+ 	}
+ 
+-	private ModuleResult silentResult(List<CommandDescriptor> candidates, int filtered, int total) {
++	private ModuleResult silentResult(List<CommandDescriptor> candidates, List<CommandDescriptor> standard,
++		int filtered, int total, int maxDepth) {
+ 		List<Finding> findings = new ArrayList<>();
+ 		findings.add(new Finding(Finding.Severity.INFO, "Mode", "SILENT - no command was sent.",
+ 			"Switch to aggressive only for an explicitly authorized target and account."));
+-		findings.add(new Finding(Finding.Severity.INFO, "Default filtering",
+-			filtered + " of " + total + " advertised root(s) filtered or outside the configured candidate limit.",
+-			"The filter covers vanilla plus standard Bukkit/Paper implementation roots."));
++		findings.add(new Finding(Finding.Severity.INFO, "Classification",
++			candidates.size() + " candidate, " + standard.size() + " standard, " + filtered + " blocked/invalid/limited root(s) out of " + total + ".",
++			"Standard implementation commands remain visible but are not treated as third-party plugin evidence."));
++		if (!standard.isEmpty()) findings.add(new Finding(Finding.Severity.INFO, "Standard implementation surface",
++			standard.stream().map(command -> describeTree(command, maxDepth)).collect(Collectors.joining(" ; ")),
++			"Minecraft/Bukkit/Paper/Spigot surfaces are classified separately and are not actively probed by this module."));
+ 		if (candidates.isEmpty()) {
+ 			findings.add(new Finding(Finding.Severity.PASS, "Non-default candidates", "None marked in the advertised command tree.",
+ 				"Absence is not proof that no plugins are installed; command visibility depends on permissions."));
+ 		} else {
+-			findings.add(new Finding(Finding.Severity.INFO, "Marked non-default candidates",
+-				candidates.stream().map(ChatPluginEnumeratorModule::describeCandidate).collect(Collectors.joining(", ")),
+-				"These are command-tree hints only; no command was sent and plugin ownership is unverified."));
++			findings.add(new Finding(Finding.Severity.INFO, "Recursive candidate surface",
++				candidates.stream().map(command -> describeTree(command, maxDepth)).collect(Collectors.joining(" ; ")),
++				"Paths are passively read from the advertised Brigadier tree; plugin ownership remains unverified."));
+ 		}
+-		return new ModuleResult("Silent command marking completed", findings);
++		return new ModuleResult("Silent recursive command mapping completed", findings);
+ 	}
+ 
+-	private ModuleResult noProbeResult(List<CommandDescriptor> candidates, int filtered) {
+-		return new ModuleResult("Aggressive mode found no safe advertised metadata paths", List.of(
+-			new Finding(Finding.Severity.INFO, "Default filtering", filtered + " advertised/default root(s) excluded.", "Keep default-command filtering enabled."),
+-			new Finding(Finding.Severity.INFO, "Candidate roots",
+-				candidates.isEmpty() ? "No non-default roots were advertised." : candidates.stream().map(CommandDescriptor::root).collect(Collectors.joining(", ")),
+-				"Blank probes are skipped for executable roots; version/v probes require an advertised literal child.")));
++	private ModuleResult noProbeResult(List<CommandDescriptor> candidates, List<CommandDescriptor> standard,
++		int filtered, int maxDepth) {
++		List<Finding> findings = new ArrayList<>();
++		findings.add(new Finding(Finding.Severity.INFO, "Classification", standard.size() + " standard and " + filtered + " excluded root(s).",
++			"Standard roots remain visible rather than being mislabeled as plugins."));
++		findings.add(new Finding(Finding.Severity.INFO, "Candidate trees",
++			candidates.isEmpty() ? "No non-default roots were advertised." : candidates.stream().map(c -> describeTree(c, maxDepth)).collect(Collectors.joining(" ; ")),
++			"Active probes require a non-executable root or an advertised literal metadata path."));
++		return new ModuleResult("Aggressive mode found no safe advertised metadata paths", findings);
+ 	}
+ 
+-	private List<ChatCommandRequest> buildProbePlan(List<CommandDescriptor> candidates, int timeout, int maxMessages) {
++	private List<ChatCommandRequest> buildProbePlan(List<CommandDescriptor> candidates, int timeout, int maxMessages,
++		int maxDepth, int maxProbes) {
+ 		List<ChatCommandRequest> probes = new ArrayList<>();
+ 		for (CommandDescriptor command : candidates) {
+-			// Never invoke a root with no arguments when the server marks it executable.
+-			if (!command.executableWithoutArguments()) probes.add(new ChatCommandRequest(command.root(), ProbeVariant.BLANK, timeout, maxMessages));
+-			// Metadata suffixes are sent only when the server explicitly advertised them as literals.
+-			if (command.hasLiteral("version")) probes.add(new ChatCommandRequest(command.root(), ProbeVariant.VERSION, timeout, maxMessages));
+-			if (command.hasLiteral("v")) probes.add(new ChatCommandRequest(command.root(), ProbeVariant.V, timeout, maxMessages));
++			if (!command.executableWithoutArguments() && probes.size() < maxProbes)
++				probes.add(new ChatCommandRequest(command.root(), ProbeVariant.BLANK, timeout, maxMessages));
++			for (CommandPathDescriptor path : command.descendants()) {
++				if (probes.size() >= maxProbes) break;
++				if (path.literalOnly() && path.segments().size() <= maxDepth && METADATA_LEAVES.contains(path.leaf()))
++					probes.add(ChatCommandRequest.path(command.root(), path.segments(), timeout, maxMessages));
++			}
+ 		}
+ 		return List.copyOf(probes);
+ 	}
+@@ -129,13 +155,18 @@ public final class ChatPluginEnumeratorModule implements ActiveResearchModule {
+ 		return chain.thenApply(List::copyOf);
+ 	}
+ 
+-	private ModuleResult aggressiveResult(List<CommandDescriptor> candidates, int filtered, List<ChatTranscript> transcripts, boolean includeRaw) {
++	private ModuleResult aggressiveResult(List<CommandDescriptor> candidates, List<CommandDescriptor> standard,
++		int filtered, List<ChatTranscript> transcripts, boolean includeRaw, int maxDepth) {
+ 		List<Finding> findings = new ArrayList<>();
+ 		findings.add(new Finding(Finding.Severity.INFO, "Mode",
+ 			"AGGRESSIVE - " + transcripts.size() + " bounded probe(s) completed sequentially across " + candidates.size() + " candidate root(s).",
+ 			"Probes are rate-limited by the client runtime and remain visible to the server."));
+-		findings.add(new Finding(Finding.Severity.INFO, "Default filtering", filtered + " advertised/default root(s) excluded.",
+-			"Only non-default roots from the current advertised command tree were considered."));
++		findings.add(new Finding(Finding.Severity.INFO, "Classification",
++			standard.size() + " standard implementation root(s) visible; " + filtered + " blocked/invalid/limited root(s).",
++			"Only non-default candidates are actively probed."));
++		findings.add(new Finding(Finding.Severity.INFO, "Recursive candidate surface",
++			candidates.stream().map(command -> describeTree(command, maxDepth)).collect(Collectors.joining(" ; ")),
++			"Argument branches are displayed but never used as active probe values."));
+ 
+ 		Map<String, Set<String>> versions = new LinkedHashMap<>();
+ 		Map<String, List<ChatTranscript>> byRoot = transcripts.stream().collect(Collectors.groupingBy(
+@@ -165,12 +196,16 @@ public final class ChatPluginEnumeratorModule implements ActiveResearchModule {
+ 		return new ModuleResult("Filtered chat command enumeration completed", findings);
+ 	}
+ 
+-	private static String describeCandidate(CommandDescriptor command) {
+-		List<String> markers = new ArrayList<>();
+-		markers.add(command.executableWithoutArguments() ? "blank:skipped" : "blank:eligible");
+-		if (command.hasLiteral("version")) markers.add("version");
+-		if (command.hasLiteral("v")) markers.add("v");
+-		return command.root() + "[" + String.join("/", markers) + "]";
++	private static String describeTree(CommandDescriptor command, int maxDepth) {
++		List<String> paths = command.descendants().stream()
++			.filter(path -> path.segments().size() <= maxDepth)
++			.map(path -> command.root() + " " + path.path()
++				+ (path.kind() == CommandPathDescriptor.NodeKind.ARGUMENT ? " <argument>" : "")
++				+ (path.executable() ? " [exec]" : "")
++				+ (path.redirects() ? " [redirect]" : ""))
++			.limit(48).toList();
++		String root = command.root() + (command.executableWithoutArguments() ? " [exec]" : "");
++		return paths.isEmpty() ? root : root + " -> " + String.join(", ", paths);
+ 	}
+ 
+ 	private static String describeTranscript(ChatTranscript transcript) {
+diff --git a/src/test/java/dev/champions/core/module/builtin/ChatPluginEnumeratorModuleTest.java b/src/test/java/dev/champions/core/module/builtin/ChatPluginEnumeratorModuleTest.java
+index fee4cad..0c38a7d 100644
+--- a/src/test/java/dev/champions/core/module/builtin/ChatPluginEnumeratorModuleTest.java
++++ b/src/test/java/dev/champions/core/module/builtin/ChatPluginEnumeratorModuleTest.java
+@@ -1,6 +1,7 @@
+ package dev.champions.core.module.builtin;
+ 
+ import dev.champions.core.module.CommandDescriptor;
++import dev.champions.core.module.CommandPathDescriptor;
+ import dev.champions.core.module.ModuleContext;
+ import dev.champions.core.module.active.ActiveModuleRuntime;
+ import org.junit.jupiter.api.Test;
+@@ -45,6 +46,32 @@ class ChatPluginEnumeratorModuleTest {
+ 		assertTrue(result.findings().stream().anyMatch(finding -> finding.detail().contains("5.4.151")));
+ 	}
+ 
++	@Test void recursivelyMapsTreeAndProbesNestedMetadataOnly() {
++		List<CommandPathDescriptor> paths = List.of(
++			new CommandPathDescriptor(List.of("admin"), CommandPathDescriptor.NodeKind.LITERAL, true, false, false),
++			new CommandPathDescriptor(List.of("admin", "version"), CommandPathDescriptor.NodeKind.LITERAL, true, true, false),
++			new CommandPathDescriptor(List.of("delete"), CommandPathDescriptor.NodeKind.LITERAL, true, true, false),
++			new CommandPathDescriptor(List.of("trust", "player"), CommandPathDescriptor.NodeKind.ARGUMENT, false, true, false));
++		CommandDescriptor claim = new CommandDescriptor("claim", true, List.of("admin", "delete", "trust"), paths);
++		ModuleContext base = context();
++		ModuleContext nested = new ModuleContext(base.connected(), base.integratedServer(), base.memoryTransport(), base.onlineMode(),
++			base.serverAddress(), base.serverBrand(), base.advertisedVersion(), base.advertisedProtocol(), base.pingMillis(),
++			base.onlinePlayers(), base.resourcePackPolicy(), base.playerName(), base.playerPosition(), base.dimension(),
++			base.clientFps(), base.averageReceivedPackets(), base.averageSentPackets(), List.of("claim", "bukkit:version"),
++			List.of(claim, new CommandDescriptor("bukkit:version", true, List.of())));
++		List<String> wires = new ArrayList<>();
++		ActiveModuleRuntime runtime = request -> {
++			wires.add(request.wireCommand());
++			return CompletableFuture.completedFuture(new ActiveModuleRuntime.ChatTranscript(request, List.of("Claim 2.1.0"),
++				ActiveModuleRuntime.Status.COMPLETED, "done"));
++		};
++		var result = new ChatPluginEnumeratorModule().runActive(nested,
++			Map.of("MODE", "aggressive", "INCLUDE_RAW", "false"), runtime).toCompletableFuture().join();
++		assertEquals(List.of("claim admin version"), wires);
++		assertTrue(result.findings().stream().anyMatch(finding -> finding.detail().contains("claim trust player <argument>")));
++		assertTrue(result.findings().stream().anyMatch(finding -> finding.detail().contains("standard implementation root")));
++	}
++
+ 	@Test void extractsLabeledAndBareVersionTokens() {
+ 		assertEquals("5.4.151", ChatPluginEnumeratorModule.extractVersion("LuckPerms version 5.4.151"));
+ 		assertEquals("7.3.0", ChatPluginEnumeratorModule.extractVersion("WorldEdit 7.3.0"));

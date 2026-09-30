@@ -1,6 +1,7 @@
 package dev.champions.core.module.builtin;
 
 import dev.champions.core.module.CommandDescriptor;
+import dev.champions.core.module.CommandPathDescriptor;
 import dev.champions.core.module.ModuleContext;
 import dev.champions.core.module.active.ActiveModuleRuntime;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,32 @@ class ChatPluginEnumeratorModuleTest {
 		assertEquals(List.of("luckperms version", "worldedit", "worldedit v"), wires);
 		assertTrue(wires.stream().noneMatch(command -> command.startsWith("help")));
 		assertTrue(result.findings().stream().anyMatch(finding -> finding.detail().contains("5.4.151")));
+	}
+
+	@Test void recursivelyMapsTreeAndProbesNestedMetadataOnly() {
+		List<CommandPathDescriptor> paths = List.of(
+			new CommandPathDescriptor(List.of("admin"), CommandPathDescriptor.NodeKind.LITERAL, true, false, false),
+			new CommandPathDescriptor(List.of("admin", "version"), CommandPathDescriptor.NodeKind.LITERAL, true, true, false),
+			new CommandPathDescriptor(List.of("delete"), CommandPathDescriptor.NodeKind.LITERAL, true, true, false),
+			new CommandPathDescriptor(List.of("trust", "player"), CommandPathDescriptor.NodeKind.ARGUMENT, false, true, false));
+		CommandDescriptor claim = new CommandDescriptor("claim", true, List.of("admin", "delete", "trust"), paths);
+		ModuleContext base = context();
+		ModuleContext nested = new ModuleContext(base.connected(), base.integratedServer(), base.memoryTransport(), base.onlineMode(),
+			base.serverAddress(), base.serverBrand(), base.advertisedVersion(), base.advertisedProtocol(), base.pingMillis(),
+			base.onlinePlayers(), base.resourcePackPolicy(), base.playerName(), base.playerPosition(), base.dimension(),
+			base.clientFps(), base.averageReceivedPackets(), base.averageSentPackets(), List.of("claim", "bukkit:version"),
+			List.of(claim, new CommandDescriptor("bukkit:version", true, List.of())));
+		List<String> wires = new ArrayList<>();
+		ActiveModuleRuntime runtime = request -> {
+			wires.add(request.wireCommand());
+			return CompletableFuture.completedFuture(new ActiveModuleRuntime.ChatTranscript(request, List.of("Claim 2.1.0"),
+				ActiveModuleRuntime.Status.COMPLETED, "done"));
+		};
+		var result = new ChatPluginEnumeratorModule().runActive(nested,
+			Map.of("MODE", "aggressive", "INCLUDE_RAW", "false"), runtime).toCompletableFuture().join();
+		assertEquals(List.of("claim admin version"), wires);
+		assertTrue(result.findings().stream().anyMatch(finding -> finding.detail().contains("claim trust player <argument>")));
+		assertTrue(result.findings().stream().anyMatch(finding -> finding.detail().contains("standard implementation root")));
 	}
 
 	@Test void extractsLabeledAndBareVersionTokens() {
