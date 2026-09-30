@@ -1,5 +1,6 @@
 package dev.champions.core.module.builtin;
 
+import dev.champions.core.module.EvidenceNode;
 import dev.champions.core.module.Finding;
 import dev.champions.core.module.ModuleContext;
 import dev.champions.core.module.ModuleOption;
@@ -33,6 +34,19 @@ public final class ServerFingerprintModule implements ResearchModule {
 		if (!"unknown".equalsIgnoreCase(c.serverBrand()) && !"vanilla".equalsIgnoreCase(c.serverBrand())) {
 			out.add(new Finding(Finding.Severity.LOW, "Implementation disclosure", "The server identifies itself as " + c.serverBrand() + ".", "Consider a generic brand only if disclosure is outside your threat model; never rely on hiding it as a control."));
 		}
-		return new ModuleResult("Passive fingerprint captured", out);
+		List<EvidenceNode> evidence = List.of(EvidenceNode.group("Server session profile", List.of(
+			EvidenceNode.observed("Address", c.serverAddress(), "The address may identify a proxy rather than the backend server."),
+			EvidenceNode.advertised("Brand", c.serverBrand(), "Client-visible brands are self-reported and are not trust signals."),
+			EvidenceNode.group("Protocol identity", List.of(
+				EvidenceNode.advertised("Version label", c.advertisedVersion(), "Labels can be customized by server or proxy software."),
+				EvidenceNode.observed("Protocol number", Integer.toString(c.advertisedProtocol()), "Captured from the current client session."))),
+			EvidenceNode.group("Session observation", List.of(
+				EvidenceNode.observed("Visible players", Integer.toString(c.onlinePlayers()), "Permission and server configuration can alter the visible player list."),
+				EvidenceNode.observed("Ping", c.pingMillis() + " ms", "A single client-side latency sample is not a server health measurement."))),
+			EvidenceNode.group("Advertised surfaces", List.of(
+				EvidenceNode.advertised("Command roots", Integer.toString(c.advertisedCommandDetails().size()), "Only commands visible to this account are included."),
+				EvidenceNode.observed("Resource-pack policy", c.resourcePackPolicy(), "This reflects client/server session state, not pack content safety.")))
+		)));
+		return new ModuleResult("Passive fingerprint captured", out, evidence);
 	}
 }

@@ -1,5 +1,6 @@
 package dev.champions.core.module.builtin;
 
+import dev.champions.core.module.EvidenceNode;
 import dev.champions.core.module.Finding;
 import dev.champions.core.module.ModuleContext;
 import dev.champions.core.module.ModuleOption;
@@ -38,6 +39,23 @@ public final class ConnectionPostureModule implements ResearchModule {
 		out.add(new Finding(Finding.Severity.INFO, "Observed packet rates",
 			String.format(java.util.Locale.ROOT, "received %.1f/s; sent %.1f/s", c.averageReceivedPackets(), c.averageSentPackets()),
 			"Use server-side rate-limit telemetry for abuse detection; these client averages are informational."));
-		return new ModuleResult("Connection posture reviewed", out);
+		EvidenceNode authentication = new EvidenceNode("Authentication",
+			c.onlineMode() ? "online-mode reported" : "online-mode not reported",
+			EvidenceNode.Source.OBSERVED, EvidenceNode.Confidence.MEDIUM,
+			"A client snapshot cannot verify proxy forwarding secrets or backend reachability.", List.of());
+		List<EvidenceNode> evidence = List.of(EvidenceNode.group("Connection posture", List.of(
+			authentication,
+			EvidenceNode.group("Transport", List.of(
+				EvidenceNode.observed("Type", c.memoryTransport() ? "integrated memory" : "remote network",
+					"Encryption and proxy termination require server-side verification."),
+				EvidenceNode.observed("Integrated server", Boolean.toString(c.integratedServer()), "Derived from current client connection state."))),
+			EvidenceNode.group("Traffic baseline", List.of(
+				new EvidenceNode("Received", String.format(java.util.Locale.ROOT, "%.1f packets/s", c.averageReceivedPackets()),
+					EvidenceNode.Source.OBSERVED, EvidenceNode.Confidence.LOW, "Short client averages vary with chunks, entities, and server activity.", List.of()),
+				new EvidenceNode("Sent", String.format(java.util.Locale.ROOT, "%.1f packets/s", c.averageSentPackets()),
+					EvidenceNode.Source.OBSERVED, EvidenceNode.Confidence.LOW, "Not an authoritative abuse or capacity metric.", List.of()))),
+			EvidenceNode.observed("Resource-pack policy", c.resourcePackPolicy(), "Does not validate the origin or contents of a pack.")
+		)));
+		return new ModuleResult("Connection posture reviewed", out, evidence);
 	}
 }

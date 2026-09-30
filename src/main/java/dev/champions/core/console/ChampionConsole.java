@@ -1,6 +1,7 @@
 package dev.champions.core.console;
 
 import dev.champions.api.java.RuntimeJavaCommands;
+import dev.champions.core.module.EvidenceNode;
 import dev.champions.core.module.ExploitResearchModule;
 import dev.champions.core.module.Finding;
 import dev.champions.core.module.ModuleContext;
@@ -590,6 +591,10 @@ public final class ChampionConsole {
 			return;
 		}
 		for (Finding finding : result.findings()) renderFinding(finding);
+		if (!result.evidence().isEmpty()) {
+			add(ConsoleLine.accent("Structured evidence"));
+			for (EvidenceNode node : result.evidence()) renderEvidence(node, 0);
+		}
 		long elapsed = (System.nanoTime() - started) / 1_000_000L;
 		add(ConsoleLine.success("[+] " + result.summary() + " (" + elapsed + " ms)"));
 		LOG.info("module {} completed in {} ms: {}", module.id(), elapsed, result.summary());
@@ -635,6 +640,16 @@ public final class ChampionConsole {
 		} catch (IOException e) {
 			add(ConsoleLine.error("Reload failed: " + e.getMessage()));
 		}
+	}
+
+	private void renderEvidence(EvidenceNode node, int depth) {
+		String indent = "  ".repeat(Math.min(depth, 8));
+		String value = node.value().isBlank() ? "" : ": " + node.value();
+		String provenance = node.source().name().toLowerCase(Locale.ROOT) + "/"
+			+ node.confidence().name().toLowerCase(Locale.ROOT);
+		add(ConsoleLine.info(indent + "- " + node.label() + value + " [" + provenance + "]"));
+		if (!node.limitation().isBlank()) add(ConsoleLine.muted(indent + "  Limitation: " + node.limitation()));
+		for (EvidenceNode child : node.children()) renderEvidence(child, depth + 1);
 	}
 
 	private void renderFinding(Finding finding) {
