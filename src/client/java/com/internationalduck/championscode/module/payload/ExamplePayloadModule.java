@@ -29,10 +29,9 @@ package com.internationalduck.championscode.module.payload;
  *
  * This example is a dry run: it builds the payload variants in memory and
  * reports their sizes and the dispatch plan, but never sends anything.
- * Registered modules must stay passive inside run(); real dispatch goes
- * through the gated active-module path, or through the plain client-class
- * style shown by CustomPayloadAuditorModule in this folder (whose
- * dispatchPayload method documents the 26.3 CustomPacketPayload wiring).
+ * Registered modules must stay passive inside run(); any future dispatch must
+ * use the gated active-module path with explicit authorization, strict size
+ * and rate limits, and audit logging.
  * ==========================================================================
  */
 
@@ -61,7 +60,7 @@ public final class ExamplePayloadModule implements ResearchModule {
 	@Override public String description() {
 		return "Builds a bounded set of payload variants in memory and reports their sizes and dispatch plan. "
 			+ "It never dispatches: real delivery goes through the gated active path or the adaptation point "
-			+ "documented in CustomPayloadAuditorModule.";
+			+ "documented in this module.";
 	}
 
 	@Override public List<ModuleOption> options() {
@@ -90,7 +89,7 @@ public final class ExamplePayloadModule implements ResearchModule {
 		findings.add(new Finding(Finding.Severity.PASS, "Capability boundary",
 			"Built " + findings.size() + " payload variants in memory and dispatched nothing.",
 			"Wire dispatch through ClientPlayNetworking.send(CustomPacketPayload) after the gates, "
-				+ "or use the adaptation point in CustomPayloadAuditorModule."));
+				+ "only after adding explicit authorization, limits, and audit logging."));
 
 		return new ModuleResult("Planned payload variants for channel " + channel
 			+ " without dispatching", findings);

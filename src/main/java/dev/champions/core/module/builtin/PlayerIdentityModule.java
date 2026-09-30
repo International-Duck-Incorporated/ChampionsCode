@@ -7,6 +7,9 @@ import dev.champions.core.module.ModuleResult;
 import dev.champions.core.module.active.ActiveModuleRuntime;
 import dev.champions.core.module.active.ActiveResearchModule;
 import dev.champions.core.module.net.MojangProfileClient;
+import dev.champions.core.module.net.PlayerIdentityEvents;
+import dev.champions.core.module.net.PlayerProfileDetails;
+import dev.champions.core.module.net.PublicProfileEnrichment;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,13 +27,19 @@ import java.util.concurrent.CompletionStage;
  */
 public final class PlayerIdentityModule implements ActiveResearchModule {
 	private final MojangProfileClient.Gateway gateway;
+	private final boolean enrichPublicProfile;
 
 	public PlayerIdentityModule() {
-		this(MojangProfileClient.HTTP);
+		this(MojangProfileClient.HTTP, true);
 	}
 
 	PlayerIdentityModule(MojangProfileClient.Gateway gateway) {
+		this(gateway, false); // unit tests use a deterministic Mojang-only gateway
+	}
+
+	PlayerIdentityModule(MojangProfileClient.Gateway gateway, boolean enrichPublicProfile) {
 		this.gateway = gateway;
+		this.enrichPublicProfile = enrichPublicProfile;
 	}
 
 	@Override public String id() { return "auxiliary/lookup/player_identity"; }
@@ -103,7 +112,13 @@ public final class PlayerIdentityModule implements ActiveResearchModule {
 		});
 	}
 
-	private static ModuleResult found(MojangProfileClient.Identity identity) {
+	private ModuleResult found(MojangProfileClient.Identity identity) {
+		PlayerProfileDetails details = enrichPublicProfile
+			? PublicProfileEnrichment.lookup(identity)
+			: new PlayerProfileDetails(identity, null, null, List.of(identity.name()),
+				null, null, "disabled for deterministic lookup");
+		PlayerIdentityEvents.publish(details);
+
 		List<Finding> out = new ArrayList<>();
 		out.add(new Finding(Finding.Severity.INFO, "Identity",
 			identity.name() + " - " + identity.dashedUuid(),
@@ -115,6 +130,16 @@ public final class PlayerIdentityModule implements ActiveResearchModule {
 		if (identity.capeUrl() != null) {
 			out.add(new Finding(Finding.Severity.INFO, "Cape", identity.capeUrl(),
 				"Capes often identify map or event participation; public information only."));
+		}
+		if (enrichPublicProfile) {
+			String playerDb = "PlayerDB " + details.playerDbStatus();
+			if (details.playerDbCachedAt() != null) playerDb += ", cached " + details.playerDbCachedAt();
+			if (!details.knownNames().isEmpty()) playerDb += ", names: " + String.join(", ", details.knownNames());
+			out.add(new Finding(Finding.Severity.INFO, "PlayerDB", playerDb,
+				"Third-party cached public data can be stale; Mojang remains the identity authority."));
+			out.add(new Finding(Finding.Severity.INFO, "Public profile links",
+				details.playerDbProfileUrl() + " | " + details.labyProfileUrl(),
+				"PlayerDB and Laby.net are third-party services. Review their privacy policies before use."));
 		}
 		return new ModuleResult("Mojang profile resolved for " + identity.name(), out);
 	}

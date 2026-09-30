@@ -48,13 +48,19 @@ public final class ServerListPing {
 			int close = trimmed.indexOf(']');
 			if (close < 0) return null;
 			String host = trimmed.substring(1, close);
+			if (host.isBlank()) return null;
 			String rest = trimmed.substring(close + 1);
-			if (rest.startsWith(":")) return new EndPoint(host, parsePort(rest.substring(1)));
-			return new EndPoint(host, 25565);
+			if (rest.isEmpty()) return new EndPoint(host, 25565);
+			if (rest.startsWith(":") && rest.substring(1).matches("[0-9]{1,5}")) {
+				int port = parsePort(rest.substring(1));
+				return port == -1 ? null : new EndPoint(host, port);
+			}
+			return null;
 		}
 		int colon = trimmed.lastIndexOf(':');
 		if (colon > 0 && trimmed.indexOf(':') == colon && trimmed.substring(colon + 1).matches("[0-9]{1,5}")) {
-			return new EndPoint(trimmed.substring(0, colon), parsePort(trimmed.substring(colon + 1)));
+			int port = parsePort(trimmed.substring(colon + 1));
+			return port == -1 ? null : new EndPoint(trimmed.substring(0, colon), port);
 		}
 		return new EndPoint(trimmed, 25565);
 	}
@@ -62,9 +68,9 @@ public final class ServerListPing {
 	private static int parsePort(String raw) {
 		try {
 			int port = Integer.parseInt(raw);
-			return port >= 0 && port <= 65535 ? port : 25565;
+			return port >= 1 && port <= 65535 ? port : -1;
 		} catch (NumberFormatException invalid) {
-			return 25565;
+			return -1;
 		}
 	}
 

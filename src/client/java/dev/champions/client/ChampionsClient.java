@@ -6,12 +6,15 @@ import com.mojang.blaze3d.platform.InputConstants;
 import dev.champions.client.java.JavaRuntimeManager;
 import dev.champions.client.ui.ArmedTitleOverlay;
 import dev.champions.client.ui.ExploitWarningScreen;
+import dev.champions.client.ui.ChampionsWorkspaceScreen;
+import dev.champions.client.ui.PlayerIdentityInfoScreen;
 import dev.champions.client.update.GitLabUpdateService;
 import dev.champions.client.update.UpdateNotifier;
 import dev.champions.client.update.UpdateSettings;
 import dev.champions.api.java.RuntimeJavaCommands;
 import dev.champions.core.console.ChampionConsole;
 import dev.champions.core.console.ExploitWarningPrompt;
+import dev.champions.core.module.net.PlayerIdentityEvents;
 import dev.champions.core.update.UpdateService;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
@@ -70,6 +73,16 @@ public final class ChampionsClient implements ClientModInitializer {
 		UpdateService updateService = new GitLabUpdateService();
 		console = new ChampionConsole(configDirectory, contextSupplier, chatRuntime, javaCommands,
 			openClickGui, openCategoryGui, exploitWarningPrompt, updateService, closeUi);
+		PlayerIdentityEvents.setListener(details -> {
+			Minecraft client = Minecraft.getInstance();
+			client.execute(() -> {
+				// A background terminal lookup must never interrupt gameplay. Show the
+				// compact identity card only while the ChampionsCode workspace is open.
+				if (client.gui.screen() instanceof ChampionsWorkspaceScreen workspace) {
+					client.setScreenAndShow(new PlayerIdentityInfoScreen(workspace, details));
+				}
+			});
+		});
 		// Client-side drop-in modules (see docs/exploit-and-payload-files.md):
 		// one console.registerModule(...) line per file dropped into the
 		// exploit or payload folder.
@@ -78,7 +91,10 @@ public final class ChampionsClient implements ClientModInitializer {
 		javaRuntime = new JavaRuntimeManager(configDirectory, contextSupplier, console);
 		javaRuntimeReference.set(javaRuntime);
 		ClientReceiveMessageEvents.GAME.register(chatRuntime::onGameMessage);
-		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> javaRuntime.close());
+		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+			PlayerIdentityEvents.clearListener();
+			javaRuntime.close();
+		});
 		new UpdateNotifier(updateService, updateSettings).register();
 
 		KeyMapping.Category category = KeyMapping.Category.register(id("security_research"));
@@ -94,8 +110,10 @@ public final class ChampionsClient implements ClientModInitializer {
 			InputConstants.KEY_F7,
 			category
 		));
+		// Network probes are dispatched at the start of the client tick, before
+		// the normal movement flush. UI polling and passive sampling stay at END.
+		ClientTickEvents.START_CLIENT_TICK.register(chatRuntime::tick);
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
-			chatRuntime.tick(client);
 			PlayerMotionTelemetry.tick(client);
 			SessionPlayers.capture(client);
 			while (openConsoleKey.consumeClick()) ChampionsScreens.open(client, console, () -> javaRuntime,

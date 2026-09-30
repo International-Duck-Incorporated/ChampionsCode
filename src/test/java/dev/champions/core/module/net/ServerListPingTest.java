@@ -71,7 +71,9 @@ class ServerListPingTest {
 		assertEquals(new ServerListPing.EndPoint("play.example.com", 25565), ServerListPing.parseAddress("play.example.com"));
 		assertEquals(new ServerListPing.EndPoint("play.example.com", 25566), ServerListPing.parseAddress("play.example.com:25566"));
 		assertEquals(new ServerListPing.EndPoint("::1", 25565), ServerListPing.parseAddress("[::1]:25565"));
-		assertEquals(new ServerListPing.EndPoint("host", 25565), ServerListPing.parseAddress("host:99999"));
+		assertNull(ServerListPing.parseAddress("host:99999"));
+		assertNull(ServerListPing.parseAddress("host:0"));
+		assertNull(ServerListPing.parseAddress("[::1]garbage"));
 		assertNull(ServerListPing.parseAddress("singleplayer"));
 		assertNull(ServerListPing.parseAddress("unknown"));
 		assertNull(ServerListPing.parseAddress("  "));

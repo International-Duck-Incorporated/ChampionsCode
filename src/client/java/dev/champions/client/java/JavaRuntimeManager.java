@@ -9,6 +9,8 @@ import dev.champions.core.java.RuntimeJavaCompiler;
 import dev.champions.core.module.ModuleContext;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -35,6 +37,7 @@ import java.util.function.Supplier;
 
 /** Explicitly opted-in, unrestricted runtime Java compiler and addon lifecycle. */
 public final class JavaRuntimeManager implements AutoCloseable {
+	private static final Logger LOG = LoggerFactory.getLogger("champions-runtime-java");
 	private final Path configDirectory;
 	private final Path workspace;
 	private final Path buildRoot;
@@ -321,7 +324,12 @@ public final class JavaRuntimeManager implements AutoCloseable {
 			cleanupStaleBuilds(active.outputRoot());
 		} catch (Throwable error) {
 			if (context != null) context.runCleanup();
-			try { prepared.loader().close(); } catch (IOException ignored) {}
+			try {
+				prepared.loader().close();
+			} catch (IOException closeFailure) {
+				error.addSuppressed(closeFailure);
+				LOG.warn("Could not close failed runtime addon classloader", closeFailure);
+			}
 			deleteRecursively(prepared.outputRoot());
 			emit(ConsoleLine.error("Runtime Java start failed: " + safeMessage(error)));
 			console.recordAudit("java_addon", "client", prepared.sourceSet().manifest().id(), "error", safeMessage(error));
@@ -381,7 +389,9 @@ public final class JavaRuntimeManager implements AutoCloseable {
 		try {
 			CodeSource source = type.getProtectionDomain().getCodeSource();
 			if (source != null) addClasspath(paths, Path.of(source.getLocation().toURI()));
-		} catch (Exception ignored) {}
+		} catch (Exception failure) {
+			LOG.debug("Could not add code source for {}", type.getName(), failure);
+		}
 	}
 
 	private void addClasspath(Set<Path> values, Path candidate) {
@@ -398,7 +408,9 @@ public final class JavaRuntimeManager implements AutoCloseable {
 			}
 			Path path = candidate.toAbsolutePath().normalize();
 			if (Files.exists(path) && (Files.isDirectory(path) || path.toString().endsWith(".jar"))) values.add(path);
-		} catch (IOException | RuntimeException ignored) {}
+		} catch (IOException | RuntimeException failure) {
+			LOG.warn("Skipping unusable runtime Java classpath entry {}", candidate, failure);
+		}
 	}
 
 	private void initializeWorkspace() {
@@ -448,7 +460,9 @@ public final class JavaRuntimeManager implements AutoCloseable {
 					.filter(path -> keep == null || !path.equals(keep))
 					.forEach(JavaRuntimeManager::deleteRecursively);
 			}
-		} catch (IOException ignored) {}
+		} catch (IOException failure) {
+			LOG.warn("Could not clean stale runtime Java build directories under {}", buildRoot, failure);
+		}
 	}
 
 	private static void deleteRecursively(Path root) {
@@ -464,7 +478,9 @@ public final class JavaRuntimeManager implements AutoCloseable {
 					return FileVisitResult.CONTINUE;
 				}
 			});
-		} catch (IOException ignored) {}
+		} catch (IOException failure) {
+			LOG.warn("Could not delete runtime Java path {}", root, failure);
+		}
 	}
 
 	private synchronized void setBusy(boolean value) { busy = value; }

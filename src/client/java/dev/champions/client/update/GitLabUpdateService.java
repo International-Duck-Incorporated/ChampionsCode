@@ -11,6 +11,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,11 +33,16 @@ import java.util.concurrent.CompletionStage;
  */
 public final class GitLabUpdateService implements UpdateService {
 	private static final String HOST = "gitlab.com";
+	private static final String PROJECT_PATH = "/international-duck-incorporated/ChampionsCode/";
+	private static final String PROJECT_API_PREFIX = "/api/v4/projects/86855171/";
+	private static final int MAX_REDIRECTS = 3;
+	private static final int MAX_TEXT_BYTES = 2 * 1024 * 1024;
+	private static final int MAX_JAR_BYTES = 64 * 1024 * 1024;
 	private static final String FEED_URL = "https://" + HOST + "/api/v4/projects/"
 		+ "international-duck-incorporated%2FChampionsCode/releases?per_page=10";
 
 	private final HttpClient http = HttpClient.newBuilder()
-		.followRedirects(HttpClient.Redirect.NORMAL)
+		.followRedirects(HttpClient.Redirect.NEVER)
 		.connectTimeout(Duration.ofSeconds(10))
 		.build();
 
@@ -79,11 +86,15 @@ public final class GitLabUpdateService implements UpdateService {
 			Files.createDirectories(modsDir);
 			Path target = modsDir.resolve(jarName);
 			Path staging = Files.createTempFile(modsDir, jarName + ".", ".part");
-			Files.write(staging, jar);
 			try {
-				Files.move(staging, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-			} catch (java.nio.file.AtomicMoveNotSupportedException fallback) {
-				Files.move(staging, target, StandardCopyOption.REPLACE_EXISTING);
+				Files.write(staging, jar);
+				try {
+					Files.move(staging, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+				} catch (java.nio.file.AtomicMoveNotSupportedException fallback) {
+					Files.move(staging, target, StandardCopyOption.REPLACE_EXISTING);
+				}
+			} finally {
+				Files.deleteIfExists(staging);
 			}
 			return UpdateResult.success("Verified and saved " + jarName + " (SHA-256 " + actual + ").", target.toString());
 		} catch (Exception failure) {
@@ -92,27 +103,60 @@ public final class GitLabUpdateService implements UpdateService {
 	}
 
 	private byte[] fetchBytes(String url) throws IOException, InterruptedException {
-		requireProjectHost(url);
-		HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-			.timeout(Duration.ofSeconds(60))
-			.header("User-Agent", "ChampionsCode/" + currentVersion() + " (mod self-update)")
-			.GET()
-			.build();
-		HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
-		if (response.statusCode() != 200) {
-			throw new IOException("HTTP " + response.statusCode() + " from " + HOST);
+		return fetchBytes(url, MAX_JAR_BYTES);
+	}
+
+	private byte[] fetchBytes(String url, int maximumBytes) throws IOException, InterruptedException {
+		URI uri = URI.create(url);
+		for (int redirect = 0; redirect <= MAX_REDIRECTS; redirect++) {
+			requireProjectUri(uri);
+			HttpRequest request = HttpRequest.newBuilder(uri)
+				.timeout(Duration.ofSeconds(60))
+				.header("User-Agent", "ChampionsCode/" + currentVersion() + " (mod self-update)")
+				.GET().build();
+			HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+			int status = response.statusCode();
+			if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
+				try (InputStream ignored = response.body()) {
+					String location = response.headers().firstValue("location")
+						.orElseThrow(() -> new IOException("Redirect from GitLab had no Location header"));
+					uri = uri.resolve(location);
+					continue;
+				}
+			}
+			if (status != 200) {
+				try (InputStream ignored = response.body()) {
+					throw new IOException("HTTP " + status + " from " + HOST);
+				}
+			}
+			long declared = response.headers().firstValueAsLong("content-length").orElse(-1);
+			if (declared > maximumBytes) throw new IOException("Update response exceeds " + maximumBytes + " bytes");
+			try (InputStream input = response.body(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+				byte[] buffer = new byte[16 * 1024];
+				int total = 0;
+				for (int read; (read = input.read(buffer)) >= 0;) {
+					total += read;
+					if (total > maximumBytes) throw new IOException("Update response exceeds " + maximumBytes + " bytes");
+					output.write(buffer, 0, read);
+				}
+				return output.toByteArray();
+			}
 		}
-		return response.body();
+		throw new IOException("Too many GitLab redirects");
 	}
 
 	private String fetchText(String url) throws IOException, InterruptedException {
-		return new String(fetchBytes(url), StandardCharsets.UTF_8);
+		return new String(fetchBytes(url, MAX_TEXT_BYTES), StandardCharsets.UTF_8);
 	}
 
-	private static void requireProjectHost(String url) {
-		URI uri = URI.create(url);
-		if (!"https".equalsIgnoreCase(uri.getScheme()) || !HOST.equalsIgnoreCase(uri.getHost())) {
-			throw new IllegalArgumentException("Refusing a non-" + HOST + " update URL: " + url);
+	private static void requireProjectUri(URI uri) {
+		String path = uri.getPath();
+		String rawPath = uri.getRawPath();
+		boolean projectPath = path != null && (path.startsWith(PROJECT_PATH) || path.startsWith(PROJECT_API_PREFIX));
+		boolean encodedApiPath = rawPath != null && rawPath.startsWith("/api/v4/projects/international-duck-incorporated%2FChampionsCode/");
+		if (!"https".equalsIgnoreCase(uri.getScheme()) || !HOST.equalsIgnoreCase(uri.getHost())
+			|| (!projectPath && !encodedApiPath)) {
+			throw new IllegalArgumentException("Refusing an update URL outside the ChampionsCode GitLab project: " + uri);
 		}
 	}
 
