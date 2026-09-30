@@ -1,5 +1,6 @@
 package dev.champions.core.module.builtin;
 
+import dev.champions.core.module.EvidenceNode;
 import dev.champions.core.module.Finding;
 import dev.champions.core.module.ModuleContext;
 import dev.champions.core.module.ModuleOption;
@@ -40,6 +41,7 @@ public final class TransactionEchoModule implements ResearchModule {
 
 		ArrayDeque<PacketEvent> pending = new ArrayDeque<>();
 		List<Long> responseMillis = new ArrayList<>();
+		List<TransactionPair> pairs = new ArrayList<>();
 		Map<String, Long> actionClasses = new LinkedHashMap<>();
 		Map<String, Long> updateClasses = new LinkedHashMap<>();
 		int maximumPending = 0;
@@ -53,7 +55,9 @@ public final class TransactionEchoModule implements ResearchModule {
 				updateClasses.merge(event.packetType(), 1L, Long::sum);
 				if (!pending.isEmpty()) {
 					PacketEvent action = pending.removeFirst();
-					responseMillis.add(Math.max(0L, action.ageMillis() - event.ageMillis()));
+					long delay = Math.max(0L, action.ageMillis() - event.ageMillis());
+					responseMillis.add(delay);
+					pairs.add(new TransactionPair(action.packetType(), event.packetType(), delay));
 				}
 			}
 		}
@@ -79,8 +83,22 @@ public final class TransactionEchoModule implements ResearchModule {
 			"Transaction Echo observes existing traffic only and has no packet gate, queue, editor, sender, or flush operation."));
 		findings.add(new Finding(Finding.Severity.INFO, "Update classes", formatCounts(updateClasses),
 			"Use authoritative server transaction logs to validate ownership, revision, and conservation invariants."));
-		return new ModuleResult("Transaction Echo menu-flow summary completed", findings);
+		List<EvidenceNode> pairNodes = pairs.stream().limit(40).map(pair -> new EvidenceNode(
+			pair.actionType() + " → " + pair.updateType(), pair.delayMillis() + " ms",
+			EvidenceNode.Source.DERIVED, EvidenceNode.Confidence.LOW,
+			"Class-level FIFO pairing has no container ID, revision, or slot identity.", List.of())).toList();
+		List<EvidenceNode> evidence = List.of(EvidenceNode.group("Menu transaction flow", List.of(
+			EvidenceNode.observed("Outbound actions", actions + "; " + formatCounts(actionClasses), "Class names only; packet fields are not retained."),
+			EvidenceNode.observed("Inbound updates", updates + "; " + formatCounts(updateClasses), "An update may be unrelated to the oldest pending action."),
+			EvidenceNode.group("Coarse candidate pairs", pairNodes),
+			new EvidenceNode("Unpaired actions", Integer.toString(pending.size()), EvidenceNode.Source.DERIVED,
+				pending.isEmpty() ? EvidenceNode.Confidence.MEDIUM : EvidenceNode.Confidence.LOW,
+				"Latency, unrelated updates, disconnects, and timeline truncation can all leave actions unpaired.", List.of())
+		)));
+		return new ModuleResult("Transaction Echo menu-flow summary completed", findings, evidence);
 	}
+
+	private record TransactionPair(String actionType, String updateType, long delayMillis) {}
 
 	private static boolean isMenuAction(String packetType) {
 		String type = packetType.toLowerCase(Locale.ROOT);

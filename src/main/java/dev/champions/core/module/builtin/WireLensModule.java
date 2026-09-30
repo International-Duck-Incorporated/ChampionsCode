@@ -1,10 +1,12 @@
 package dev.champions.core.module.builtin;
 
+import dev.champions.core.module.EvidenceNode;
 import dev.champions.core.module.Finding;
 import dev.champions.core.module.ModuleContext;
 import dev.champions.core.module.ModuleOption;
 import dev.champions.core.module.ModuleResult;
 import dev.champions.core.module.PacketEvent;
+import dev.champions.core.module.PacketFlowAnalysis;
 import dev.champions.core.module.ResearchModule;
 
 import java.util.ArrayList;
@@ -58,7 +60,27 @@ public final class WireLensModule implements ResearchModule {
 			context.packetFlow().totalInbound() + " inbound; " + context.packetFlow().totalOutbound() + " outbound; "
 				+ context.packetFlow().timelineEvictions() + " old timeline event(s) evicted",
 			"Timeline eviction is normal after the fixed 512-event privacy/memory bound."));
-		return new ModuleResult("Wire Lens flow summary completed", findings);
+		List<EvidenceNode> evidence = List.of(EvidenceNode.group("Packet flow", List.of(
+			flowDirection("Server → Client", inbound, PacketFlowAnalysis.families(events, PacketEvent.Direction.INBOUND), top),
+			flowDirection("Client → Server", outbound, PacketFlowAnalysis.families(events, PacketEvent.Direction.OUTBOUND), top),
+			EvidenceNode.group("Capture bounds", List.of(
+				EvidenceNode.observed("Window", seconds + " seconds", "Only events still present in the bounded timeline are analyzed."),
+				EvidenceNode.observed("Peak observed second", peakSecond + " events", "Age-bucket grouping is approximate and is not server tick timing."),
+				EvidenceNode.observed("Timeline evictions", Long.toString(context.packetFlow().timelineEvictions()), "The local timeline intentionally retains at most 512 metadata events."),
+				EvidenceNode.observed("Payload retention", "none", "Class names, direction, and timing metadata only.")))
+		)));
+		return new ModuleResult("Wire Lens flow summary completed", findings, evidence);
+	}
+
+	private static EvidenceNode flowDirection(String label, Map<String, Long> classes, Map<String, Long> families, int top) {
+		List<EvidenceNode> familyNodes = families.entrySet().stream()
+			.sorted(Map.Entry.<String, Long>comparingByValue(Comparator.reverseOrder()))
+			.map(entry -> EvidenceNode.observed(entry.getKey(), entry.getValue() + " event(s)", "Family is inferred from the packet class name."))
+			.toList();
+		return new EvidenceNode(label, classes.values().stream().mapToLong(Long::longValue).sum() + " event(s)",
+			EvidenceNode.Source.OBSERVED, EvidenceNode.Confidence.HIGH, "Packet bodies are intentionally unavailable.", List.of(
+				EvidenceNode.group("Families", familyNodes),
+				EvidenceNode.observed("Top classes", formatTop(classes, top), "Counts indicate traffic shape, not validity or vulnerability.")));
 	}
 
 	private static Map<String, Long> counts(List<PacketEvent> events, Predicate<PacketEvent> filter) {

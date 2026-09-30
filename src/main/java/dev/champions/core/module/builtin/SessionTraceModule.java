@@ -1,10 +1,12 @@
 package dev.champions.core.module.builtin;
 
+import dev.champions.core.module.EvidenceNode;
 import dev.champions.core.module.Finding;
 import dev.champions.core.module.ModuleContext;
 import dev.champions.core.module.ModuleOption;
 import dev.champions.core.module.ModuleResult;
 import dev.champions.core.module.PacketEvent;
+import dev.champions.core.module.PacketFlowAnalysis;
 import dev.champions.core.module.ResearchModule;
 
 import java.util.List;
@@ -25,7 +27,8 @@ public final class SessionTraceModule implements ResearchModule {
 			new ModuleOption("CONFIRM", "", true, true, "One-run authorization phrase"),
 			new ModuleOption("WINDOW_SECONDS", "5", false, false, "Recent window, 1-30 seconds"),
 			new ModuleOption("MAX_EVENTS", "40", false, false, "Maximum timeline rows, 5-100"),
-			new ModuleOption("DIRECTION", "both", false, false, "both, inbound, or outbound")
+			new ModuleOption("DIRECTION", "both", false, false, "both, inbound, or outbound"),
+			new ModuleOption("FAMILY", "all", false, false, "all, movement, chat, inventory, world, entities, interaction, payload, connection, or other")
 		);
 	}
 
@@ -37,19 +40,40 @@ public final class SessionTraceModule implements ResearchModule {
 			case "inbound", "outbound" -> requestedDirection;
 			default -> "both";
 		};
+		String family = options.getOrDefault("FAMILY", "all").strip().toLowerCase(Locale.ROOT);
 		List<PacketEvent> matching = context.packetFlow().recentEvents().stream()
 			.filter(event -> event.ageMillis() <= seconds * 1_000L)
 			.filter(event -> direction.equals("both") || event.direction().name().equalsIgnoreCase(direction))
+			.filter(event -> family.equals("all") || familyMatches(PacketFlowAnalysis.family(event.packetType()), family))
 			.toList();
 		List<PacketEvent> events = matching.size() <= max ? matching : matching.subList(matching.size() - max, matching.size());
 		String trace = events.stream().map(event -> String.format(Locale.ROOT, "-%dms %s %s",
 			event.ageMillis(), event.direction() == PacketEvent.Direction.INBOUND ? "S→C" : "C→S", event.packetType()))
 			.collect(Collectors.joining(" | "));
+		List<EvidenceNode> rows = events.stream().map(event -> new EvidenceNode(
+			(event.direction() == PacketEvent.Direction.INBOUND ? "S→C" : "C→S") + " " + event.packetType(),
+			"-" + event.ageMillis() + " ms; " + PacketFlowAnalysis.family(event.packetType()),
+			EvidenceNode.Source.OBSERVED, EvidenceNode.Confidence.HIGH,
+			"Timing is relative to snapshot capture and payloads are not retained.", List.of())).toList();
 		return new ModuleResult("Session metadata trace rendered", List.of(
-			new Finding(Finding.Severity.INFO, "Trace scope", events.size() + " event(s), " + direction + ", last " + seconds + "s",
+			new Finding(Finding.Severity.INFO, "Trace scope", events.size() + " event(s), " + direction + ", " + family + " family, last " + seconds + "s",
 				"Increase MAX_EVENTS only when needed; the global timeline remains capped at 512 entries."),
 			new Finding(Finding.Severity.INFO, "Ordered metadata", trace.isEmpty() ? "<no matching events>" : trace,
-				"Payloads are intentionally unavailable and this trace cannot transmit or replay packets to a server.")));
+				"Payloads are intentionally unavailable and this trace cannot transmit or replay packets to a server.")),
+			List.of(EvidenceNode.group("Packet timeline", rows)));
+	}
+
+	private static boolean familyMatches(String classified, String requested) {
+		String value = classified.toLowerCase(Locale.ROOT);
+		return switch (requested) {
+			case "movement" -> value.equals("movement");
+			case "chat" -> value.equals("chat/commands");
+			case "inventory" -> value.equals("inventory/menu");
+			case "world" -> value.equals("world/chunks");
+			case "entities" -> value.equals("entities/players");
+			case "interaction", "payload", "connection", "other" -> value.startsWith(requested);
+			default -> true;
+		};
 	}
 
 	private static int boundedInt(String value, int fallback, int min, int max) {
