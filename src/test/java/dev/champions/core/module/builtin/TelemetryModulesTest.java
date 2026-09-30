@@ -33,6 +33,16 @@ class TelemetryModulesTest {
 			.anyMatch(finding -> finding.title().equals("RemoteTester")));
 	}
 
+	@Test void containerIntegrityComparesRepeatedBoundedSnapshots() {
+		ContainerIntegrityModule module = new ContainerIntegrityModule();
+		module.run(context(), Map.of());
+		var second = module.run(context(), Map.of());
+		assertTrue(second.evidence().stream().flatMap(node -> node.children().stream())
+			.anyMatch(node -> node.label().equals("State revision") && node.value().contains("delta 0")));
+		assertTrue(second.evidence().stream().flatMap(node -> node.children().stream())
+			.anyMatch(node -> node.label().equals("Classes") && node.value().contains("Container")));
+	}
+
 	@Test void traceKeepsNewestRowsWhenCapped() {
 		List<PacketEvent> events = IntStream.range(0, 8)
 			.mapToObj(index -> new PacketEvent(PacketEvent.Direction.INBOUND, "Type" + index, 800L - index * 100L))
