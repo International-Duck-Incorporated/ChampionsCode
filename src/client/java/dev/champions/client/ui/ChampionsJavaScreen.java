@@ -139,6 +139,8 @@ public final class ChampionsJavaScreen extends Screen implements WorkspaceWindow
 			.bounds(sideX, sideY + 26, SIDEBAR_WIDTH - 24, 20).build());
 		track(Button.builder(Component.literal("ClickGUI"), button -> openWindow(dev.champions.client.ChampionsScreens.CLICKGUI))
 			.bounds(sideX, sideY + 52, SIDEBAR_WIDTH - 24, 20).build());
+		track(Button.builder(Component.literal("Log viewer"), button -> openWindow(dev.champions.client.ChampionsScreens.LOGVIEWER))
+			.bounds(sideX, sideY + 72, SIDEBAR_WIDTH - 24, 20).build());
 		track(Button.builder(Component.literal("Status"), button -> runRuntime("status"))
 			.bounds(sideX, sideY + 92, SIDEBAR_WIDTH - 24, 20).build());
 		track(Button.builder(Component.literal("Source hash"), button -> runRuntime("hash"))
@@ -332,11 +334,11 @@ public final class ChampionsJavaScreen extends Screen implements WorkspaceWindow
 			host.requestOpen(windowId);
 			return;
 		}
-		if (dev.champions.client.ChampionsScreens.TERMINAL.equals(windowId)) {
-			minecraft.setScreenAndShow(new ChampionsConsoleScreen(console));
-		} else {
-			minecraft.setScreenAndShow(new ChampionsClickGuiScreen(console, this));
-		}
+		minecraft.setScreenAndShow(switch (windowId) {
+			case dev.champions.client.ChampionsScreens.TERMINAL -> new ChampionsConsoleScreen(console);
+			case dev.champions.client.ChampionsScreens.LOGVIEWER -> new ChampionsLogScreen();
+			default -> new ChampionsClickGuiScreen(console, this);
+		});
 	}
 
 	@Override

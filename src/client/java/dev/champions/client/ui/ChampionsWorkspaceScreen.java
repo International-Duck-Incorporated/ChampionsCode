@@ -20,7 +20,7 @@ import java.util.function.Supplier;
 
 /**
  * Desktop that hosts the ChampionsCode screens (terminal, ClickGUI, category
- * GUI, Java Studio) as independent, simultaneously visible windows.
+ * GUI, Java Studio, log viewer) as independent, simultaneously visible windows.
  *
  * The windows are the existing screens, unchanged: each one is constructed as
  * a delegate, receives this screen as its {@link WorkspaceHost}, and keeps
@@ -40,6 +40,7 @@ public final class ChampionsWorkspaceScreen extends Screen implements WorkspaceH
 	private final Supplier<JavaRuntimeManager> javaRuntime;
 	private final KeyMapping openConsoleBinding;
 	private final KeyMapping openJavaStudioBinding;
+	private final KeyMapping openLogViewerBinding;
 	private final String initialWindow;
 	private final Map<String, Screen> windows = new LinkedHashMap<>();
 	private final List<String> zOrder = new ArrayList<>();
@@ -48,12 +49,14 @@ public final class ChampionsWorkspaceScreen extends Screen implements WorkspaceH
 	private boolean opened;
 
 	public ChampionsWorkspaceScreen(ChampionConsole console, Supplier<JavaRuntimeManager> javaRuntime,
-			KeyMapping openConsoleBinding, KeyMapping openJavaStudioBinding, String initialWindow) {
+			KeyMapping openConsoleBinding, KeyMapping openJavaStudioBinding, KeyMapping openLogViewerBinding,
+			String initialWindow) {
 		super(Component.literal("ChampionsCode Workspace"));
 		this.console = console;
 		this.javaRuntime = javaRuntime;
 		this.openConsoleBinding = openConsoleBinding;
 		this.openJavaStudioBinding = openJavaStudioBinding;
+		this.openLogViewerBinding = openLogViewerBinding;
 		this.initialWindow = initialWindow == null ? ChampionsScreens.TERMINAL : initialWindow;
 	}
 
@@ -89,6 +92,7 @@ public final class ChampionsWorkspaceScreen extends Screen implements WorkspaceH
 		if (window instanceof ChampionsClickGuiScreen clickGui) clickGui.host(this);
 		if (window instanceof ChampionsCategoryGuiScreen categoryGui) categoryGui.host(this);
 		if (window instanceof ChampionsJavaScreen javaScreen) javaScreen.host(this);
+		if (window instanceof ChampionsLogScreen logScreen) logScreen.host(this);
 		windows.put(windowId, window);
 		zOrder.add(windowId);
 		window.init(width, height);
@@ -125,6 +129,7 @@ public final class ChampionsWorkspaceScreen extends Screen implements WorkspaceH
 			case ChampionsScreens.CLICKGUI -> new ChampionsClickGuiScreen(console, null);
 			case ChampionsScreens.CATEGORYGUI -> new ChampionsCategoryGuiScreen(console, null);
 			case ChampionsScreens.JAVASTUDIO -> new ChampionsJavaScreen(console, javaRuntime.get());
+			case ChampionsScreens.LOGVIEWER -> new ChampionsLogScreen();
 			default -> null;
 		};
 	}
@@ -184,6 +189,10 @@ public final class ChampionsWorkspaceScreen extends Screen implements WorkspaceH
 		}
 		if (openJavaStudioBinding != null && openJavaStudioBinding.matches(event)) {
 			toggle(ChampionsScreens.JAVASTUDIO);
+			return true;
+		}
+		if (openLogViewerBinding != null && openLogViewerBinding.matches(event)) {
+			toggle(ChampionsScreens.LOGVIEWER);
 			return true;
 		}
 		if (event.input() == InputConstants.KEY_ESCAPE) {

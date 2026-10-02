@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+- Game log window: **F6** (`logs` in the terminal, or the Java Studio sidebar)
+  opens a live tail of the running game's `logs/latest.log` as another workspace
+  window. It follows the end of the log until you scroll away from the bottom,
+  wraps long lines, numbers and colors them by level, and searches as you type:
+  every match is highlighted, Enter/Shift+Enter and the Prev/Next chips walk the
+  matches with a `[n/total]` counter, `Aa` toggles case sensitivity, `Only`
+  filters to matching lines, and `Level` cycles an ALL/INFO/WARN/ERROR minimum
+  filter that keeps stack-trace continuation lines visible. Click or drag to
+  select lines; Ctrl+C copies the selection, the matches, or the whole buffer.
+  Reads are incremental and bounded (newest 4 000 lines, one short poll per
+  400 ms), survive log rotation, and the window keeps its geometry like the
+  others.
+
 ## 0.1.0-beta.3 - 2026-09-26
 
 Re-release of the 0.1.0-beta.2 changes: the beta.2 tag pipeline built and

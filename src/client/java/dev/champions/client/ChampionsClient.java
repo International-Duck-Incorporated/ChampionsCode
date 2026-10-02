@@ -38,6 +38,7 @@ public final class ChampionsClient implements ClientModInitializer {
 	private JavaRuntimeManager javaRuntime;
 	private KeyMapping openConsoleKey;
 	private KeyMapping openJavaStudioKey;
+	private KeyMapping openLogViewerKey;
 
 	@Override
 	public void onInitializeClient() {
@@ -54,12 +55,17 @@ public final class ChampionsClient implements ClientModInitializer {
 		Runnable openClickGui = () -> {
 			Minecraft client = Minecraft.getInstance();
 			client.execute(() -> ChampionsScreens.open(client, console, () -> javaRuntime,
-				openConsoleKey, openJavaStudioKey, ChampionsScreens.CLICKGUI));
+				openConsoleKey, openJavaStudioKey, openLogViewerKey, ChampionsScreens.CLICKGUI));
 		};
 		Runnable openCategoryGui = () -> {
 			Minecraft client = Minecraft.getInstance();
 			client.execute(() -> ChampionsScreens.open(client, console, () -> javaRuntime,
-				openConsoleKey, openJavaStudioKey, ChampionsScreens.CATEGORYGUI));
+				openConsoleKey, openJavaStudioKey, openLogViewerKey, ChampionsScreens.CATEGORYGUI));
+		};
+		Runnable openLogViewer = () -> {
+			Minecraft client = Minecraft.getInstance();
+			client.execute(() -> ChampionsScreens.open(client, console, () -> javaRuntime,
+				openConsoleKey, openJavaStudioKey, openLogViewerKey, ChampionsScreens.LOGVIEWER));
 		};
 		Runnable closeUi = () -> {
 			Minecraft client = Minecraft.getInstance();
@@ -72,7 +78,7 @@ public final class ChampionsClient implements ClientModInitializer {
 		UpdateSettings updateSettings = new UpdateSettings(configDirectory);
 		UpdateService updateService = new GitLabUpdateService();
 		console = new ChampionConsole(configDirectory, contextSupplier, chatRuntime, javaCommands,
-			openClickGui, openCategoryGui, exploitWarningPrompt, updateService, closeUi);
+			openClickGui, openCategoryGui, openLogViewer, exploitWarningPrompt, updateService, closeUi);
 		PlayerIdentityEvents.setListener(details -> {
 			Minecraft client = Minecraft.getInstance();
 			client.execute(() -> {
@@ -110,6 +116,12 @@ public final class ChampionsClient implements ClientModInitializer {
 			InputConstants.KEY_F7,
 			category
 		));
+		openLogViewerKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+			"key.champions.open_log_viewer",
+			InputConstants.Type.KEYBOARD,
+			InputConstants.KEY_F6,
+			category
+		));
 		// Network probes are dispatched at the start of the client tick, before
 		// the normal movement flush. UI polling and passive sampling stay at END.
 		ClientTickEvents.START_CLIENT_TICK.register(chatRuntime::tick);
@@ -117,9 +129,11 @@ public final class ChampionsClient implements ClientModInitializer {
 			PlayerMotionTelemetry.tick(client);
 			SessionPlayers.capture(client);
 			while (openConsoleKey.consumeClick()) ChampionsScreens.open(client, console, () -> javaRuntime,
-				openConsoleKey, openJavaStudioKey, ChampionsScreens.TERMINAL);
+				openConsoleKey, openJavaStudioKey, openLogViewerKey, ChampionsScreens.TERMINAL);
 			while (openJavaStudioKey.consumeClick()) ChampionsScreens.open(client, console, () -> javaRuntime,
-				openConsoleKey, openJavaStudioKey, ChampionsScreens.JAVASTUDIO);
+				openConsoleKey, openJavaStudioKey, openLogViewerKey, ChampionsScreens.JAVASTUDIO);
+			while (openLogViewerKey.consumeClick()) ChampionsScreens.open(client, console, () -> javaRuntime,
+				openConsoleKey, openJavaStudioKey, openLogViewerKey, ChampionsScreens.LOGVIEWER);
 		});
 		ArmedTitleOverlay.register();
 		String version = FabricLoader.getInstance().getModContainer(MOD_ID)
@@ -129,7 +143,7 @@ public final class ChampionsClient implements ClientModInitializer {
 			"hash-gated runtime Java and update checks ready",
 			version,
 			FabricLoader.getInstance().getEnvironmentType());
-		LOGGER.info("keybinds: F8 console, F7 Java Studio (toggle their window while the workspace is open); commands: clickgui, categorygui, java, exit");
+		LOGGER.info("keybinds: F8 console, F7 Java Studio, F6 log viewer (toggle their window while the workspace is open); commands: clickgui, categorygui, logs, java, exit");
 	}
 
 	public static Identifier id(String path) {

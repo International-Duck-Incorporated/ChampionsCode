@@ -11,7 +11,7 @@ import java.util.function.Supplier;
 
 /**
  * Single entry point for every "open a ChampionsCode UI" trigger (keybinds,
- * console commands). All UIs live as windows of one shared
+ * console commands, navigation buttons). All UIs live as windows of one shared
  * {@link ChampionsWorkspaceScreen}, so opening one never closes another:
  * if a workspace is already open the window is toggled inside it, otherwise a
  * fresh workspace is created.
@@ -21,11 +21,13 @@ public final class ChampionsScreens {
 	public static final String CLICKGUI = "clickgui";
 	public static final String CATEGORYGUI = "categorygui";
 	public static final String JAVASTUDIO = "javastudio";
+	public static final String LOGVIEWER = "log";
 
 	private ChampionsScreens() {}
 
 	public static void open(Minecraft client, ChampionConsole console, Supplier<JavaRuntimeManager> javaRuntime,
-			KeyMapping openConsoleBinding, KeyMapping openJavaStudioBinding, String windowId) {
+			KeyMapping openConsoleBinding, KeyMapping openJavaStudioBinding, KeyMapping openLogViewerBinding,
+			String windowId) {
 		Screen current = client.gui.screen();
 		if (current instanceof ChampionsWorkspaceScreen workspace) {
 			// Commands and navigation buttons focus an existing window; toggling
@@ -35,7 +37,7 @@ public final class ChampionsScreens {
 			return;
 		}
 		client.setScreenAndShow(new ChampionsWorkspaceScreen(console, javaRuntime,
-			openConsoleBinding, openJavaStudioBinding, windowId));
+			openConsoleBinding, openJavaStudioBinding, openLogViewerBinding, windowId));
 	}
 
 	/** Closes the terminal window (used by the console's exit command). */

@@ -61,6 +61,21 @@ class ChampionConsoleTest {
 		assertTrue(console.currentTargetView().authorized());
 	}
 
+	@Test void logCommandsOpenTheLogViewerWindow() {
+		AtomicInteger opened = new AtomicInteger();
+		ChampionConsole console = new ChampionConsole(temp, ChampionConsoleTest::context,
+			ActiveModuleRuntime.disabled(), command -> {}, () -> {}, () -> {}, opened::incrementAndGet,
+			ExploitWarningPrompt.unavailable(), null, null);
+		console.submit("logs");
+		console.submit("log");
+		console.submit("logviewer");
+		assertEquals(3, opened.get());
+		// Consoles built without the hook (all shorter constructors) must not throw.
+		ChampionConsole defaultConsole = new ChampionConsole(temp, ChampionConsoleTest::context);
+		defaultConsole.submit("logs");
+		assertTrue(defaultConsole.lines().stream().noneMatch(line -> line.text().startsWith("Unknown command")));
+	}
+
 	@Test void exploitWorkspaceRequiresFreshPopupAcknowledgementForEveryRun() {
 		AtomicInteger prompts = new AtomicInteger();
 		AtomicReference<ExploitWarningPrompt.Request> request = new AtomicReference<>();

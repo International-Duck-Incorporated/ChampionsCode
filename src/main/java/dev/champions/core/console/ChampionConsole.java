@@ -45,6 +45,7 @@ public final class ChampionConsole {
 	private final RuntimeJavaCommands runtimeJava;
 	private final Runnable openClickGui;
 	private final Runnable openCategoryGui;
+	private final Runnable openLogViewer;
 	private final ExploitWarningPrompt exploitWarningPrompt;
 	private final UpdateService updateService;
 	private final Runnable closeUi;
@@ -102,11 +103,20 @@ public final class ChampionConsole {
 		ActiveModuleRuntime activeRuntime, RuntimeJavaCommands runtimeJava, Runnable openClickGui,
 		Runnable openCategoryGui, ExploitWarningPrompt exploitWarningPrompt, UpdateService updateService,
 		Runnable closeUi) {
+		this(configDirectory, contextSupplier, activeRuntime, runtimeJava, openClickGui, openCategoryGui,
+			() -> {}, exploitWarningPrompt, updateService, closeUi);
+	}
+
+	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier,
+		ActiveModuleRuntime activeRuntime, RuntimeJavaCommands runtimeJava, Runnable openClickGui,
+		Runnable openCategoryGui, Runnable openLogViewer, ExploitWarningPrompt exploitWarningPrompt,
+		UpdateService updateService, Runnable closeUi) {
 		this.contextSupplier = contextSupplier;
 		this.activeRuntime = activeRuntime;
 		this.runtimeJava = runtimeJava;
-		this.openClickGui = openClickGui;
-		this.openCategoryGui = openCategoryGui;
+		this.openClickGui = openClickGui == null ? () -> {} : openClickGui;
+		this.openCategoryGui = openCategoryGui == null ? () -> {} : openCategoryGui;
+		this.openLogViewer = openLogViewer == null ? () -> {} : openLogViewer;
 		this.exploitWarningPrompt = exploitWarningPrompt == null ? ExploitWarningPrompt.unavailable() : exploitWarningPrompt;
 		this.updateService = updateService == null ? UpdateService.disabled() : updateService;
 		this.closeUi = closeUi == null ? () -> {} : closeUi;
@@ -142,6 +152,7 @@ public final class ChampionConsole {
 				case "help", "?" -> help(args);
 				case "clickgui" -> openClickGui.run();
 				case "categorygui", "windowgui", "panelgui" -> openCategoryGui.run();
+				case "logs", "log", "logviewer", "logview" -> openLogViewer.run();
 				case "banner" -> banner();
 				case "clear" -> lines.clear();
 				case "show" -> show(args);
@@ -338,7 +349,7 @@ public final class ChampionConsole {
 		switch (topic) {
 			case "console", "commands" -> {
 				add(ConsoleLine.accent("Console command reference"));
-				add(ConsoleLine.info("  clickgui | categorygui | show modules|exploits | search <text> | use <module> | info | back"));
+				add(ConsoleLine.info("  clickgui | categorygui | logs | show modules|exploits | search <text> | use <module> | info | back"));
 				add(ConsoleLine.info("  show options | set <name> <value> | unset <name> | run"));
 				add(ConsoleLine.info("  authorize current | deauthorize current | show targets"));
 				add(ConsoleLine.info("  update check | update download <version>"));
@@ -354,6 +365,7 @@ public final class ChampionConsole {
 				add(ConsoleLine.accent("Quick start"));
 				add(ConsoleLine.info("  clickgui - open the sorted list interface"));
 				add(ConsoleLine.info("  categorygui - open movable category windows"));
+				add(ConsoleLine.info("  logs - open the live game log window with search"));
 				add(ConsoleLine.info("  authorize current - authorize the connected server in game"));
 				add(ConsoleLine.info("  help console - command reference | help java - runtime Java reference"));
 				add(ConsoleLine.muted("  Modules remain authorization-gated and audited."));

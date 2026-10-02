@@ -24,21 +24,23 @@ the top-right minimize, maximize, and close controls. Terminal output remains
 mouse-selectable and can be copied with Ctrl+C.
 
 All UIs live together in one windowed workspace: press **F8** for the terminal,
-**F7** for the Java Studio, run `clickgui` for the sorted-list interface (where the
-warning-gated **Exploits** filter remains available), or `categorygui` for the
-movable category-window interface. Every UI is an independent window that stays
-open next to the others - open the terminal, pull the ClickGUI alongside it, and
-add Java Studio or the category panels, all visible and usable at once. Each
-window keeps its own drag, resize, minimize, maximize, and close controls; F7/F8
-toggle their window while the workspace is open, and ESC (or closing the last
-window) closes the whole workspace. F7 and F8 can both be rebound under the
-ChampionsCode controls category. All custom drag handlers use Minecraft 26.3's
+**F7** for the Java Studio, **F6** for the game log viewer, run `clickgui` for the
+sorted-list interface (where the warning-gated **Exploits** filter remains
+available), `categorygui` for the movable category-window interface, or `logs`
+for the log viewer. Every UI is an independent window that stays open next to
+the others - open the terminal, pull the ClickGUI alongside it, and add Java
+Studio, the log viewer, or the category panels, all visible and usable at once.
+Each window keeps its own drag, resize, minimize, maximize, and close controls;
+F6/F7/F8 toggle their window while the workspace is open, and ESC (or closing
+the last window) closes the whole workspace. All three keybinds can be rebound
+under the ChampionsCode controls category. All custom drag handlers use Minecraft 26.3's
 one-based mouse-button values. None of these screens dim the world behind them
 while open, and the main menu carries a small ARMED identification box with the
 installed version.
 
 - `clickgui`, `categorygui`, `show modules`, `search`, `use`, `info`, `show options`
 - `set`, `unset`, `run`, `back`, `status`, `reload`, `exit` (closes the terminal)
+- `logs` (also `log`) opens the live game log window described below
 - `update check`, `update download <version>` (see [Updates](#updates))
 - Sorted-list ClickGUI with a module search box, structured option editors, a
   recently-seen players dropdown (including players who left) for player
@@ -80,6 +82,42 @@ Included modules:
 | `auxiliary/observe/motion_evidence` | Passively summarizes broad remote-player motion evidence without verdicts, reporting, or punishment. |
 | `auxiliary/exploits/example_preflight` | Drop-in example for the exploit folder: passively reviews the session snapshot and sends nothing. |
 | `auxiliary/payloads/example_plan` | Drop-in example for the payload folder: builds bounded payload variants in memory and reports the plan without dispatching. |
+
+### Game log viewer
+
+Press **F6**, or run `logs` in the terminal, to open the log window: a live tail
+of the running game's own output log, `logs/latest.log` in the game directory
+(the same file the launcher's log window shows), read incrementally so only what
+the game appended since the last poll is decoded. The window is a normal
+workspace window - drag it by the title bar, resize it from the bottom-right
+grip, minimize, maximize, and keep it open beside the terminal and the other
+panels.
+
+Search is the point of the window:
+
+- typing in the search field filters and highlights **every** occurrence in the
+  buffered log, in place, while the window keeps following the game
+- **Enter** jumps to the next match, **Shift+Enter** to the previous one, and the
+  `Prev`/`Next` chips do the same with a `[n/total]` counter in the status bar
+- `Aa` toggles case sensitivity, `Only` hides every line that does not match
+- `Level: ALL` cycles a minimum-level filter (ALL -> INFO -> WARN -> ERROR);
+  stack-trace continuation lines have no level of their own and stay visible
+  under every filter, so an error never loses its cause
+- `Live` returns to the newest line: the window follows the end of the log
+  (`tail -f` style, header shows LIVE) until you scroll away from the bottom, and
+  then new lines keep arriving without moving your view (header shows PAUSED).
+  `End` jumps back to the newest line, `Home` to the oldest buffered one
+- clicking a line selects it, dragging extends the selection, and **Ctrl+C**
+  copies the selection - or every matching line, or the whole 4 000-line buffer
+  when nothing is selected or searched. The status bar confirms what was copied
+- lines are colored by level (WARN yellow, ERROR/FATAL red, debug dimmed) and
+  error/warning lines get a marker stripe in the gutter, next to their line
+  number
+
+The buffer keeps the newest 4 000 lines; older ones are dropped as the log
+grows, which the status bar reports. When the game rotates the file (a new
+launch replaces `latest.log`), the window notes the rotation and keeps reading
+the new file instead of blanking out.
 
 ### Drop-in exploit and payload folders
 
