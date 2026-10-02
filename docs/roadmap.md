@@ -32,6 +32,12 @@
   the implemented bounded text inventory review
 - Test-server fixtures for reproducible plugin configuration audits
 
+## maybe?
+### 1. **`Cheat detection`**
+* **Purpose:** Detect cheaters client side.
+* **Functionality:** basically a anitcheat inside of the mode.
+* **Configurable Settings:** not sure
+
 ## Out of scope
 
 - Downloading, remotely supplying, or automatically starting runtime Java
