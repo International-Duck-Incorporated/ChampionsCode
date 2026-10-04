@@ -33,11 +33,8 @@
   the implemented bounded text inventory review
 - Test-server fixtures for reproducible plugin configuration audits
 
-## Out of scope
-
-- Downloading, remotely supplying, or automatically starting runtime Java
-- Runtime JAR, Lua, JavaScript, native library, or remote-code loaders
-- Third-party server exploitation or indiscriminate scanning
-- Credential/session-token handling
-- Stealth, anti-cheat bypass, persistence, or destructive modules
-- Network behavior that is not explicit, bounded, authorized, and auditable
+## maybe?
+### 1. **`Cheat detection`**
+* **Purpose:** Detect cheaters client side.
+* **Functionality:** basically a anitcheat inside of the mode.
+* **Configurable Settings:** not sure
