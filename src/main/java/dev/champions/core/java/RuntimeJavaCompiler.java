@@ -23,6 +23,14 @@ public final class RuntimeJavaCompiler {
 	}
 
 	public static CompilationResult compile(JavaSourceSet sourceSet, Path outputDirectory, List<Path> classpath) throws IOException {
+		return compile(sourceSet.sources(), outputDirectory, classpath);
+	}
+
+	/** Compiles a previously captured source list, such as an external module bundle. */
+	public static CompilationResult compile(List<Path> sources, Path outputDirectory, List<Path> classpath) throws IOException {
+		if (sources == null || sources.isEmpty()) {
+			return new CompilationResult(false, List.of("No Java source files were supplied."));
+		}
 		JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
 		if (compiler == null) {
 			return new CompilationResult(false, List.of("No system Java compiler is available. Launch Minecraft with a full JDK 25 installation."));
@@ -30,7 +38,7 @@ public final class RuntimeJavaCompiler {
 		Files.createDirectories(outputDirectory);
 		DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
 		try (StandardJavaFileManager files = compiler.getStandardFileManager(diagnostics, Locale.ROOT, StandardCharsets.UTF_8)) {
-			Iterable<? extends JavaFileObject> units = files.getJavaFileObjectsFromPaths(sourceSet.sources());
+			Iterable<? extends JavaFileObject> units = files.getJavaFileObjectsFromPaths(sources);
 			List<String> options = new ArrayList<>();
 			options.add("--release");
 			options.add("25");

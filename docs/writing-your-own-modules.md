@@ -6,19 +6,20 @@ mechanism lives elsewhere and is linked at the end of every section:
 
 | You want to… | Read the section | Reference doc |
 |---|---|---|
-| Add a Java file to the repo that shows up in every GUI | [Drop-in module](#1-drop-in-module-in-the-exploit--payload-folders) | `exploit-and-payload-files.md` |
+| Drop a `.java` module outside `src/` without rebuilding | [External runtime module](external-java-modules.md) | `external-java-modules.md` |
+| Add a client-side module to the source tree | [Build-time drop-in module](#1-build-time-drop-in-module-in-the-exploit--payload-folders) | `exploit-and-payload-files.md` |
 | Add a builtin module to the core registry | [Builtin module](#2-builtin-module-in-the-core-source-set) | `module-authoring.md` |
-| Add code without rebuilding the mod jar | [Runtime Java addon](#3-runtime-java-addon-no-rebuild) | `runtime-java.md` |
+| Add a separate runtime Java addon | [Runtime Java addon](#3-runtime-java-addon-no-rebuild) | `runtime-java.md` |
 
-All three routes end in the same place: your module appears in the F8 terminal
-(`show modules`, `use <id>`, `info`, `show options`, `set`, `run`), the sorted
-ClickGUI (F8 → `clickgui`), and the category GUI — with the authorization gate,
-audit logging, and the exploit warning popup applied automatically based on the
-interfaces your module implements.
+External modules, client-source modules, and builtins implement `ResearchModule`
+and appear in the F8 terminal, ClickGUI, and category GUI. The normal module
+authorization and audit workflow applies, with the extra exploit warning for
+`ExploitResearchModule`. Runtime Java addons are a separate unrestricted
+single-entrypoint developer feature; they do not register as research modules.
 
 ---
 
-## 1. Drop-in module (in the `exploit` + `payload` folders)
+## 1. Build-time drop-in module (in the `exploit` + `payload` folders)
 
 The fastest route. One self-contained class in
 `src/client/java/com/internationalduck/championscode/module/exploit/` (or

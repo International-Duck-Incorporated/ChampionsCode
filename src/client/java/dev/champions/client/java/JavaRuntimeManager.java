@@ -7,6 +7,7 @@ import dev.champions.core.java.JavaAddonManifest;
 import dev.champions.core.java.JavaSourceSet;
 import dev.champions.core.java.RuntimeJavaCompiler;
 import dev.champions.core.module.ModuleContext;
+import dev.champions.core.module.ResearchModule;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import org.slf4j.Logger;
@@ -45,6 +46,7 @@ public final class JavaRuntimeManager implements AutoCloseable {
 	private final Supplier<ModuleContext> contextSupplier;
 	private final ChampionConsole console;
 	private final ExecutorService compilerExecutor;
+	private final JavaModuleRuntime moduleRuntime;
 	private List<String> lastDiagnostics = List.of();
 	private LoadedAddon active;
 	private boolean busy;
@@ -62,6 +64,8 @@ public final class JavaRuntimeManager implements AutoCloseable {
 			thread.setDaemon(true);
 			return thread;
 		});
+		this.moduleRuntime = new JavaModuleRuntime(this.configDirectory, this.settings, this.console,
+			this.compilerExecutor, this::runtimeClasspath);
 		initializeWorkspace();
 	}
 
@@ -142,6 +146,7 @@ public final class JavaRuntimeManager implements AutoCloseable {
 				case "hash" -> hash();
 				case "confirm" -> confirm(argument);
 				case "settings" -> settings(argument);
+				case "modules" -> moduleRuntime.submit(argument);
 				case "compile" -> beginCompile(false);
 				case "start", "run", "reload" -> beginCompile(true);
 				case "stop" -> stopActive("manual");
@@ -159,7 +164,8 @@ public final class JavaRuntimeManager implements AutoCloseable {
 		emit(ConsoleLine.info("  java settings | settings reload"));
 		emit(ConsoleLine.info("  java confirm <current-sha256>"));
 		emit(ConsoleLine.info("  java compile | start | reload | stop"));
-		emit(ConsoleLine.warning("This feature executes unrestricted Java inside Minecraft. It is not sandboxed."));
+		emit(ConsoleLine.info("  java modules status | sources | hash | confirm <sha256> | compile | reload | unload"));
+		emit(ConsoleLine.warning("Runtime addons and external modules execute unrestricted Java inside Minecraft; neither is sandboxed."));
 	}
 
 	private void status() {
@@ -169,6 +175,7 @@ public final class JavaRuntimeManager implements AutoCloseable {
 		emit(ConsoleLine.info("  developer_mode=" + settings.developerMode()));
 		emit(ConsoleLine.info("  settings=" + settings.file()));
 		emit(ConsoleLine.info("  workspace=" + workspace));
+		emit(ConsoleLine.info("  external_modules=" + workspace.getParent().resolve("modules")));
 		try {
 			JavaSourceSet sourceSet = JavaSourceSet.capture(workspace);
 			emit(ConsoleLine.info("  source_hash=" + sourceSet.sha256()));
@@ -380,6 +387,8 @@ public final class JavaRuntimeManager implements AutoCloseable {
 		for (String entry : raw.split(java.util.regex.Pattern.quote(File.pathSeparator))) addClasspath(result, Path.of(entry));
 		FabricLoader.getInstance().getAllMods().forEach(mod -> mod.getOrigin().getPaths().forEach(path -> addClasspath(result, path)));
 		addCodeSource(result, ChampionRuntimeAddon.class);
+		addCodeSource(result, ResearchModule.class);
+		addCodeSource(result, ModuleContext.class);
 		addCodeSource(result, Minecraft.class);
 		addCodeSource(result, FabricLoader.class);
 		return List.copyOf(result);
@@ -489,6 +498,7 @@ public final class JavaRuntimeManager implements AutoCloseable {
 	@Override public synchronized void close() {
 		if (closed) return;
 		closed = true;
+		moduleRuntime.close();
 		stopActive("client_shutdown");
 		compilerExecutor.shutdownNow();
 	}

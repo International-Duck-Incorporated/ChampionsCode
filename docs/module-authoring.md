@@ -9,9 +9,12 @@ Champions has two module types:
 Both are registered in `ModuleRegistry`. `ExploitResearchModule` is a marker for
 research workflows that require the separate Exploits workspace and a fresh
 legal-risk popup before every run; it does not grant an additional capability.
-Runtime Java addons are a separate, explicitly unsafe developer facility and are
-not a way to bypass these module rules. See `runtime-java.md` and
-`exploit-research.md` for their lifecycle and review models.
+Build-time modules follow the restrictions below as an authoring contract.
+External Java modules and runtime addons are explicitly unsafe, unrestricted
+code inside the Minecraft process; their source-hash confirmation is a review
+step, not a sandbox or an enforcement boundary. See
+`external-java-modules.md`, `runtime-java.md`, and `exploit-research.md` for the
+loading, lifecycle, and review models.
 
 ## Required properties
 

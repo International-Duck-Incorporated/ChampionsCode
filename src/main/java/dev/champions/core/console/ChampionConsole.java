@@ -21,11 +21,14 @@ import dev.champions.core.update.UpdateService;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
@@ -55,6 +58,7 @@ public final class ChampionConsole {
 	private String runningModuleId;
 	private String approvedExploitRunModuleId;
 	private boolean exploitWarningPending;
+	private ResearchModule pendingExploitModule;
 	private final Map<String, String> activeOptions = new LinkedHashMap<>();
 
 	public ChampionConsole(Path configDirectory, Supplier<ModuleContext> contextSupplier) {
@@ -133,6 +137,34 @@ public final class ChampionConsole {
 	public synchronized void registerModule(ResearchModule module) {
 		registry.register(module);
 		LOG.info("drop-in module registered: {}", module.id());
+	}
+
+	/** Atomically swaps the external runtime-module group without disturbing builtins. */
+	public synchronized void replaceExternalModules(Collection<String> previousIds,
+		Collection<? extends ResearchModule> replacements) {
+		Set<String> removed = new LinkedHashSet<>();
+		for (String id : previousIds) removed.add(normalizeModuleId(id));
+		String activeId = activeModule == null ? null : normalizeModuleId(activeModule.id());
+		String pendingId = pendingExploitModule == null ? null : normalizeModuleId(pendingExploitModule.id());
+		if (runningModuleId != null && removed.contains(normalizeModuleId(runningModuleId))) {
+			throw new IllegalStateException("Cannot replace runtime modules while one of them is running: " + runningModuleId);
+		}
+		registry.replace(removed, replacements);
+		if (activeId != null && removed.contains(activeId)) {
+			activeModule = null;
+			activeOptions.clear();
+		}
+		if (pendingId != null && removed.contains(pendingId)) {
+			pendingExploitModule = null;
+			exploitWarningPending = false;
+		}
+		if (approvedExploitRunModuleId != null && removed.contains(normalizeModuleId(approvedExploitRunModuleId))) {
+			approvedExploitRunModuleId = null;
+		}
+	}
+
+	private static String normalizeModuleId(String id) {
+		return id == null ? "" : id.toLowerCase(Locale.ROOT);
 	}
 
 	public synchronized void submit(String rawInput) {
@@ -359,7 +391,8 @@ public final class ChampionConsole {
 				add(ConsoleLine.accent("Runtime Java command reference"));
 				add(ConsoleLine.info("  java status | sources | classpath | hash | confirm <sha256>"));
 				add(ConsoleLine.info("  java compile | start | reload | stop | diagnostics"));
-				add(ConsoleLine.warning("Runtime Java is unrestricted code execution and is disabled by default."));
+				add(ConsoleLine.info("  java modules status | sources | hash | confirm <sha256> | compile | reload | unload"));
+				add(ConsoleLine.warning("Runtime addons and external modules are unrestricted Java and disabled by default."));
 			}
 			default -> {
 				add(ConsoleLine.accent("Quick start"));
@@ -525,24 +558,25 @@ public final class ChampionConsole {
 		Map<String, String> options = Map.copyOf(activeOptions);
 		long started = System.nanoTime();
 		boolean activeAction = module instanceof ActiveResearchModule active && active.performsActiveAction(options);
+		boolean activeJob = module instanceof ActiveResearchModule;
 		add(ConsoleLine.accent("[*] Running " + module.id() + " against current connection"));
 		LOG.info("module {} starting against {}", module.id(), decision.normalizedTarget());
 		try {
 			if (module instanceof ActiveResearchModule active) {
+				runningModuleId = module.id();
 				if (activeAction) {
-					runningModuleId = module.id();
 					add(ConsoleLine.warning("[>] AGGRESSIVE action authorized; probes are sequential, filtered, and rate-limited…"));
 					audit.record("module_run", decision.normalizedTarget(), module.id(), "started", "Bounded active command probes started");
 				} else {
 					add(ConsoleLine.muted("[*] SILENT mode selected; no command will be sent."));
 				}
 				active.runActive(context, options, activeRuntime).whenComplete((result, error) ->
-					finishRun(module, decision.normalizedTarget(), started, result, error, activeAction));
+					finishRun(module, decision.normalizedTarget(), started, result, error, activeJob));
 			} else {
 				finishRun(module, decision.normalizedTarget(), started, module.run(context, options), null, false);
 			}
 		} catch (RuntimeException e) {
-			finishRun(module, decision.normalizedTarget(), started, null, e, activeAction);
+			finishRun(module, decision.normalizedTarget(), started, null, e, activeJob);
 		}
 	}
 
@@ -552,30 +586,41 @@ public final class ChampionConsole {
 			return;
 		}
 		exploitWarningPending = true;
+		pendingExploitModule = module;
 		String target = AuthorizationPolicy.normalizeHost(contextSupplier.get().serverAddress());
 		AtomicBoolean resolved = new AtomicBoolean();
 		ExploitWarningPrompt.Request request = new ExploitWarningPrompt.Request(
 			module.id(), module.name(), target, module.legalRiskSummary(),
 			() -> {
 				if (!resolved.compareAndSet(false, true)) return;
-				approveExploitRun(module.id(), target);
+				approveExploitRun(module, target);
 			},
 			() -> {
 				if (!resolved.compareAndSet(false, true)) return;
-				cancelExploitRun(module.id(), target);
+				cancelExploitRun(module, target);
 			}
 		);
 		try {
 			exploitWarningPrompt.request(request);
 		} catch (RuntimeException error) {
-			exploitWarningPending = false;
+			if (pendingExploitModule == module) {
+				exploitWarningPending = false;
+				pendingExploitModule = null;
+			}
 			throw error;
 		}
 	}
 
-	private synchronized void approveExploitRun(String moduleId, String target) {
-		exploitWarningPending = false;
-		if (activeModule == null || !activeModule.id().equals(moduleId)) {
+	private synchronized void approveExploitRun(ResearchModule requestedModule, String target) {
+		String moduleId = requestedModule.id();
+		boolean currentWarning = exploitWarningPending && pendingExploitModule == requestedModule;
+		if (currentWarning) {
+			exploitWarningPending = false;
+			pendingExploitModule = null;
+		}
+		// Compare the instance and pending warning, not only the id: a hot-reloaded
+		// module may reuse its id while an old warning dialog is still open.
+		if (!currentWarning || activeModule != requestedModule) {
 			add(ConsoleLine.warning("Exploit-research run cancelled because the selected module changed."));
 			audit.record("exploit_warning", target, moduleId, "cancelled", "Selection changed before acknowledgement");
 			return;
@@ -586,11 +631,17 @@ public final class ChampionConsole {
 		runActive();
 	}
 
-	private synchronized void cancelExploitRun(String moduleId, String target) {
-		exploitWarningPending = false;
-		approvedExploitRunModuleId = null;
-		add(ConsoleLine.warning("Exploit-research run cancelled at the legal-risk warning."));
-		audit.record("exploit_warning", target, moduleId, "cancelled", "Per-run warning declined or unavailable");
+	private synchronized void cancelExploitRun(ResearchModule requestedModule, String target) {
+		String moduleId = requestedModule.id();
+		if (pendingExploitModule == requestedModule) {
+			exploitWarningPending = false;
+			pendingExploitModule = null;
+			approvedExploitRunModuleId = null;
+			add(ConsoleLine.warning("Exploit-research run cancelled at the legal-risk warning."));
+		} else {
+			add(ConsoleLine.warning("Stale exploit-research warning dismissed after the module changed."));
+		}
+		audit.record("exploit_warning", target, moduleId, "cancelled", "Per-run warning declined, dismissed, or module replaced");
 	}
 
 	private synchronized void finishRun(ResearchModule module, String target, long started, ModuleResult result, Throwable error, boolean wasActive) {

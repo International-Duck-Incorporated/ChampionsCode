@@ -19,6 +19,12 @@ available to the game process. Only run source that you wrote or fully reviewed.
 A stripped Java runtime does not provide `javax.tools.JavaCompiler`; compilation
 will remain unavailable until the game is launched with a full JDK 25.
 
+This document describes the single-entrypoint `ChampionRuntimeAddon` workspace.
+For `.java` files that implement `ResearchModule` and appear in the console and
+module GUIs, use the separate [external Java module workflow](external-java-modules.md).
+Both workflows share `developerMode=true`, but each has its own independently
+confirmed source hash.
+
 ## Workspace
 
 ChampionsCode creates:
@@ -26,9 +32,14 @@ ChampionsCode creates:
 ```text
 .minecraft/config/champions-mod/
 ├── java-runtime.properties
-└── java/
-    ├── champion-java.json
-    ├── Example.java
+├── java/
+│   ├── champion-java.json
+│   ├── Example.java
+│   └── .build/
+└── modules/
+    ├── MyResearchModule.java
+    ├── experiments/
+    │   └── AnotherModule.java
     └── .build/
 ```
 
@@ -38,6 +49,13 @@ rejected so the confirmation hash covers the files that will be compiled.
 
 Generated classes are written beneath `.build/`. That directory is managed by
 ChampionsCode and must not contain source files.
+
+The sibling `modules/` directory is for auto-discovered `ResearchModule`
+implementations, not `ChampionRuntimeAddon` entrypoints. Its Java files compile
+together, register in the module console and GUIs, and use an independent
+`confirmedModuleHash` value in `java-runtime.properties`. See
+[`external-java-modules.md`](external-java-modules.md) for its commands, source
+limits, and module template.
 
 ## Manifest
 
@@ -120,6 +138,7 @@ Edit `java-runtime.properties`:
 ```properties
 developerMode=true
 confirmedSourceHash=
+confirmedModuleHash=
 ```
 
 Reload settings and inspect the source hash:

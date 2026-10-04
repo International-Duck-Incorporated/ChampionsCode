@@ -15,6 +15,7 @@
 - Passive, non-verdict remote-player motion evidence
 - In-game exact-target authorization management, one-run confirmation, and audit log
 - Hash-gated runtime Java addon compilation with a persistent reload lifecycle
+- Recursively discovered external `.java` ResearchModules outside `src/`, with separate source-hash confirmation, atomic registry replacement, and no manual registration
 - Clean-room older-project ports for plugin review, declared dependency posture,
   defensive chat normalization, and non-solving chat-game fairness analysis
 - Separately warned Exploits workspace with entry and per-run legal-risk popups

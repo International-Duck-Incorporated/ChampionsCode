@@ -4,14 +4,15 @@
 
 A **client-side Fabric mod for Minecraft Java Edition 26.3** that provides an
 msfconsole-inspired workflow for authorized, defensive server/plugin research,
-plus an explicitly enabled runtime Java addon development system.
+plus hash-gated runtime Java addons and external Java research modules that can
+be dropped into a config folder outside `src/`.
 
 > **Status:** `0.1.0-beta.3` - third beta (re-release of beta.2 with fixed release publishing). The project builds, tests,
 > and produces an installable Fabric JAR. It includes packet-flow, metadata
 > replay, inventory-integrity, passive transaction-flow, client-resilience,
 > passive motion, bounded older-project ports, a separately warned
-> exploit-research workspace, and plug-and-play exploit and payload drop-in
-> folders.
+> exploit-research workspace, build-time exploit/payload source folders, and a
+> hash-confirmed runtime Java module folder outside `src/`.
 
 ## What is implemented
 
@@ -132,7 +133,23 @@ its conventions. Registered drop-ins are wired from the `ChampionsClient`
 entrypoint through `ChampionConsole.registerModule(...)`, because the core
 `ModuleRegistry` cannot see the client source set. See
 [`docs/exploit-and-payload-files.md`](docs/exploit-and-payload-files.md) for
-the layout, plug-and-play rules, and registration path.
+the build-time layout and registration path.
+
+### External Java modules (outside `src/`)
+
+For true drop-in modules that do not require rebuilding the mod, put `.java`
+files in `.minecraft/config/champions-mod/modules/` (subfolders are scanned
+recursively). They implement `ResearchModule` and are automatically registered
+in the F8 console and both module GUIs after `java modules reload`; no source
+edit to `ChampionsClient` or `ModuleRegistry` is needed. This uses the existing
+runtime compiler, JDK 25 requirement, explicit developer-mode opt-in, and a
+separate SHA-256 confirmation for the complete module source set. See
+[`docs/external-java-modules.md`](docs/external-java-modules.md) for the exact
+commands and a working Java template.
+
+This remains unrestricted Java execution inside the game process, not a
+sandbox. The hash requires a deliberate review step but cannot make unknown Java
+safe. The `.java` source set is limited to 128 files and 2 MiB.
 
 ### Telemetry boundaries
 
@@ -235,9 +252,9 @@ assess.
 The research modules intentionally do **not** include exploit delivery,
 credential or token collection, stealth, arbitrary remote scanning, packet
 fuzzing, arbitrary command execution, permission/namespace bypasses, or
-destructive checks. Runtime Java is a separate, local developer feature with an
-explicit unsafe-mode and source-hash gate; once started, its code is unrestricted
-and is outside the module capability boundary.
+destructive checks. Runtime addons and external Java modules are local developer
+features with explicit opt-in and source-hash gates; once loaded, Java code is
+unrestricted and is outside the module capability boundary.
 
 ## Requirements
 
@@ -421,7 +438,8 @@ Gradle writes the playable mod JAR and the optional developer source JAR to
 `-sources.jar` is for IDEs and source browsing only. Tests cover command parsing,
 authorization, bounded telemetry/transaction correlation, defensive normalization
 and prompt classification, declared-inventory posture, passive plugin review,
-deterministic runtime-source hashing, manifest validation, and JDK compilation.
+deterministic runtime-source and external-module hashing, manifest validation,
+module discovery, and JDK compilation.
 
 The GitLab CI pipeline (`.gitlab-ci.yml`) runs on pushes to `main` and on
 merge requests targeting `main`. It uses Java 25, verifies the configured
@@ -444,7 +462,7 @@ src/main/java/dev/champions/
 ├── api/java/      # runtime addon entrypoint and context API
 └── core/
     ├── console/   # command shell and safe parsing
-    ├── java/      # manifest, source hashing, and JDK compiler wrapper
+    ├── java/      # runtime source bundles, module discovery, manifest, and JDK compiler wrapper
     ├── module/    # module SPI, context, findings, built-ins
     └── security/  # exact-host authorization and audit logging
 
@@ -456,7 +474,9 @@ src/client/java/dev/champions/client/
 ├── InventoryTelemetry.java
 ├── PlayerMotionTelemetry.java
 ├── SessionPlayers.java
-├── java/JavaRuntimeManager.java
+├── java/
+│   ├── JavaRuntimeManager.java
+│   └── JavaModuleRuntime.java
 ├── mixin/ChampionsConnectionMixin.java
 └── ui/
     ├── ChampionsConsoleScreen.java
@@ -467,9 +487,12 @@ src/client/java/dev/champions/client/
     ├── WorkspaceHost.java
     ├── WorkspaceWindow.java
     └── WindowChrome.java
+
+examples/modules/ExampleResearchModule.java  # copy into config/champions-mod/modules/
 ```
 
 See [`docs/runtime-java.md`](docs/runtime-java.md),
+[`docs/external-java-modules.md`](docs/external-java-modules.md),
 [`docs/module-authoring.md`](docs/module-authoring.md),
 [`docs/exploit-research.md`](docs/exploit-research.md),
 [`docs/research-influences.md`](docs/research-influences.md),
