@@ -6,13 +6,16 @@ mechanism lives elsewhere and is linked at the end of every section:
 
 | You want to… | Read the section | Reference doc |
 |---|---|---|
-| Drop a `.java` module outside `src/` without rebuilding | [External runtime module](external-java-modules.md) | `external-java-modules.md` |
+| Drop a `.java` module outside `src/` and have it load itself | [External runtime module](external-java-modules.md) | `external-java-modules.md` |
 | Add a client-side module to the source tree | [Build-time drop-in module](#1-build-time-drop-in-module-in-the-exploit--payload-folders) | `exploit-and-payload-files.md` |
 | Add a builtin module to the core registry | [Builtin module](#2-builtin-module-in-the-core-source-set) | `module-authoring.md` |
 | Add a separate runtime Java addon | [Runtime Java addon](#3-runtime-java-addon-no-rebuild) | `runtime-java.md` |
 
 External modules, client-source modules, and builtins implement `ResearchModule`
-and appear in the F8 terminal, ClickGUI, and category GUI. The normal module
+and appear in the F8 terminal, ClickGUI, and category GUI. The external route is
+plug and play: a file saved under `config/champions-mod/modules/` - in any
+subfolder, at any depth - is compiled and registered by the running client, so
+the fastest way to try a module is to paste it there and open the console. The normal module
 authorization and audit workflow applies, with the extra exploit warning for
 `ExploitResearchModule`. Runtime Java addons are a separate unrestricted
 single-entrypoint developer feature; they do not register as research modules.

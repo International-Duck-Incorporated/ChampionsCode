@@ -124,7 +124,7 @@ public final class ChampionsJavaScreen extends Screen implements WorkspaceWindow
 		commandInput = new EditBox(font, centerX + 14, windowY + windowHeight - 23,
 			Math.max(60, centerWidth - 94), 17, Component.literal("Java runtime command"));
 		commandInput.setMaxLength(2048);
-		commandInput.setHint(Component.literal("status | hash | confirm <sha256> | modules status/hash/confirm/compile/reload/unload"));
+		commandInput.setHint(Component.literal("status | modules folder/status/auto/reload/unload | hash | confirm <sha256>"));
 		commandInput.setBordered(false);
 		commandInput.setTextColor(0xFFEDE9F6);
 		track(commandInput);

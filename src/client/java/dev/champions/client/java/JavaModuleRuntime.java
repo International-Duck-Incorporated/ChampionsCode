@@ -2,6 +2,7 @@ package dev.champions.client.java;
 
 import dev.champions.core.console.ChampionConsole;
 import dev.champions.core.console.ConsoleLine;
+import dev.champions.core.java.ModuleFolderWatcher;
 import dev.champions.core.java.RuntimeJavaCompiler;
 import dev.champions.core.java.RuntimeModuleDiscovery;
 import dev.champions.core.java.RuntimeModuleSourceSet;
@@ -32,19 +33,45 @@ import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
-/** Hash-gated compiler and lifecycle for ResearchModule source files outside src/. */
+/**
+ * Plug-and-play compiler and lifecycle for ResearchModule source files outside src/.
+ *
+ * <p>With plug-and-play enabled (the default) every `.java` file below the module
+ * drop folder, at any depth, is compiled and registered automatically: once at
+ * startup and, unless the folder watcher is told otherwise, again whenever the
+ * folder changes. No hash confirmation and no rebuild are involved. When the
+ * user turns it off, the previous manual workflow applies unchanged: opt in with
+ * `developerMode=true`, review the files, confirm the printed SHA-256, then run
+ * `java modules reload`.</p>
+ */
 final class JavaModuleRuntime implements AutoCloseable {
 	private static final String AUDIT_ID = "external-java-modules";
 	private static final Pattern MODULE_ID = Pattern.compile("[a-z0-9][a-z0-9._-]*(?:/[a-z0-9][a-z0-9._-]*)*");
 	private static final Pattern OPTION_NAME = Pattern.compile("[A-Z][A-Z0-9_]{0,31}");
+	/** The drop folder is polled once per second, which is far below any perceptible delay. */
+	private static final int POLL_INTERVAL_TICKS = 20;
 	private final Path workspace;
 	private final Path buildRoot;
 	private final JavaRuntimeSettings settings;
 	private final ChampionConsole console;
 	private final Executor compilerExecutor;
 	private final Supplier<List<Path>> classpathSupplier;
+	private final ModuleFolderWatcher watcher;
 	private RuntimeModules active;
 	private List<String> lastDiagnostics = List.of();
+	/** Fingerprint of a state that already failed, so a broken file is not retried every poll. */
+	private RuntimeModuleSourceSet.FolderFingerprint failedFingerprint;
+	/** Hash the user explicitly unloaded, so plug-and-play does not immediately load it again. */
+	private String suppressedHash;
+	/** Fingerprint being compiled right now, used to record a failed state accurately. */
+	private RuntimeModuleSourceSet.FolderFingerprint attemptFingerprint;
+	private int tickCounter;
+	private int autoLoads;
+	private boolean autoAnnounced;
+	private boolean autoLoadAttempted;
+	private boolean compilerWarningEmitted;
+	private boolean runtimeWarningEmitted;
+	private boolean deferralNoticeEmitted;
 	private boolean busy;
 	private boolean closed;
 
@@ -56,8 +83,11 @@ final class JavaModuleRuntime implements AutoCloseable {
 		this.console = console;
 		this.compilerExecutor = compilerExecutor;
 		this.classpathSupplier = classpathSupplier;
+		this.watcher = new ModuleFolderWatcher(this.workspace);
 		initializeWorkspace();
 	}
+
+	Path workspace() { return workspace; }
 
 	synchronized void submit(String rawCommand) {
 		String command = rawCommand == null ? "" : rawCommand.strip();
@@ -74,8 +104,10 @@ final class JavaModuleRuntime implements AutoCloseable {
 				case "sources", "list" -> sources();
 				case "hash" -> hash();
 				case "confirm" -> confirm(argument);
-				case "compile" -> beginCompile(false);
-				case "reload", "load", "start" -> beginCompile(true);
+				case "auto", "plugandplay", "plug-and-play" -> auto(argument);
+				case "folder", "path", "where" -> folder();
+				case "compile" -> beginCompile(false, false);
+				case "reload", "load", "start" -> beginCompile(true, false);
 				case "unload", "stop" -> unload();
 				case "diagnostics" -> diagnostics();
 				default -> emit(ConsoleLine.error("Unknown module command: " + operation + ". Try java modules help."));
@@ -85,35 +117,272 @@ final class JavaModuleRuntime implements AutoCloseable {
 		}
 	}
 
-	private void help() {
+	private synchronized void help() {
+		try {
+			settings.reload();
+		} catch (RuntimeException ignored) {
+			// Options below fall back to the last values read; commands report read failures.
+		}
 		emit(ConsoleLine.accent("External Java research modules"));
-		emit(ConsoleLine.info("  java modules status | sources | hash | diagnostics"));
-		emit(ConsoleLine.info("  java modules confirm <current-sha256>"));
+		emit(ConsoleLine.info("  java modules status | sources | folder | diagnostics"));
+		emit(ConsoleLine.info("  java modules auto | auto on | auto off | auto now | auto watch on|off"));
 		emit(ConsoleLine.info("  java modules compile | reload | unload"));
-		emit(ConsoleLine.muted("Drop .java files anywhere below " + workspace));
+		emit(ConsoleLine.info("  java modules hash | confirm <current-sha256>   (manual mode only)"));
+		emit(ConsoleLine.muted("Drop .java files anywhere below " + workspace + " (subfolders are searched recursively)."));
+		if (settings.plugAndPlay()) {
+			emit(ConsoleLine.success("Plug-and-play is on: files are compiled and registered automatically."));
+		} else {
+			emit(ConsoleLine.warning("Plug-and-play is off: review the files, then confirm the printed hash before loading."));
+		}
 		emit(ConsoleLine.warning("External Java is unrestricted code in Minecraft, not a sandbox. Review every file."));
 	}
 
-	private void status() throws IOException {
-		settings.reload();
-		RuntimeModuleSourceSet sourceSet = RuntimeModuleSourceSet.capture(workspace);
-		emit(ConsoleLine.accent("External Java module status"));
-		emit(ConsoleLine.info("  workspace=" + workspace));
-		emit(ConsoleLine.info("  developer_mode=" + settings.developerMode()));
-		emit(ConsoleLine.info("  source_files=" + sourceSet.sources().size() + " bytes=" + sourceSet.totalBytes()));
-		emit(ConsoleLine.info("  source_hash=" + sourceSet.sha256()));
-		emit(ConsoleLine.info("  hash_confirmed=" + sourceSet.sha256().equals(settings.confirmedModuleHash())));
-		emit(ConsoleLine.info("  state=" + (busy ? "compiling" : active == null ? "inactive" : "loaded")));
-		if (active != null) {
-			emit(ConsoleLine.info("  loaded_hash=" + active.sourceHash()));
-			emit(ConsoleLine.info("  loaded_modules=" + String.join(", ", active.ids())));
-			if (!sourceSet.sha256().equals(active.sourceHash())) {
-				emit(ConsoleLine.warning("  source files changed; the previously confirmed modules remain loaded until reload or unload."));
+	private synchronized void folder() throws IOException {
+		RuntimeModuleSourceSet.FolderFingerprint fingerprint = RuntimeModuleSourceSet.fingerprint(workspace);
+		emit(ConsoleLine.accent("Module drop folder"));
+		emit(ConsoleLine.info("  " + workspace));
+		emit(ConsoleLine.info("  exists=" + !fingerprint.absent()
+			+ " source_files=" + fingerprint.fileCount() + " bytes=" + fingerprint.totalBytes()));
+		emit(ConsoleLine.muted("  Any .java file below this folder, at any depth, is discovered automatically."));
+	}
+
+	private synchronized void auto(String argument) throws IOException {
+		String value = argument == null ? "" : argument.strip().toLowerCase(Locale.ROOT);
+		switch (value) {
+			case "" -> autoStatus();
+			case "on", "enable", "true", "start" -> setPlugAndPlay(true);
+			case "off", "disable", "false", "stop" -> setPlugAndPlay(false);
+			case "now", "reload", "sync", "load" -> forceReconcile();
+			case "watch on", "watch true", "autoreload on" -> setAutoReload(true);
+			case "watch off", "watch false", "autoreload off" -> setAutoReload(false);
+			default -> {
+				emit(ConsoleLine.error("Unknown auto option: " + value));
+				emit(ConsoleLine.info("  java modules auto | auto on | auto off | auto now | auto watch on|off"));
 			}
 		}
 	}
 
-	private void sources() throws IOException {
+	private synchronized void autoStatus() {
+		settings.reload();
+		emit(ConsoleLine.accent("Plug-and-play modules"));
+		emit(ConsoleLine.info("  plug_and_play=" + settings.plugAndPlay() + "  auto_reload=" + settings.autoReload()));
+		emit(ConsoleLine.info("  folder=" + workspace));
+		emit(ConsoleLine.info("  watching=" + watching()));
+		emit(ConsoleLine.info("  auto_loads=" + autoLoads + "  loaded=" + (active == null ? "none" : String.join(", ", active.ids()))));
+		if (failedFingerprint != null) {
+			emit(ConsoleLine.warning("  failed_state=the current files failed to load; fix them, or run java modules auto now"));
+		}
+		if (suppressedHash != null) {
+			emit(ConsoleLine.info("  unloaded_hash=" + shortHash(suppressedHash) + " (reloads when the files change)"));
+		}
+		emit(ConsoleLine.info("  settings=" + settings.file()));
+		emit(ConsoleLine.muted("  Drops are picked up within about two seconds; nothing has to be typed."));
+	}
+
+	private synchronized void setPlugAndPlay(boolean enabled) throws IOException {
+		settings.setPlugAndPlay(enabled);
+		failedFingerprint = null;
+		suppressedHash = null;
+		deferralNoticeEmitted = false;
+		console.recordAudit("java_module_plug_and_play", "client", AUDIT_ID, enabled ? "enabled" : "disabled", workspace.toString());
+		if (!enabled) {
+			emit(ConsoleLine.warning("Plug-and-play is off. Already loaded modules stay registered; the drop folder is no longer watched."));
+			emit(ConsoleLine.info("  Use java modules hash + java modules confirm <sha256> + java modules reload to load changes manually."));
+			return;
+		}
+		emit(ConsoleLine.success("Plug-and-play is on: .java files below the drop folder are compiled and registered automatically."));
+		emit(ConsoleLine.warning("  Only keep files there that you wrote or have fully reviewed; they run with the permissions of Minecraft."));
+		watcher.invalidate();
+		autoLoadAttempted = false;
+	}
+
+	private synchronized void setAutoReload(boolean enabled) throws IOException {
+		settings.setAutoReload(enabled);
+		console.recordAudit("java_module_auto_reload", "client", AUDIT_ID, enabled ? "enabled" : "disabled", workspace.toString());
+		if (enabled) {
+			emit(ConsoleLine.success("The drop folder is watched: changes load automatically while the game runs."));
+			watcher.invalidate();
+		} else {
+			emit(ConsoleLine.success("Automatic reload is off. Modules load once at startup; use java modules auto now for a manual reload."));
+		}
+	}
+
+	/** Re-reads the folder immediately instead of waiting for the next poll. */
+	private synchronized void forceReconcile() throws IOException {
+		settings.reload();
+		if (!settings.plugAndPlay()) {
+			emit(ConsoleLine.error("Plug-and-play is off. Run java modules reload after confirming the current hash."));
+			return;
+		}
+		failedFingerprint = null;
+		suppressedHash = null;
+		deferralNoticeEmitted = false;
+		reconcile(RuntimeModuleSourceSet.fingerprint(workspace), true);
+	}
+
+	private synchronized void status() throws IOException {
+		settings.reload();
+		RuntimeModuleSourceSet sourceSet = RuntimeModuleSourceSet.capture(workspace);
+		emit(ConsoleLine.accent("External Java module status"));
+		emit(ConsoleLine.info("  workspace=" + workspace));
+		emit(ConsoleLine.info("  plug_and_play=" + settings.plugAndPlay() + "  auto_reload=" + settings.autoReload()));
+		emit(ConsoleLine.info("  watching=" + watching()));
+		emit(ConsoleLine.info("  developer_mode=" + settings.developerMode()));
+		emit(ConsoleLine.info("  source_files=" + sourceSet.sources().size() + " bytes=" + sourceSet.totalBytes()));
+		emit(ConsoleLine.info("  source_hash=" + sourceSet.sha256()));
+		if (settings.plugAndPlay()) {
+			emit(ConsoleLine.info("  hash_confirmed=automatic (plug-and-play records each loaded hash in the audit log)"));
+		} else {
+			emit(ConsoleLine.info("  hash_confirmed=" + sourceSet.sha256().equals(settings.confirmedModuleHash())));
+		}
+		emit(ConsoleLine.info("  state=" + (busy ? "compiling" : active == null ? "inactive" : "loaded")));
+		emit(ConsoleLine.info("  auto_loads=" + autoLoads));
+		if (active != null) {
+			emit(ConsoleLine.info("  loaded_hash=" + active.sourceHash()));
+			emit(ConsoleLine.info("  loaded_modules=" + String.join(", ", active.ids())));
+			if (!sourceSet.sha256().equals(active.sourceHash())) {
+				emit(ConsoleLine.warning(settings.plugAndPlay()
+					? "  source files changed; the new files load automatically on the next check."
+					: "  source files changed; the previously confirmed modules remain loaded until reload or unload."));
+			}
+		}
+		if (failedFingerprint != null) {
+			emit(ConsoleLine.warning("  failed_state=the current files did not load; java modules diagnostics shows the compiler output."));
+		}
+		if (suppressedHash != null) {
+			emit(ConsoleLine.info("  unloaded_hash=" + shortHash(suppressedHash) + " (stays unloaded until the files change)"));
+		}
+	}
+
+	/**
+	 * Runs once per game tick from the client entrypoint. Every second it checks
+	 * whether the drop folder changed and, when it did, loads the new state.
+	 * This is what makes the folder plug-and-play: the user only ever writes files.
+	 */
+	synchronized void tick() {
+		if (closed) return;
+		if (++tickCounter < POLL_INTERVAL_TICKS) return;
+		tickCounter = 0;
+		try {
+			settings.reload();
+		} catch (RuntimeException error) {
+			if (!runtimeWarningEmitted) {
+				runtimeWarningEmitted = true;
+				emit(ConsoleLine.warning("Could not read " + settings.file() + ": " + safeMessage(error)));
+			}
+			return;
+		}
+		if (!settings.plugAndPlay()) {
+			autoAnnounced = false;
+			return;
+		}
+		if (!autoAnnounced) {
+			autoAnnounced = true;
+			emit(ConsoleLine.accent("Plug-and-play modules"));
+			emit(ConsoleLine.info("  folder=" + workspace + " (searched recursively)"));
+			emit(ConsoleLine.warning("  .java files dropped there are compiled and registered automatically."));
+			emit(ConsoleLine.muted("  java modules status | java modules auto | java modules unload"));
+		}
+		if (busy) return;
+		if (!settings.autoReload() && autoLoadAttempted) return;
+		if (!console.runningModuleId().isEmpty()) {
+			// Never swap the module group under a run that is still using it. The
+			// watcher keeps its pending change, so the next poll picks it up.
+			if (!deferralNoticeEmitted) {
+				try {
+					if (watcher.hasUnreportedChange()) {
+						deferralNoticeEmitted = true;
+						emit(ConsoleLine.info("The drop folder changed. " + console.runningModuleId()
+							+ " is running, so the new files load when it finishes."));
+					}
+				} catch (IOException ignored) {
+					// A folder that cannot be read right now is reported by the poll below.
+				}
+			}
+			return;
+		}
+		deferralNoticeEmitted = false;
+		RuntimeModuleSourceSet.FolderFingerprint change;
+		try {
+			var polled = watcher.poll();
+			if (polled.isEmpty()) return;
+			change = polled.get();
+		} catch (IOException | RuntimeException error) {
+			if (!runtimeWarningEmitted) {
+				runtimeWarningEmitted = true;
+				emit(ConsoleLine.warning("Could not inspect the module drop folder: " + safeMessage(error)));
+			}
+			return;
+		}
+		autoLoadAttempted = true;
+		reconcile(change, false);
+	}
+
+	/** Brings the registry in line with the folder state that the watcher reported. */
+	private synchronized void reconcile(RuntimeModuleSourceSet.FolderFingerprint fingerprint, boolean forced) {
+		if (failedFingerprint != null && failedFingerprint.equals(fingerprint)) return;
+		if (fingerprint.absent()) {
+			if (active != null) {
+				emit(ConsoleLine.warning("The module drop folder is gone; the loaded modules stay registered until it returns or you run java modules unload."));
+			}
+			failedFingerprint = fingerprint;
+			return;
+		}
+		RuntimeModuleSourceSet sourceSet;
+		try {
+			sourceSet = RuntimeModuleSourceSet.capture(workspace);
+		} catch (IOException error) {
+			emit(ConsoleLine.error("Could not read the module drop folder: " + safeMessage(error)));
+			failedFingerprint = fingerprint;
+			return;
+		}
+		if (suppressedHash != null && suppressedHash.equals(sourceSet.sha256())) return;
+		if (active != null && sourceSet.sha256().equals(active.sourceHash())) {
+			// The folder matches what is loaded, so whatever failed before is resolved
+			// (for example the user reverted a broken edit or deleted a clashing file).
+			failedFingerprint = null;
+			if (forced) emit(ConsoleLine.muted("The drop folder is unchanged; the loaded modules are already current."));
+			return;
+		}
+		if (sourceSet.sources().isEmpty()) {
+			if (active == null) return;
+			emit(ConsoleLine.info("No .java files are left in the drop folder; unloading the previous module group."));
+			unload();
+			return;
+		}
+		if (!RuntimeJavaCompiler.available()) {
+			if (!compilerWarningEmitted) {
+				compilerWarningEmitted = true;
+				emit(ConsoleLine.error("No system Java compiler is available, so plug-and-play cannot compile the drop folder."));
+				emit(ConsoleLine.warning("  Launch Minecraft with a full JDK 25 and restart, or run the mod's own build."));
+			}
+			failedFingerprint = fingerprint;
+			return;
+		}
+		if (busy) return;
+		if (!console.runningModuleId().isEmpty()) {
+			emit(ConsoleLine.warning("Not reloading while " + console.runningModuleId()
+				+ " is running; the change is applied when it finishes."));
+			return;
+		}
+		emit(ConsoleLine.accent("Drop folder changed: " + sourceSet.sources().size() + " source file(s), hash=" + shortHash(sourceSet.sha256())));
+		try {
+			beginCompile(true, true);
+		} catch (IOException error) {
+			emit(ConsoleLine.error("Could not start compiling the drop folder: " + safeMessage(error)));
+			failedFingerprint = fingerprint;
+		}
+	}
+
+	private synchronized boolean watching() {
+		return settings.plugAndPlay() && (settings.autoReload() || !autoLoadAttempted);
+	}
+
+	private static String shortHash(String hash) {
+		return hash == null || hash.length() <= 12 ? String.valueOf(hash) : hash.substring(0, 12);
+	}
+
+	private synchronized void sources() throws IOException {
 		RuntimeModuleSourceSet sourceSet = RuntimeModuleSourceSet.capture(workspace);
 		emit(ConsoleLine.accent("External Java module sources"));
 		if (sourceSet.sources().isEmpty()) {
@@ -126,14 +395,14 @@ final class JavaModuleRuntime implements AutoCloseable {
 		emit(ConsoleLine.muted("  " + sourceSet.sources().size() + " file(s), " + sourceSet.totalBytes() + " byte(s)"));
 	}
 
-	private void hash() throws IOException {
+	private synchronized void hash() throws IOException {
 		RuntimeModuleSourceSet sourceSet = RuntimeModuleSourceSet.capture(workspace);
 		emit(ConsoleLine.accent("Current external-module source-set SHA-256"));
 		emit(ConsoleLine.info(sourceSet.sha256()));
 		emit(ConsoleLine.muted("Review the listed files, then confirm this exact hash before compiling or loading."));
 	}
 
-	private void confirm(String supplied) throws IOException {
+	private synchronized void confirm(String supplied) throws IOException {
 		settings.reload();
 		if (!settings.developerMode()) {
 			emit(ConsoleLine.error("Developer mode is disabled. Set developerMode=true in " + settings.file()));
@@ -150,19 +419,29 @@ final class JavaModuleRuntime implements AutoCloseable {
 		console.recordAudit("java_module_hash_confirmed", "client", AUDIT_ID, "confirmed", sourceSet.sha256());
 	}
 
-	private void beginCompile(boolean activate) throws IOException {
+	/**
+	 * Starts one compilation of the drop folder.
+	 *
+	 * @param activate whether to register the compiled modules after a successful build
+	 * @param automatic true for a plug-and-play pass, which skips the manual hash
+	 *        confirmation because the user already opted in by keeping the files there
+	 */
+	private synchronized void beginCompile(boolean activate, boolean automatic) throws IOException {
 		if (closed) { emit(ConsoleLine.error("Runtime module manager is closed.")); return; }
 		if (busy) { emit(ConsoleLine.error("A runtime Java compilation is already in progress.")); return; }
 		settings.reload();
 		RuntimeModuleSourceSet sourceSet = RuntimeModuleSourceSet.capture(workspace);
-		if (!settings.developerMode()) {
-			emit(ConsoleLine.error("Developer mode is disabled. Edit " + settings.file() + " and set developerMode=true."));
-			return;
-		}
-		if (!sourceSet.sha256().equals(settings.confirmedModuleHash())) {
-			emit(ConsoleLine.error("External module source hash is not confirmed. Review the files, then run:"));
-			emit(ConsoleLine.warning("  java modules confirm " + sourceSet.sha256()));
-			return;
+		if (!settings.plugAndPlay()) {
+			if (!settings.developerMode()) {
+				emit(ConsoleLine.error("Developer mode is disabled. Edit " + settings.file() + " and set developerMode=true."));
+				return;
+			}
+			if (!sourceSet.sha256().equals(settings.confirmedModuleHash())) {
+				emit(ConsoleLine.error("External module source hash is not confirmed. Review the files, then run:"));
+				emit(ConsoleLine.warning("  java modules confirm " + sourceSet.sha256()));
+				emit(ConsoleLine.info("  Or enable plug-and-play with: java modules auto on"));
+				return;
+			}
 		}
 		if (sourceSet.sources().isEmpty()) {
 			emit(ConsoleLine.error("No .java files were found below " + workspace));
@@ -173,18 +452,23 @@ final class JavaModuleRuntime implements AutoCloseable {
 			return;
 		}
 
+		attemptFingerprint = RuntimeModuleSourceSet.fingerprint(workspace);
+		failedFingerprint = null;
 		busy = true;
-		emit(ConsoleLine.warning("Compiling " + sourceSet.sources().size() + " external Java source file(s); source hash=" + sourceSet.sha256()));
-		console.recordAudit("java_module_compile", "client", AUDIT_ID, "started", sourceSet.sha256());
+		emit(ConsoleLine.warning("Compiling " + sourceSet.sources().size() + " external Java source file(s)"
+			+ (automatic ? " (plug-and-play)" : "") + "; source hash=" + sourceSet.sha256()));
+		console.recordAudit("java_module_compile", "client", AUDIT_ID, "started",
+			sourceSet.sha256() + (automatic ? " auto=true" : ""));
 		try {
-			compilerExecutor.execute(() -> compile(sourceSet, activate));
+			compilerExecutor.execute(() -> compile(sourceSet, activate, automatic));
 		} catch (RuntimeException error) {
 			busy = false;
+			attemptFingerprint = null;
 			throw error;
 		}
 	}
 
-	private void compile(RuntimeModuleSourceSet sourceSet, boolean activate) {
+	private void compile(RuntimeModuleSourceSet sourceSet, boolean activate, boolean automatic) {
 		Path bundleRoot = null;
 		URLClassLoader loader = null;
 		try {
@@ -197,7 +481,7 @@ final class JavaModuleRuntime implements AutoCloseable {
 			RuntimeJavaCompiler.CompilationResult result = RuntimeJavaCompiler.compile(staged.sources(), output, classpathSupplier.get());
 			synchronized (this) { lastDiagnostics = result.diagnostics(); }
 			if (!result.success()) {
-				compilationFailed(sourceSet, bundleRoot, result.diagnostics());
+				compilationFailed(sourceSet, bundleRoot, result.diagnostics(), automatic);
 				return;
 			}
 
@@ -214,24 +498,38 @@ final class JavaModuleRuntime implements AutoCloseable {
 				return;
 			}
 
-			PreparedModules prepared = new PreparedModules(sourceSet, bundleRoot, loader, types);
+			PreparedModules prepared = new PreparedModules(sourceSet, bundleRoot, loader, types, automatic);
 			Minecraft.getInstance().execute(() -> activate(prepared));
 			loader = null; // The scheduled client-thread activation now owns it.
 		} catch (Throwable error) {
 			if (loader != null) closeLoader(loader);
 			emit(ConsoleLine.error("Runtime module compilation/load failed: " + safeMessage(error)));
 			console.recordAudit("java_module_compile", "client", AUDIT_ID, "error", safeMessage(error));
+			recordFailedState();
 			deleteRecursively(bundleRoot);
 			setBusy(false);
 		}
 	}
 
-	private void compilationFailed(RuntimeModuleSourceSet sourceSet, Path bundleRoot, List<String> diagnostics) {
-		emit(ConsoleLine.error("Runtime module compilation failed. Run java modules diagnostics for details."));
+	private void compilationFailed(RuntimeModuleSourceSet sourceSet, Path bundleRoot, List<String> diagnostics, boolean automatic) {
+		emit(ConsoleLine.error("Runtime module compilation failed. Fix the reported files"
+			+ (automatic ? "; the folder is reloaded on the next change." : ". Run java modules diagnostics for details.")));
 		diagnostics.stream().limit(8).forEach(value -> emit(ConsoleLine.error(value)));
-		console.recordAudit("java_module_compile", "client", AUDIT_ID, "error", "Compilation failed for " + sourceSet.sha256());
+		console.recordAudit("java_module_compile", "client", AUDIT_ID, "error",
+			"Compilation failed for " + sourceSet.sha256() + (automatic ? " auto=true" : ""));
+		recordFailedState();
 		deleteRecursively(bundleRoot);
 		setBusy(false);
+	}
+
+	/**
+	 * Remembers a folder state that failed, so plug-and-play does not retry it on
+	 * every poll and flood the console. Any edit changes the fingerprint and
+	 * clears the block, and the manual commands clear it too.
+	 */
+	private synchronized void recordFailedState() {
+		if (attemptFingerprint != null) failedFingerprint = attemptFingerprint;
+		attemptFingerprint = null;
 	}
 
 	private synchronized void activate(PreparedModules prepared) {
@@ -239,12 +537,23 @@ final class JavaModuleRuntime implements AutoCloseable {
 		try {
 			if (closed) throw new IllegalStateException("Runtime module manager closed before activation");
 			settings.reload();
-			if (!settings.developerMode() || !prepared.sourceSet().sha256().equals(settings.confirmedModuleHash())) {
+			if (prepared.automatic()) {
+				if (!settings.plugAndPlay()) {
+					throw new IllegalStateException("Plug-and-play was disabled before activation");
+				}
+			} else if (!settings.developerMode() || !prepared.sourceSet().sha256().equals(settings.confirmedModuleHash())) {
 				throw new IllegalStateException("Developer mode or source confirmation was revoked before activation");
 			}
 			RuntimeModuleSourceSet latest = RuntimeModuleSourceSet.capture(workspace);
 			if (!latest.sha256().equals(prepared.sourceSet().sha256())) {
-				throw new IllegalStateException("Module source files changed during compilation; review and confirm the new hash");
+				// A file was written while the sources compiled. The watcher already
+				// sees the newer state, so let it drive the next pass instead of
+				// registering a group that no longer matches the folder.
+				closeLoader(prepared.loader());
+				deleteRecursively(prepared.outputRoot());
+				attemptFingerprint = null;
+				emit(ConsoleLine.warning("Module sources changed while compiling; the newer files load next."));
+				return;
 			}
 
 			List<ResearchModule> instances = new ArrayList<>();
@@ -265,19 +574,29 @@ final class JavaModuleRuntime implements AutoCloseable {
 				prepared.loader(), replacementIds);
 			active = replacement;
 			swapped = true;
-			console.emit(ConsoleLine.success("Loaded " + instances.size() + " external research module(s): " + String.join(", ", replacement.ids())));
+			if (prepared.automatic()) {
+				autoLoads++;
+				emit(ConsoleLine.success("Plug-and-play loaded " + instances.size() + " external research module(s): "
+					+ String.join(", ", replacement.ids())));
+				emit(ConsoleLine.muted("  source_hash=" + replacement.sourceHash() + " - now available to show modules, use, clickgui, and categorygui"));
+			} else {
+				console.emit(ConsoleLine.success("Loaded " + instances.size() + " external research module(s): " + String.join(", ", replacement.ids())));
+			}
 			console.recordAudit("java_modules", "client", AUDIT_ID, "loaded",
-				"source_hash=" + replacement.sourceHash() + " ids=" + String.join(",", replacement.ids()));
+				"source_hash=" + replacement.sourceHash() + " ids=" + String.join(",", replacement.ids())
+					+ (prepared.automatic() ? " auto=true" : ""));
 			closeLoaded(previous);
 			cleanupStaleBuilds(replacement.outputRoot());
 		} catch (Throwable error) {
 			if (!swapped) {
 				closeLoader(prepared.loader());
 				deleteRecursively(prepared.outputRoot());
+				recordFailedState();
 			}
 			emit(ConsoleLine.error("Runtime module activation failed: " + safeMessage(error)));
 			console.recordAudit("java_modules", "client", AUDIT_ID, "error", safeMessage(error));
 		} finally {
+			attemptFingerprint = null;
 			busy = false;
 		}
 	}
@@ -332,13 +651,16 @@ final class JavaModuleRuntime implements AutoCloseable {
 		return clean.length() <= maximum ? clean : clean.substring(0, maximum) + "...";
 	}
 
-	private void unload() {
+	private synchronized void unload() {
 		if (busy) {
 			emit(ConsoleLine.warning("Wait for the current runtime-module compilation before unloading."));
 			return;
 		}
 		if (active == null) {
 			emit(ConsoleLine.muted("No external Java research modules are loaded."));
+			suppressedHash = null;
+			attemptFingerprint = null;
+			failedFingerprint = null;
 			return;
 		}
 		RuntimeModules stopping = active;
@@ -349,12 +671,23 @@ final class JavaModuleRuntime implements AutoCloseable {
 			return;
 		}
 		active = null;
+		suppressedHash = stopping.sourceHash();
+		attemptFingerprint = null;
+		failedFingerprint = null;
 		closeLoaded(stopping);
 		emit(ConsoleLine.success("Unloaded external research modules: " + String.join(", ", stopping.ids())));
 		console.recordAudit("java_modules", "client", AUDIT_ID, "unloaded", "source_hash=" + stopping.sourceHash());
+		if (settings.plugAndPlay()) {
+			emit(ConsoleLine.muted("  They stay unloaded until the files change; java modules auto now loads them again."));
+		}
+		try {
+			watcher.markHandled();
+		} catch (IOException failure) {
+			watcher.reset();
+		}
 	}
 
-	private void diagnostics() {
+	private synchronized void diagnostics() {
 		if (lastDiagnostics.isEmpty()) {
 			emit(ConsoleLine.muted("No external-module compiler diagnostics are available."));
 			return;
@@ -449,10 +782,54 @@ final class JavaModuleRuntime implements AutoCloseable {
 				throw new IOException("Generated module build path must be a regular directory: " + buildRoot);
 			}
 			Files.createDirectories(buildRoot);
+			writeFolderReadme();
 			cleanupStaleBuilds(null);
 		} catch (IOException error) {
 			throw new IllegalStateException("Could not initialize external Java module workspace", error);
 		}
+	}
+
+	/**
+	 * Leaves a short self-describing note in the drop folder the first time it is
+	 * created, so the folder explains itself without opening the documentation.
+	 */
+	private void writeFolderReadme() throws IOException {
+		Path readme = workspace.resolve("README.txt");
+		if (Files.exists(readme)) return;
+		Files.writeString(readme, """
+			ChampionsCode drop-in modules
+			=============================
+
+			Put .java files in this folder (or in any subfolder - the whole tree is
+			searched recursively) and they are picked up automatically: ChampionsCode
+			compiles them in game and lists them in the F8 console, the ClickGUI, and
+			the category GUI. Nothing has to be typed and the mod does not need to be
+			rebuilt.
+
+			  - the file must contain a public class implementing
+			    dev.champions.core.module.ResearchModule (or ExploitResearchModule)
+			    with a public no-argument constructor and a unique lower-case id()
+			  - helper classes and helper source files in the same folder are fine
+			  - generated classes go to the hidden .build folder and are ignored
+
+			WARNING: a drop-in file is unrestricted Java running inside Minecraft with
+			the permissions of the game process. It is not sandboxed. Only keep files
+			here that you wrote or have fully reviewed, because they run automatically.
+
+			Console commands (F8):
+			  java modules status              show folder, state, and loaded modules
+			  java modules auto                show plug-and-play state
+			  java modules auto off            stop loading automatically (manual mode)
+			  java modules auto now            reload the folder immediately
+			  java modules unload              unregister the loaded modules
+
+			With plug-and-play off, the manual workflow applies: set developerMode=true
+			in ../java-runtime.properties, review every file, then
+			java modules hash -> java modules confirm <sha256> -> java modules reload.
+
+			Example: .../src/../../examples/modules/ExampleResearchModule.java in the
+			project repository, or the mod's docs/external-java-modules.md.
+			""", java.nio.charset.StandardCharsets.UTF_8);
 	}
 
 	private void setBusy(boolean value) { synchronized (this) { busy = value; } }
@@ -461,6 +838,7 @@ final class JavaModuleRuntime implements AutoCloseable {
 	@Override public synchronized void close() {
 		if (closed) return;
 		closed = true;
+		watcher.reset();
 		if (active == null) return;
 		RuntimeModules stopping = active;
 		try {
@@ -482,7 +860,7 @@ final class JavaModuleRuntime implements AutoCloseable {
 	}
 
 	private record PreparedModules(RuntimeModuleSourceSet sourceSet, Path outputRoot, URLClassLoader loader,
-		List<Class<? extends ResearchModule>> types) {
+		List<Class<? extends ResearchModule>> types, boolean automatic) {
 		private PreparedModules {
 			types = List.copyOf(types);
 		}

@@ -69,6 +69,20 @@ public final class JavaRuntimeManager implements AutoCloseable {
 		initializeWorkspace();
 	}
 
+	/**
+	 * Called once per client tick. It drives the plug-and-play drop folder: every
+	 * second the module folder is checked and new or changed `.java` files are
+	 * compiled and registered without any console command.
+	 */
+	public void tick() {
+		moduleRuntime.tick();
+	}
+
+	/** Absolute path of the recursive plug-and-play module drop folder. */
+	public Path moduleFolder() {
+		return moduleRuntime.workspace();
+	}
+
 	public synchronized List<String> editableFiles() throws IOException {
 		if (Files.notExists(workspace)) return List.of();
 		try (var paths = Files.walk(workspace)) {
@@ -164,8 +178,11 @@ public final class JavaRuntimeManager implements AutoCloseable {
 		emit(ConsoleLine.info("  java settings | settings reload"));
 		emit(ConsoleLine.info("  java confirm <current-sha256>"));
 		emit(ConsoleLine.info("  java compile | start | reload | stop"));
-		emit(ConsoleLine.info("  java modules status | sources | hash | confirm <sha256> | compile | reload | unload"));
-		emit(ConsoleLine.warning("Runtime addons and external modules execute unrestricted Java inside Minecraft; neither is sandboxed."));
+		emit(ConsoleLine.info("  java modules folder | status | sources | diagnostics"));
+		emit(ConsoleLine.info("  java modules auto [on|off|now|watch on|off]"));
+		emit(ConsoleLine.info("  java modules compile | reload | unload | hash | confirm <sha256>"));
+		emit(ConsoleLine.warning("Drop-in modules are unrestricted Java inside Minecraft and are not sandboxed."));
+		emit(ConsoleLine.muted("Drop .java files below the modules folder and they load automatically."));
 	}
 
 	private void status() {
@@ -173,6 +190,7 @@ public final class JavaRuntimeManager implements AutoCloseable {
 		emit(ConsoleLine.accent("Runtime Java status"));
 		emit(ConsoleLine.info("  compiler=" + (RuntimeJavaCompiler.available() ? "JDK available" : "unavailable")));
 		emit(ConsoleLine.info("  developer_mode=" + settings.developerMode()));
+		emit(ConsoleLine.info("  plug_and_play=" + settings.plugAndPlay() + " (drop folder loads automatically)"));
 		emit(ConsoleLine.info("  settings=" + settings.file()));
 		emit(ConsoleLine.info("  workspace=" + workspace));
 		emit(ConsoleLine.info("  external_modules=" + workspace.getParent().resolve("modules")));

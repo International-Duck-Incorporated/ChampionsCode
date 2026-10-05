@@ -10,8 +10,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Copy this file anywhere under .minecraft/config/champions-mod/modules/.
- * ChampionsCode compiles and discovers it after its source hash is confirmed.
+ * Copy this file anywhere under .minecraft/config/champions-mod/modules/ - any
+ * subfolder, at any depth. ChampionsCode compiles and registers it
+ * automatically within a couple of seconds, with no hash confirmation and no
+ * console command, and reloads it when the file changes. With plugAndPlay=false
+ * the manual workflow applies instead: review the files, run java modules hash,
+ * confirm that SHA-256, then java modules reload.
  */
 public final class ExampleResearchModule implements ResearchModule {
 	@Override public String id() { return "auxiliary/custom/session_snapshot"; }

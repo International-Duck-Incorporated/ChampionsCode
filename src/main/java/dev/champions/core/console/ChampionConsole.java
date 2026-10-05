@@ -391,8 +391,10 @@ public final class ChampionConsole {
 				add(ConsoleLine.accent("Runtime Java command reference"));
 				add(ConsoleLine.info("  java status | sources | classpath | hash | confirm <sha256>"));
 				add(ConsoleLine.info("  java compile | start | reload | stop | diagnostics"));
-				add(ConsoleLine.info("  java modules status | sources | hash | confirm <sha256> | compile | reload | unload"));
-				add(ConsoleLine.warning("Runtime addons and external modules are unrestricted Java and disabled by default."));
+				add(ConsoleLine.info("  java modules folder | status | auto [on|off|now] | unload"));
+				add(ConsoleLine.info("  java modules hash | confirm <sha256> | compile | reload   (manual mode)"));
+				add(ConsoleLine.warning("Drop-in modules are unrestricted Java inside Minecraft, and are not sandboxed."));
+				add(ConsoleLine.muted("Drop .java files below config/champions-mod/modules/ - they load automatically."));
 			}
 			default -> {
 				add(ConsoleLine.accent("Quick start"));

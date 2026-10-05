@@ -11,10 +11,12 @@ research workflows that require the separate Exploits workspace and a fresh
 legal-risk popup before every run; it does not grant an additional capability.
 Build-time modules follow the restrictions below as an authoring contract.
 External Java modules and runtime addons are explicitly unsafe, unrestricted
-code inside the Minecraft process; their source-hash confirmation is a review
-step, not a sandbox or an enforcement boundary. See
-`external-java-modules.md`, `runtime-java.md`, and `exploit-research.md` for the
-loading, lifecycle, and review models.
+code inside the Minecraft process. Drop-in modules under `config/champions-mod/
+modules/` load automatically by default, so keeping files there that you have not
+reviewed is equivalent to running an unreviewed program; the optional
+`plugAndPlay=false` workflow adds a source-hash review step, which is a review
+gate and not a sandbox. See `external-java-modules.md`, `runtime-java.md`, and
+`exploit-research.md` for the loading, lifecycle, and review models.
 
 ## Required properties
 

@@ -21,9 +21,11 @@ will remain unavailable until the game is launched with a full JDK 25.
 
 This document describes the single-entrypoint `ChampionRuntimeAddon` workspace.
 For `.java` files that implement `ResearchModule` and appear in the console and
-module GUIs, use the separate [external Java module workflow](external-java-modules.md).
-Both workflows share `developerMode=true`, but each has its own independently
-confirmed source hash.
+module GUIs, use the separate [external Java module workflow](external-java-modules.md),
+which is plug and play by default: files dropped into `modules/` are compiled and
+registered without `developerMode` or a hash confirmation. This `java/` workspace
+keeps the stricter manual gate (`developerMode=true` plus confirmed
+`confirmedSourceHash`).
 
 ## Workspace
 
@@ -51,9 +53,11 @@ Generated classes are written beneath `.build/`. That directory is managed by
 ChampionsCode and must not contain source files.
 
 The sibling `modules/` directory is for auto-discovered `ResearchModule`
-implementations, not `ChampionRuntimeAddon` entrypoints. Its Java files compile
-together, register in the module console and GUIs, and use an independent
-`confirmedModuleHash` value in `java-runtime.properties`. See
+implementations, not `ChampionRuntimeAddon` entrypoints. It is searched
+recursively at any depth and is plug and play by default: files dropped there
+compile and register within about two seconds, with no manual confirmation and
+no console command. Setting `plugAndPlay=false` switches it to the manual
+workflow with an independent `confirmedModuleHash` value. See
 [`external-java-modules.md`](external-java-modules.md) for its commands, source
 limits, and module template.
 
@@ -137,9 +141,15 @@ Edit `java-runtime.properties`:
 
 ```properties
 developerMode=true
+plugAndPlay=true
+autoReload=true
 confirmedSourceHash=
 confirmedModuleHash=
 ```
+
+`plugAndPlay` and `autoReload` belong to the drop-in `modules/` folder; see
+[`external-java-modules.md`](external-java-modules.md). The `java/` workspace
+described here is always gated by `developerMode` and its confirmed hash.
 
 Reload settings and inspect the source hash:
 

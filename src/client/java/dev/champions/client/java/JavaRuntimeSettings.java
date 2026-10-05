@@ -8,11 +8,13 @@ import java.util.Locale;
 import java.util.Properties;
 import java.util.regex.Pattern;
 
-/** Explicit opt-in and source-hash confirmations for unrestricted runtime Java. */
+/** Runtime Java options: plug-and-play drop folder, explicit opt-in, and hash confirmations. */
 final class JavaRuntimeSettings {
 	private static final Pattern HASH = Pattern.compile("[0-9a-f]{64}");
 	private final Path file;
 	private boolean developerMode;
+	private boolean plugAndPlay = true;
+	private boolean autoReload = true;
 	private String confirmedSourceHash = "";
 	private String confirmedModuleHash = "";
 
@@ -30,6 +32,8 @@ final class JavaRuntimeSettings {
 			throw new IllegalStateException("Could not read " + file, e);
 		}
 		developerMode = Boolean.parseBoolean(properties.getProperty("developerMode", "false"));
+		plugAndPlay = Boolean.parseBoolean(properties.getProperty("plugAndPlay", "true"));
+		autoReload = Boolean.parseBoolean(properties.getProperty("autoReload", "true"));
 		confirmedSourceHash = validHash(properties.getProperty("confirmedSourceHash", ""));
 		confirmedModuleHash = validHash(properties.getProperty("confirmedModuleHash", ""));
 	}
@@ -50,7 +54,32 @@ final class JavaRuntimeSettings {
 		confirmedModuleHash = normalized;
 	}
 
+	synchronized void setPlugAndPlay(boolean enabled) throws IOException {
+		Properties properties = readProperties();
+		properties.setProperty("plugAndPlay", Boolean.toString(enabled));
+		writeProperties(properties);
+		plugAndPlay = enabled;
+	}
+
+	synchronized void setAutoReload(boolean enabled) throws IOException {
+		Properties properties = readProperties();
+		properties.setProperty("autoReload", Boolean.toString(enabled));
+		writeProperties(properties);
+		autoReload = enabled;
+	}
+
 	synchronized boolean developerMode() { return developerMode; }
+
+	/**
+	 * Plug-and-play: every `.java` file below the module drop folder is compiled
+	 * and registered automatically, at startup and (with {@link #autoReload()})
+	 * whenever the folder changes. No hash confirmation and no rebuild required.
+	 */
+	synchronized boolean plugAndPlay() { return plugAndPlay; }
+
+	/** Whether the drop folder is watched while the game runs. Requires plug-and-play. */
+	synchronized boolean autoReload() { return autoReload; }
+
 	synchronized String confirmedSourceHash() { return confirmedSourceHash; }
 	synchronized String confirmedModuleHash() { return confirmedModuleHash; }
 	Path file() { return file; }
@@ -65,7 +94,8 @@ final class JavaRuntimeSettings {
 
 	private void writeProperties(Properties properties) throws IOException {
 		try (var writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
-			properties.store(writer, "Champions unrestricted runtime Java settings");
+			writer.write(PROPERTY_HEADER);
+			properties.store(writer, null);
 		}
 	}
 
@@ -80,14 +110,32 @@ final class JavaRuntimeSettings {
 		return normalized;
 	}
 
+	/** Shown at the top of the properties file; kept identical on every rewrite. */
+	private static final String PROPERTY_HEADER = """
+		# ChampionsCode runtime Java settings.
+		#
+		# WARNING: a .java file below the module drop folder is compiled and executed
+		# inside Minecraft with the permissions of the game process. It is not a sandbox.
+		# Only put files there that you wrote or have fully reviewed.
+		#
+		# plugAndPlay=true  Drop-in modules work out of the box: every .java file below
+		#                   modules/ (searched recursively, at any depth) is compiled and
+		#                   registered automatically. No hash confirmation, no rebuild.
+		# autoReload=true   Also reload them while the game runs when the folder changes.
+		#                   Set false to load once at startup only.
+		# developerMode     Gates the single-entrypoint java/ addon and the manual
+		#                   hash-confirmation workflow used when plugAndPlay=false.
+		#
+		""";
+
 	private void initialize() {
 		if (Files.exists(file)) return;
 		try {
 			Files.createDirectories(file.getParent());
-			Files.writeString(file, """
-				# WARNING: runtime Java and external Java modules execute unrestricted code inside Minecraft.
-				# Set developerMode=true only if you understand and accept that risk.
+			Files.writeString(file, PROPERTY_HEADER + """
 				developerMode=false
+				plugAndPlay=true
+				autoReload=true
 				confirmedSourceHash=
 				confirmedModuleHash=
 				""", StandardCharsets.UTF_8);

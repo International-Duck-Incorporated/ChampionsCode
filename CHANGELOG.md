@@ -3,6 +3,34 @@
 ## [Unreleased]
 
 ### Added
+- **Plug-and-play module folder.** `.java` files below
+  `config/champions-mod/modules/` are now compiled and registered automatically,
+  so a drop-in module needs no hash confirmation, no `java modules reload`, and no
+  console command at all. The folder is scanned at client start and then watched
+  while the game runs: a file that is added, edited, renamed, or deleted reloads
+  or unregisters the group within about two seconds, and reloads never interrupt a
+  module that is mid-run. Set `plugAndPlay=false` in
+  `config/champions-mod/java-runtime.properties` to restore the previous
+  review-and-confirm workflow, or `autoReload=false` to load once at startup
+  without watching. New console commands: `java modules folder`,
+  `java modules auto [on|off|now|watch on|off]`, and an expanded `java modules
+  status`. Changes are reported by source hash, counted in `java modules auto`,
+  and recorded in `audit.jsonl` with `auto=true`; `java modules unload` stays
+  respected until the files change.
+- Recursive drop-folder hardening: module sources are recognised at any depth,
+  dot-files and dot-directories (including the generated `.build/` folder, editor
+  scratch files such as `.Module.java.swp`, and `Module.java~` backups) are
+  ignored everywhere, and a short `README.txt` explaining the rules is written
+  into the folder the first time it is created.
+- Change detection that stays quiet: a metadata fingerprint of the folder is
+  polled once a second, a change is only acted on after a short settled period so
+  a staged file save is one reload, and a folder state that failed to compile is
+  left alone until the files change so compiler errors print once instead of every
+  second.
+- Tests for the drop-folder workflow: quiet-period and double-report behaviour,
+  ignoring generated and non-module files, reporting an emptied folder, manual
+  actions surviving a poll, and an end-to-end drop/edit/delete cycle that compiles
+  and discovers a nested module without any registration step.
 - Game log window: **F6** (`logs` in the terminal, or the Java Studio sidebar)
   opens a live tail of the running game's `logs/latest.log` as another workspace
   window. It follows the end of the log until you scroll away from the bottom,

@@ -15,7 +15,7 @@
 - Passive, non-verdict remote-player motion evidence
 - In-game exact-target authorization management, one-run confirmation, and audit log
 - Hash-gated runtime Java addon compilation with a persistent reload lifecycle
-- Recursively discovered external `.java` ResearchModules outside `src/`, with separate source-hash confirmation, atomic registry replacement, and no manual registration
+- Plug-and-play external `.java` ResearchModules outside `src/`: recursively discovered at any depth, compiled and registered automatically while the game runs (drop, edit, or delete a file and the module group follows), with an opt-out manual hash-confirmation mode, atomic registry replacement, and no registration line
 - Clean-room older-project ports for plugin review, declared dependency posture,
   defensive chat normalization, and non-solving chat-game fairness analysis
 - Separately warned Exploits workspace with entry and per-run legal-risk popups
@@ -25,6 +25,7 @@
 
 ## Candidate 0.2 work
 
+- Per-file module diagnostics in the Java Studio for drop-in folders (inline compiler errors next to the source list)
 - Export redacted findings as JSON and Markdown
 - Per-module risk/capability declarations shown in the UI
 - Better searchable output and copy-to-clipboard controls

@@ -101,6 +101,12 @@ public final class ChampionsClient implements ClientModInitializer {
 			PlayerIdentityEvents.clearListener();
 			javaRuntime.close();
 		});
+		// Plug-and-play module folder: the runtime polls it while the game runs, so
+		// dropping a .java file below config/champions-mod/modules/ is enough.
+		ClientTickEvents.END_CLIENT_TICK.register(client -> {
+			JavaRuntimeManager runtime = javaRuntimeReference.get();
+			if (runtime != null) runtime.tick();
+		});
 		new UpdateNotifier(updateService, updateSettings).register();
 
 		KeyMapping.Category category = KeyMapping.Category.register(id("security_research"));
@@ -140,9 +146,11 @@ public final class ChampionsClient implements ClientModInitializer {
 			.map(container -> container.getMetadata().getVersion().getFriendlyString())
 			.orElse("unknown");
 		LOGGER.info("ChampionsCode {} initialized (environment: {}): defensive modules, " +
-			"hash-gated runtime Java and update checks ready",
+			"plug-and-play drop-in modules, runtime Java and update checks ready",
 			version,
 			FabricLoader.getInstance().getEnvironmentType());
+		LOGGER.info("drop-in module folder (searched recursively): {} - .java files here are compiled and registered automatically",
+			javaRuntime.moduleFolder());
 		LOGGER.info("keybinds: F8 console, F7 Java Studio, F6 log viewer (toggle their window while the workspace is open); commands: clickgui, categorygui, logs, java, exit");
 	}
 

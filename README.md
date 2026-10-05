@@ -135,21 +135,37 @@ entrypoint through `ChampionConsole.registerModule(...)`, because the core
 [`docs/exploit-and-payload-files.md`](docs/exploit-and-payload-files.md) for
 the build-time layout and registration path.
 
-### External Java modules (outside `src/`)
+### Plug-and-play modules (outside `src/`)
 
-For true drop-in modules that do not require rebuilding the mod, put `.java`
-files in `.minecraft/config/champions-mod/modules/` (subfolders are scanned
-recursively). They implement `ResearchModule` and are automatically registered
-in the F8 console and both module GUIs after `java modules reload`; no source
-edit to `ChampionsClient` or `ModuleRegistry` is needed. This uses the existing
-runtime compiler, JDK 25 requirement, explicit developer-mode opt-in, and a
-separate SHA-256 confirmation for the complete module source set. See
-[`docs/external-java-modules.md`](docs/external-java-modules.md) for the exact
-commands and a working Java template.
+Drop a `.java` file anywhere below `.minecraft/config/champions-mod/modules/`
+and it is a module. ChampionsCode searches that folder recursively, at any
+depth, compiles everything it finds in the running client, and registers each
+public `ResearchModule` in the F8 console, the ClickGUI, and the category GUI. No
+registration line, no `ModuleRegistry` edit, no rebuild, and no console command:
+a drop-in is picked up within about two seconds, and edits, renames, and
+deletions re-load or unregister the group the same way. The folder also loads at
+client start, and a short `README.txt` is written into it the first time it is
+created.
 
-This remains unrestricted Java execution inside the game process, not a
-sandbox. The hash requires a deliberate review step but cannot make unknown Java
-safe. The `.java` source set is limited to 128 files and 2 MiB.
+```text
+.minecraft/config/champions-mod/modules/
+├── MyModule.java                 <- loaded
+└── pack/deep/MoreModules.java    <- loaded too
+```
+
+Manual control is available when wanted: `java modules folder | status | auto
+[on|off|now] | sources | unload | diagnostics` from the F8 terminal, with
+`plugAndPlay` and `autoReload` in `config/champions-mod/java-runtime.properties`.
+Setting `plugAndPlay=false` restores the stricter review workflow: nothing loads
+until you review the files, confirm the printed SHA-256, and run
+`java modules reload`. See
+[`docs/external-java-modules.md`](docs/external-java-modules.md) for the full
+behaviour and a working Java template.
+
+This is unrestricted Java execution inside the game process, not a sandbox, and
+by default it runs without a confirmation step. Only keep files in that folder
+that you wrote or have fully reviewed. The `.java` source set is limited to 128
+files and 2 MiB, and compilation needs a full JDK 25.
 
 ### Telemetry boundaries
 
@@ -419,10 +435,16 @@ Generated files:
 .minecraft/config/champions-mod/
 ├── authorized-targets.txt
 ├── audit.jsonl
-├── java-runtime.properties
-└── java/
-    ├── champion-java.json
-    ├── Example.java
+├── java-runtime.properties   # plugAndPlay, autoReload, developerMode, hashes
+├── java/
+│   ├── champion-java.json
+│   ├── Example.java
+│   └── .build/
+└── modules/                  # drop-in modules: .java files here load themselves
+    ├── README.txt
+    ├── MyModule.java
+    ├── experiments/
+    │   └── AnotherModule.java
     └── .build/
 ```
 
