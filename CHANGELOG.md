@@ -44,6 +44,19 @@
   400 ms), survive log rotation, and the window keeps its geometry like the
   others.
 
+### Changed
+- Public project links now point at the International Duck Incorporated
+  website: the README install and update sections and `PUBLISHING.md` link
+  <https://idi-official.pages.dev/projects/championscode>, and the clickable
+  startup update notice opens that page instead of the GitLab release list.
+  `fabric.mod.json` gained a `contact` block (`homepage` on the website,
+  `sources` and `issues` on GitLab).
+- The update system itself is unchanged and still reads the GitLab releases
+  feed and downloads JARs and `SHA256SUMS.txt` from GitLab: the website hosts
+  no release assets and no update feed. `GitLabUpdateService` keeps its
+  gitlab.com-only URL allowlist, and the F8 `update check` command still
+  prints the release's own page URL from the feed.
+
 ## 0.1.0-beta.3 - 2026-09-26
 
 Re-release of the 0.1.0-beta.2 changes: the beta.2 tag pipeline built and

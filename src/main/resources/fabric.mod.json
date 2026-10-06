@@ -5,7 +5,11 @@
   "name": "ChampionsCode",
   "description": "An authorization-gated defensive research console with an opt-in, hash-confirmed runtime Java addon developer system.",
   "authors": ["ChampionsCode contributors"],
-  "contact": {},
+  "contact": {
+    "homepage": "https://idi-official.pages.dev/",
+    "sources": "https://gitlab.com/international-duck-incorporated/ChampionsCode",
+    "issues": "https://gitlab.com/international-duck-incorporated/ChampionsCode/-/issues"
+  },
   "license": "MIT",
   "icon": "assets/champions/icon.png",
   "environment": "client",

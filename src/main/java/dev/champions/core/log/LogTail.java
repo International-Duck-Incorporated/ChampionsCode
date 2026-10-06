@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -32,6 +33,8 @@ import java.util.Objects;
 public final class LogTail {
 	/** Bytes decoded per poll; larger backlogs drain over several polls. */
 	private static final int MAX_CHUNK_BYTES = 4 * 1024 * 1024;
+	/** Small content sample used when the filesystem has no reliable file key. */
+	private static final int FILE_IDENTITY_PREFIX_BYTES = 4 * 1024;
 	/** Default start-of-read window for a log that already exists when opened. */
 	public static final long DEFAULT_INITIAL_READ_BYTES = 2 * 1024 * 1024;
 	/** Shown in place of the missing lines when the log rotates. */
@@ -49,6 +52,8 @@ public final class LogTail {
 	private boolean reading;
 	private boolean skipPartialFirstLine;
 	private Object fileKey;
+	private FileTime fileCreationTime;
+	private byte[] filePrefix = new byte[0];
 	private String problem = "";
 
 	public LogTail(Path file, int maxLines) {
@@ -97,11 +102,28 @@ public final class LogTail {
 
 		long size = attributes.size();
 		Object key = attributes.fileKey();
+		FileTime creationTime = attributes.creationTime();
+		boolean hasDistinctCreationTime = !creationTime.equals(attributes.lastModifiedTime());
+		byte[] prefix;
+		try {
+			prefix = readFrom(0, (int) Math.min(size, FILE_IDENTITY_PREFIX_BYTES));
+		} catch (IOException error) {
+			problem = describe(error);
+			return false;
+		}
 		// A log rotation can hand us a file that is already longer than the
 		// position we remember; the size test alone would then read from the
-		// middle of the new file. The file identity catches that case too.
-		boolean replaced = everRead && key != null && fileKey != null && !key.equals(fileKey);
+		// middle of the new file. File keys are unavailable on some providers,
+		// so also compare creation time (when distinct from last-modified time)
+		// and a bounded content prefix.
+		boolean keyChanged = key != null && fileKey != null && !key.equals(fileKey);
+		boolean creationTimeChanged = hasDistinctCreationTime && fileCreationTime != null
+				&& !fileCreationTime.equals(creationTime);
+		boolean prefixDiffers = prefixChanged(filePrefix, prefix);
+		boolean replaced = everRead && (keyChanged || creationTimeChanged || prefixDiffers);
 		fileKey = key;
+		fileCreationTime = hasDistinctCreationTime ? creationTime : null;
+		filePrefix = prefix;
 
 		boolean changed = false;
 		if (!everRead) {
@@ -185,6 +207,14 @@ public final class LogTail {
 			System.arraycopy(buffer, 0, shorter, 0, read);
 			return shorter;
 		}
+	}
+
+	private static boolean prefixChanged(byte[] previous, byte[] current) {
+		int commonLength = Math.min(previous.length, current.length);
+		for (int i = 0; i < commonLength; i++) {
+			if (previous[i] != current[i]) return true;
+		}
+		return false;
 	}
 
 	private static int indexOfNewline(byte[] chunk, int from) {

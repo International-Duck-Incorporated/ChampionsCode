@@ -23,6 +23,11 @@ import org.slf4j.LoggerFactory;
  */
 public final class UpdateNotifier {
 	private static final Logger LOG = LoggerFactory.getLogger("champions-update");
+	/** Public project page on the IDI website; mirrors this project's GitLab release data. */
+	private static final String PROJECT_PAGE_URL = "https://idi-official.pages.dev/projects/championscode";
+	/** Only used if the project page URL were ever malformed. */
+	private static final String RELEASES_FALLBACK_URL =
+			"https://gitlab.com/international-duck-incorporated/ChampionsCode/-/releases";
 	private final UpdateService updateService;
 	private final UpdateSettings settings;
 	private final AtomicBoolean done = new AtomicBoolean();
@@ -65,17 +70,23 @@ public final class UpdateNotifier {
 			.append(Component.literal("update available: ").withStyle(ChatFormatting.YELLOW))
 			.append(Component.literal(check.latestVersion()).withStyle(ChatFormatting.GREEN)
 				.withStyle(style -> style
-					.withClickEvent(openReleasePage(check))
-					.withHoverEvent(new HoverEvent.ShowText(Component.literal("Open the GitLab release page")))))
+					.withClickEvent(openReleasePage())
+					.withHoverEvent(new HoverEvent.ShowText(Component.literal("Open the ChampionsCode project page on idi-official.pages.dev")))))
 			.append(Component.literal(" (running " + check.currentVersion() + "). Open the F8 console and run '"
 				+ "update download " + check.latestVersion() + "'.").withStyle(ChatFormatting.GRAY));
 	}
 
-	private static ClickEvent openReleasePage(UpdateCheck check) {
+	/**
+	 * The public project page on the IDI website is the canonical place to read
+	 * about and download the current release; it mirrors this project's GitLab
+	 * release data. The feed still supplies the version numbers and the
+	 * download/checksum assets, which are GitLab URLs by construction.
+	 */
+	private static ClickEvent openReleasePage() {
 		try {
-			return new ClickEvent.OpenUrl(URI.create(check.releasePageUrl()));
+			return new ClickEvent.OpenUrl(URI.create(PROJECT_PAGE_URL));
 		} catch (IllegalArgumentException invalidUrl) {
-			return new ClickEvent.OpenUrl(URI.create("https://gitlab.com/international-duck-incorporated/ChampionsCode/-/releases"));
+			return new ClickEvent.OpenUrl(URI.create(RELEASES_FALLBACK_URL));
 		}
 	}
 }

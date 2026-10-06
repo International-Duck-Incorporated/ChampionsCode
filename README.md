@@ -14,6 +14,11 @@ be dropped into a config folder outside `src/`.
 > exploit-research workspace, build-time exploit/payload source folders, and a
 > hash-confirmed runtime Java module folder outside `src/`.
 
+**Website:** <https://idi-official.pages.dev/projects/championscode> - project
+page, overview, and download links. Source code, issues, and the release files
+themselves stay on
+[GitLab](https://gitlab.com/international-duck-incorporated/ChampionsCode).
+
 ## What is implemented
 
 ### Research console
@@ -301,7 +306,9 @@ they want. Do not put the `-sources.jar` file in the Minecraft `mods` folder.
 1. Install Fabric Loader for Minecraft 26.3.
 2. Put Fabric API for 26.3 in the instance's `mods` folder.
 3. Download `champions-mod-<version>.jar` from the
-   [GitLab Releases page](https://gitlab.com/international-duck-incorporated/ChampionsCode/-/releases)
+   [ChampionsCode project page](https://idi-official.pages.dev/projects/championscode)
+   (its download button serves the file from
+   [GitLab Releases](https://gitlab.com/international-duck-incorporated/ChampionsCode/-/releases))
    and put it in the same `mods` folder.
 4. Do not install `champions-mod-<version>-sources.jar`; it is provided only
    for developers and source browsing.
@@ -310,10 +317,14 @@ they want. Do not put the `-sources.jar` file in the Minecraft `mods` folder.
 ## Updates
 
 ChampionsCode reads this project's public GitLab releases feed once at
-startup and, when a newer release exists, posts a clickable notice in chat.
+startup and, when a newer release exists, posts a clickable notice in chat
+that opens the
+[ChampionsCode project page](https://idi-official.pages.dev/projects/championscode).
 The check talks only to `gitlab.com`, never to the connected server session,
 and can be disabled with `checkOnStart=false` in
-`config/champions-mod/update.properties`.
+`config/champions-mod/update.properties`. The feed and the downloadable JARs
+are still served by GitLab: the website is the public front page for the
+project, not a second release host.
 
 Updates are then applied explicitly from the F8 terminal:
 

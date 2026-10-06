@@ -107,9 +107,9 @@ class LogTailTest {
 		assertTrue(tail.poll());
 		long oldSize = Files.size(file);
 
-		// Replace the running log with a longer one, the way a rotation does when
-		// the new file is already past the position remembered from the old one:
-		// only the file identity shows that this is a different log.
+		// Replace the running log with a longer one, as can happen during a
+		// rotation. Since its size is already beyond the old read position,
+		// replacement detection must not depend on a size decrease.
 		Path replacement = temp.resolve("replacement.log");
 		Files.writeString(replacement, "[main/INFO]: new one\n[main/INFO]: new two\n[main/INFO]: new three\n");
 		assertTrue(Files.size(replacement) > oldSize);

@@ -11,8 +11,9 @@ about it when reviewing changes.
   client reads this project's public GitLab releases feed
   (`GET https://gitlab.com/api/v4/projects/international-duck-incorporated%2FChampionsCode/releases`).
   If a release newer than the running version exists, a chat notice appears
-  with a clickable link to the release page and the exact console command to
-  run. The check is skipped in development environments, is disabled with
+  with a clickable link to the project's public page
+  (<https://idi-official.pages.dev/projects/championscode>) and the exact
+  console command to run. The check is skipped in development environments, is disabled with
   `checkOnStart=false` in `config/champions-mod/update.properties`, and fails
   silently when the feed is unreachable.
 - **`update check` (F8 terminal).** Compares the running version against the

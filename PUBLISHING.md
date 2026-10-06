@@ -5,6 +5,12 @@ published artifacts live only in
 [GitLab Releases](https://gitlab.com/international-duck-incorporated/ChampionsCode/-/releases);
 no binaries are committed to the repository.
 
+The public-facing page for the project is
+<https://idi-official.pages.dev/projects/championscode>, which links to those
+same release files. It is a documentation and download entry point only: it
+does not host the JARs, the `SHA256SUMS.txt`, or the update feed, so a release
+is not published until the GitLab CI release job has attached its assets.
+
 Release asset names are load-bearing: the in-game updater matches
 `champions-mod-<version>.jar` and `SHA256SUMS.txt` by exact name (see
 `docs/update-system.md`), so keep those file names stable.
