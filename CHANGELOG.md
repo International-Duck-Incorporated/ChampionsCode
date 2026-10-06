@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## 0.1.0-beta.4 - 2026-10-06
+
 ### Added
 - **Plug-and-play module folder.** `.java` files below
   `config/champions-mod/modules/` are now compiled and registered automatically,

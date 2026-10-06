@@ -42,3 +42,6 @@ replay_*.log
 # release artifacts (published via GitLab Releases instead)
 
 release/
+
+# game/runtime logs
+logs/
