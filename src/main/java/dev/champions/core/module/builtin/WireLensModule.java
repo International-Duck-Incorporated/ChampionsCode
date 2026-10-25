@@ -7,6 +7,8 @@ import dev.champions.core.module.ModuleOption;
 import dev.champions.core.module.ModuleResult;
 import dev.champions.core.module.PacketEvent;
 import dev.champions.core.module.PacketFlowAnalysis;
+import dev.champions.core.mc.ClientCapabilities;
+import dev.champions.core.mc.VersionGated;
 import dev.champions.core.module.ResearchModule;
 
 import java.util.ArrayList;
@@ -19,7 +21,9 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /** Metadata-only packet-flow observer. */
-public final class WireLensModule implements ResearchModule {
+public final class WireLensModule implements ResearchModule, VersionGated {
+	@Override public java.util.Set<ClientCapabilities.Feature> requires() { return java.util.Set.of(ClientCapabilities.Feature.PACKET_TELEMETRY); }
+
 	@Override public String id() { return "auxiliary/observe/wire_lens"; }
 	@Override public String name() { return "Wire Lens packet-flow observer"; }
 	@Override public String description() {

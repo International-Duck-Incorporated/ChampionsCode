@@ -8,6 +8,8 @@ import dev.champions.core.module.ModuleOption;
 import dev.champions.core.module.ModuleResult;
 import dev.champions.core.module.PacketEvent;
 import dev.champions.core.module.PacketFlowAnalysis;
+import dev.champions.core.mc.ClientCapabilities;
+import dev.champions.core.mc.VersionGated;
 import dev.champions.core.module.ResearchModule;
 
 import java.util.ArrayList;
@@ -16,7 +18,9 @@ import java.util.Locale;
 import java.util.Map;
 
 /** Read-only container synchronization and item-component audit. */
-public final class ContainerIntegrityModule implements ResearchModule {
+public final class ContainerIntegrityModule implements ResearchModule, VersionGated {
+	@Override public java.util.Set<ClientCapabilities.Feature> requires() { return java.util.Set.of(ClientCapabilities.Feature.INVENTORY_TELEMETRY); }
+
 	private PreviousSnapshot previous;
 
 	@Override public String id() { return "auxiliary/audit/container_integrity"; }

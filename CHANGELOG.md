@@ -2,6 +2,63 @@
 
 ## [Unreleased]
 
+## 0.2.0-desktop - 2026-10-25
+
+### Added
+- **External interface (the same JAR, outside the game).** `java -jar
+  champions-mod-<version>.jar` now starts a native desktop application with three
+  real OS windows: the **terminal** (msfconsole prompt, the same tones, history,
+  1 000-line scrollback, copy/search keys), the **modules window** (external
+  ClickGUI: module tree, search, typed option editors, dropdowns, run/back and
+  target authorization) and the **code space** (file tree over the drop-in module
+  folder, editor, template generator, compile/reload/unload). Nothing needs to be
+  installed: Swing and NIO are part of Java 25, and no dependency was added.
+- **Both front ends at once.** `config/champions-mod/desktop.properties` selects
+  `ui=both` (default), `ui=external` or `ui=in-game`. F8/F7 and the `clickgui`
+  command open the external window and, in `both`, the in-game window as well;
+  `ui=in-game` restores the 0.1.x behaviour exactly.
+- **Loopback bridge.** The game publishes an ephemeral-port JSON-lines bridge
+  (`desktop-session.json`, per-launch 256-bit token, handshake before any other
+  frame, single client, 8 KiB frame cap). The app sends the same calls the
+  in-game UI makes, so the authorization allowlist, the one-run `CONFIRM` phrase,
+  the per-run exploit warning (now answered in a desktop dialog, default-deny
+  after 60 s) and the audit log all still execute in the game process. Detached,
+  the app runs standalone with `ActiveModuleRuntime.disabled()`.
+- **Shared surface models** (`dev.champions.surface`): `ConsoleBuffer` owns the
+  bounded scrollback, history cursor and a revision counter so a view repaints
+  only on change. The in-game screens are untouched and keep working.
+- **Version capability contract** (`dev.champions.core.mc`): `ClientCapabilities`
+  declares what a build can actually do (in-game screens, command tree, packet /
+  container / motion telemetry, external UI) and `VersionGated` lets a module
+  require features. The console refuses a module whose features are missing, with
+  the exact reason, and audits it as `unavailable`; `status` prints the
+  capability summary and the external app shows it in its status bar.
+  `wire_lens`, `session_trace`, `transaction_echo`, `container_integrity`,
+  `motion_evidence`, `plugin_surface` and `chat_plugin_enumerator` are gated.
+- **`--self-test`** in the shipped JAR: headless verification of the terminal
+  model, the wire codec, a full gated console session against the simulated
+  `*.invalid` target, the version gate, and proof that no Minecraft or Fabric
+  class is on the desktop classpath. Wired into `build.gradle`
+  (`./gradlew desktopSelfTest`) and into GitLab CI, which also asserts
+  `Main-Class` and the desktop classes in the packaged JAR.
+- Docs: `docs/external-desktop-plan.md` (design) and
+  `docs/version-compatibility.md` (why one JAR cannot span 1.21.11 and 26.3, the
+  Stonecutter matrix, artifact naming and the updater change).
+
+### Changed
+- Logging in the version-free core goes through `dev.champions.core.log.Log`,
+  which delegates to SLF4J inside the game and to stderr outside it. The desktop
+  app therefore has zero dependencies.
+- `ChampionConsole` gained `lineSequence()` (exact remote deltas) and
+  `setCapabilitiesSupplier(...)`; no existing constructor or command changed.
+
+### Not in this release
+- The multi-version build matrix itself (Stonecutter nodes for 1.21.11 / 26.x) is
+  specified in `docs/version-compatibility.md` but not enabled; this release
+  still targets Minecraft 26.3 only, with the capability layer ready for it.
+- `java.read` / `java.write` / `java.list` over the bridge are served by the
+  game's own bounded runtime commands; the code space edits files directly.
+
 ## 0.1.0-beta.4 - 2026-10-06
 
 ### Added

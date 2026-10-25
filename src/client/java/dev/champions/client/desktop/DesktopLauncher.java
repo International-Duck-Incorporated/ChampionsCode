@@ -1,0 +1,134 @@
+package dev.champions.client.desktop;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * Starts the external ChampionsCode app.
+ *
+ * <p>The app is this same mod JAR executed as a program, so no second download,
+ * install or dependency exists. It is launched with the JVM that is already
+ * running Minecraft (guaranteed to be the required Java version) and receives
+ * the bridge port and token through the environment and arguments; the token
+ * is never written to a log.</p>
+ *
+ * <p>Every failure is non-fatal: the caller falls back to the in-game windows
+ * and logs one clear reason.</p>
+ */
+public final class DesktopLauncher {
+	private static final Logger LOG = LoggerFactory.getLogger("champions-desktop");
+
+	private final Path logFile;
+	private volatile Process process;
+
+	public DesktopLauncher(Path configDirectory) {
+		this.logFile = configDirectory.resolve("desktop.log");
+	}
+
+	public boolean isRunning() {
+		Process current = process;
+		return current != null && current.isAlive();
+	}
+
+	/** The exact command the app would be started with, with the token redacted. */
+	public List<String> commandPreview(int port) {
+		List<String> command = new ArrayList<>();
+		command.add(javaBinary());
+		command.addAll(launchArguments(port, "<token>"));
+		return List.copyOf(command);
+	}
+
+	/**
+	 * Starts the desktop app attached to the given bridge.
+	 *
+	 * @return true when a process was started (it may still fail to connect)
+	 */
+	public synchronized boolean spawn(int port, String token, String configDirectory) {
+		if (isRunning()) return true;
+		Optional<Path> jar = ownArchive();
+		if (jar.isEmpty()) {
+			LOG.warn("desktop app not started: the mod is not running from a JAR, so there is no "
+				+ "application to launch. Run the installed mod JAR to use the external interface.");
+			return false;
+		}
+		List<String> command = new ArrayList<>();
+		command.add(javaBinary());
+		command.addAll(launchArguments(port, token));
+		if (configDirectory != null && !configDirectory.isBlank()) {
+			command.add("--config");
+			command.add(configDirectory);
+		}
+		try {
+			Path parent = logFile.getParent();
+			if (parent != null) Files.createDirectories(parent);
+			ProcessBuilder builder = new ProcessBuilder(command);
+			builder.redirectErrorStream(true);
+			builder.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile.toFile()));
+			builder.environment().put("CHAMPIONS_DESKTOP_TOKEN", token);
+			builder.environment().put("CHAMPIONS_DESKTOP_PORT", Integer.toString(port));
+			process = builder.start();
+			LOG.info("ChampionsCode desktop app started (pid {}), output: {}", process.pid(), logFile);
+			return true;
+		} catch (IOException | RuntimeException error) {
+			LOG.warn("could not start the desktop app: {}. In-game windows remain available.", error.getMessage());
+			return false;
+		}
+	}
+
+	/** {@code -jar <this mod jar> --connect <port> --token <token>} (or the dev classes dir). */
+	private List<String> launchArguments(int port, String token) {
+		List<String> arguments = new ArrayList<>();
+		Path archive = ownArchive().orElse(null);
+		if (archive != null && Files.isDirectory(archive)) {
+			arguments.add("-cp");
+			arguments.add(archive.toAbsolutePath().toString());
+			arguments.add("dev.champions.desktop.DesktopMain");
+		} else if (archive != null) {
+			arguments.add("-jar");
+			arguments.add(archive.toAbsolutePath().toString());
+		} else {
+			arguments.add("-cp");
+			arguments.add(System.getProperty("java.class.path", "."));
+			arguments.add("dev.champions.desktop.DesktopMain");
+		}
+		arguments.add("--connect");
+		arguments.add(Integer.toString(port));
+		arguments.add("--token");
+		arguments.add(token);
+		return arguments;
+	}
+
+	/** The JVM running Minecraft: always new enough, since the mod requires Java 25. */
+	private static String javaBinary() {
+		Optional<String> running = ProcessHandle.current().info().command();
+		if (running.isPresent() && !running.get().isBlank()) return running.get();
+		String executable = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")
+			? "java.exe" : "java";
+		return Path.of(System.getProperty("java.home", "."), "bin", executable).toString();
+	}
+
+	/** The file or directory this class was loaded from. */
+	private static Optional<Path> ownArchive() {
+		try {
+			var source = DesktopLauncher.class.getProtectionDomain().getCodeSource();
+			if (source == null || source.getLocation() == null) return Optional.empty();
+			return Optional.of(Path.of(source.getLocation().toURI()));
+		} catch (Exception unavailable) {
+			return Optional.empty();
+		}
+	}
+
+	public void close() {
+		Process current = process;
+		if (current == null) return;
+		current.destroy();
+		process = null;
+	}
+}

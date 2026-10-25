@@ -19,6 +19,29 @@ page, overview, and download links. Source code, issues, and the release files
 themselves stay on
 [GitLab](https://gitlab.com/international-duck-incorporated/ChampionsCode).
 
+## Two front ends, one JAR
+
+The mod JAR is also the desktop application:
+
+```
+java -jar champions-mod-<version>.jar                    # standalone, no game needed
+java -jar champions-mod-<version>.jar --demo             # simulated target, safe to try
+java -jar champions-mod-<version>.jar --connect <port> --token <t>   # started by the game
+```
+
+In game, F8 opens the terminal, F7 the code space and ClickGUI the modules window;
+`config/champions-mod/desktop.properties` picks `ui=both` (default), `ui=external`
+or `ui=in-game`. The external app talks to the running game over loopback only and
+sends the same console calls the in-game windows make, so the authorization
+allowlist, the one-run `CONFIRM` phrase, the exploit warning and the audit log all
+stay in the game process. `status` prints what this build supports, and modules
+whose data a build cannot capture are refused with a reason rather than returning
+empty evidence.
+
+See [docs/external-desktop-plan.md](docs/external-desktop-plan.md) for the design and
+[docs/version-compatibility.md](docs/version-compatibility.md) for how one source tree
+serves several Minecraft versions.
+
 ## What is implemented
 
 ### Research console

@@ -1,5 +1,7 @@
 package dev.champions.core.module.builtin;
 
+import dev.champions.core.mc.ClientCapabilities;
+import dev.champions.core.mc.VersionGated;
 import dev.champions.core.module.CommandDescriptor;
 import dev.champions.core.module.CommandPathDescriptor;
 import dev.champions.core.module.CommandSafetyPolicy;
@@ -27,7 +29,9 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /** Filters default roots and optionally performs bounded metadata-oriented probes. */
-public final class ChatPluginEnumeratorModule implements ActiveResearchModule {
+public final class ChatPluginEnumeratorModule implements ActiveResearchModule, VersionGated {
+	@Override public java.util.Set<ClientCapabilities.Feature> requires() { return java.util.Set.of(ClientCapabilities.Feature.COMMAND_TREE); }
+
 	private static final Pattern VERSION_TOKEN = Pattern.compile(
 		"(?i)\\b(?:version\\s*[:=]?\\s*|v)(v?\\d+(?:\\.\\d+){1,4}(?:[-+][0-9A-Za-z_.-]+)?)\\b");
 	private static final Pattern BARE_VERSION_TOKEN = Pattern.compile(

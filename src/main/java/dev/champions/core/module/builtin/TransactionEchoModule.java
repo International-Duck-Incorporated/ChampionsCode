@@ -6,6 +6,8 @@ import dev.champions.core.module.ModuleContext;
 import dev.champions.core.module.ModuleOption;
 import dev.champions.core.module.ModuleResult;
 import dev.champions.core.module.PacketEvent;
+import dev.champions.core.mc.ClientCapabilities;
+import dev.champions.core.mc.VersionGated;
 import dev.champions.core.module.ResearchModule;
 
 import java.util.ArrayDeque;
@@ -18,7 +20,9 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /** Passive, payload-free correlation of menu interaction and update packet classes. */
-public final class TransactionEchoModule implements ResearchModule {
+public final class TransactionEchoModule implements ResearchModule, VersionGated {
+	@Override public java.util.Set<ClientCapabilities.Feature> requires() { return java.util.Set.of(ClientCapabilities.Feature.PACKET_TELEMETRY); }
+
 	@Override public String id() { return "auxiliary/observe/transaction_echo"; }
 	@Override public String name() { return "Transaction Echo menu-flow observer"; }
 	@Override public String description() {

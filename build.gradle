@@ -7,6 +7,28 @@ base {
 	archivesName = project.archives_base_name
 }
 
+// The same JAR is also the external desktop application. Fabric ignores
+// Main-Class entirely; `java -jar champions-mod-<version>.jar` starts the Swing
+// front end with no Minecraft classes on the classpath.
+ext.desktopMainClass = 'dev.champions.desktop.DesktopMain'
+
+tasks.named('jar') {
+	manifest {
+		attributes('Main-Class': project.ext.desktopMainClass)
+	}
+}
+
+// Headless proof that the desktop half really runs without Minecraft. CI runs
+// this against the packaged JAR, so the property can never regress silently.
+tasks.register('desktopSelfTest', JavaExec) {
+	dependsOn tasks.named('jar')
+	group = 'verification'
+	description = 'Runs the desktop app self-test from the built mod JAR (no Minecraft on the classpath).'
+	classpath = files(tasks.named('jar').flatMap { it.archiveFile })
+	mainClass = project.ext.desktopMainClass
+	args '--self-test'
+}
+
 repositories {
 }
 

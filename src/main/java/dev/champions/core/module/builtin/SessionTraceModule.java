@@ -7,6 +7,8 @@ import dev.champions.core.module.ModuleOption;
 import dev.champions.core.module.ModuleResult;
 import dev.champions.core.module.PacketEvent;
 import dev.champions.core.module.PacketFlowAnalysis;
+import dev.champions.core.mc.ClientCapabilities;
+import dev.champions.core.mc.VersionGated;
 import dev.champions.core.module.ResearchModule;
 
 import java.util.List;
@@ -15,7 +17,9 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /** Bounded metadata timeline suitable for reproducing event ordering without payloads. */
-public final class SessionTraceModule implements ResearchModule {
+public final class SessionTraceModule implements ResearchModule, VersionGated {
+	@Override public java.util.Set<ClientCapabilities.Feature> requires() { return java.util.Set.of(ClientCapabilities.Feature.PACKET_TELEMETRY); }
+
 	@Override public String id() { return "auxiliary/replay/session_trace"; }
 	@Override public String name() { return "Session Trace metadata replay"; }
 	@Override public String description() {

@@ -67,6 +67,13 @@ build:
     # 3. Clean build and tests.
     - chmod +x ./gradlew
     - ./gradlew clean build --no-daemon --stacktrace
+    # 3b. Prove the same JAR also runs as the external desktop app, with no
+    #     Minecraft classes on its classpath (see docs/external-desktop-plan.md).
+    - |
+      set -eu
+      jar="$(ls build/libs/champions-mod-*.jar | grep -v sources | head -1)"
+      test -n "$jar"
+      java -jar "$jar" --self-test
     # 4. Verify the packaged mod metadata.
     - |
       python3 - <<'PY'
@@ -105,6 +112,27 @@ build:
           raise SystemExit("Mod must remain client-only")
       if "champions.client.mixins.json" not in names:
           raise SystemExit("Client mixin configuration is missing from the built JAR")
+
+      # The JAR doubles as the desktop application: Main-Class plus the Swing
+      # front end and the loopback bridge must survive packaging.
+      with zipfile.ZipFile(jars[0]) as archive:
+          manifest = archive.read("META-INF/MANIFEST.MF").decode("utf-8", "replace")
+      if "Main-Class: dev.champions.desktop.DesktopMain" not in manifest.replace("\r\n", "\n").replace("\n ", ""):
+          raise SystemExit("JAR is not runnable as the desktop app (missing Main-Class)")
+      desktop_classes = {
+          "dev/champions/desktop/DesktopMain.class",
+          "dev/champions/desktop/TerminalPanel.class",
+          "dev/champions/desktop/ModulesPanel.class",
+          "dev/champions/desktop/CodeSpacePanel.class",
+          "dev/champions/desktop/RemoteConsolePort.class",
+          "dev/champions/bridge/DesktopBridge.class",
+          "dev/champions/net/ipc/Protocol.class",
+          "dev/champions/surface/ConsoleBuffer.class",
+          "dev/champions/core/mc/ClientCapabilities.class",
+      }
+      missing_desktop = desktop_classes - names
+      if missing_desktop:
+          raise SystemExit(f"Desktop classes missing from JAR: {sorted(missing_desktop)}")
 
       runtime_java_classes = {
           "dev/champions/api/java/ChampionRuntimeAddon.class",

@@ -3,6 +3,7 @@ package dev.champions.client;
 import com.internationalduck.championscode.module.exploit.ExampleExploitModule;
 import com.internationalduck.championscode.module.payload.ExamplePayloadModule;
 import com.mojang.blaze3d.platform.InputConstants;
+import dev.champions.client.desktop.DesktopRuntime;
 import dev.champions.client.java.JavaRuntimeManager;
 import dev.champions.client.ui.ArmedTitleOverlay;
 import dev.champions.client.ui.ExploitWarningScreen;
@@ -36,6 +37,7 @@ public final class ChampionsClient implements ClientModInitializer {
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 	private ChampionConsole console;
 	private JavaRuntimeManager javaRuntime;
+	private DesktopRuntime desktop;
 	private KeyMapping openConsoleKey;
 	private KeyMapping openJavaStudioKey;
 	private KeyMapping openLogViewerKey;
@@ -54,8 +56,12 @@ public final class ChampionsClient implements ClientModInitializer {
 		// closes another (see ChampionsScreens).
 		Runnable openClickGui = () -> {
 			Minecraft client = Minecraft.getInstance();
-			client.execute(() -> ChampionsScreens.open(client, console, () -> javaRuntime,
-				openConsoleKey, openJavaStudioKey, openLogViewerKey, ChampionsScreens.CLICKGUI));
+			client.execute(() -> {
+				if (desktop != null) desktop.show("modules", () -> ChampionsScreens.open(client, console, () -> javaRuntime,
+					openConsoleKey, openJavaStudioKey, openLogViewerKey, ChampionsScreens.CLICKGUI));
+				else ChampionsScreens.open(client, console, () -> javaRuntime,
+					openConsoleKey, openJavaStudioKey, openLogViewerKey, ChampionsScreens.CLICKGUI);
+			});
 		};
 		Runnable openCategoryGui = () -> {
 			Minecraft client = Minecraft.getInstance();
@@ -71,9 +77,16 @@ public final class ChampionsClient implements ClientModInitializer {
 			Minecraft client = Minecraft.getInstance();
 			client.execute(() -> ChampionsScreens.closeTerminal(client));
 		};
-		ExploitWarningPrompt exploitWarningPrompt = request -> {
+		ExploitWarningPrompt inGameWarning = request -> {
 			Minecraft client = Minecraft.getInstance();
 			client.execute(() -> client.setScreenAndShow(ExploitWarningScreen.forRun(client.gui.screen(), request)));
+		};
+		// The external app shows the same legal warning; the in-game screen takes it
+		// over whenever no desktop session is attached.
+		ExploitWarningPrompt exploitWarningPrompt = request -> {
+			DesktopRuntime runtime = desktop;
+			if (runtime != null && runtime.offerExploitPrompt(request)) return;
+			inGameWarning.request(request);
 		};
 		UpdateSettings updateSettings = new UpdateSettings(configDirectory);
 		UpdateService updateService = new GitLabUpdateService();
@@ -96,10 +109,29 @@ public final class ChampionsClient implements ClientModInitializer {
 		console.registerModule(new ExamplePayloadModule());
 		javaRuntime = new JavaRuntimeManager(configDirectory, contextSupplier, console);
 		javaRuntimeReference.set(javaRuntime);
+		String modVersion = FabricLoader.getInstance().getModContainer(MOD_ID)
+			.map(container -> container.getMetadata().getVersion().getFriendlyString())
+			.orElse("unknown");
+		// What this build can do. The reference build for Minecraft 26.3 has every
+		// feature; a per-version adapter compiled for another Minecraft version
+		// declares a smaller set and the console refuses the modules that need it.
+		console.setCapabilitiesSupplier(() -> dev.champions.core.mc.ClientCapabilities.full(
+			"26.3",
+			FabricLoader.getInstance().getModContainer("fabricloader")
+				.map(container -> container.getMetadata().getVersion().getFriendlyString()).orElse("unknown"),
+			modVersion,
+			"mc26.3"));
+		desktop = new DesktopRuntime(configDirectory, console, contextSupplier,
+			dev.champions.client.SessionPlayers::names, () -> modVersion,
+			runnable -> Minecraft.getInstance().execute(runnable));
+		desktop.start();
+		LOGGER.info("interface mode {} (settings: {}); external app attached: {}",
+			desktop.settings().mode(), desktop.settings().file(), desktop.isAttached());
 		ClientReceiveMessageEvents.GAME.register(chatRuntime::onGameMessage);
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
 			PlayerIdentityEvents.clearListener();
 			javaRuntime.close();
+			if (desktop != null) desktop.close();
 		});
 		// Plug-and-play module folder: the runtime polls it while the game runs, so
 		// dropping a .java file below config/champions-mod/modules/ is enough.
@@ -134,10 +166,18 @@ public final class ChampionsClient implements ClientModInitializer {
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			PlayerMotionTelemetry.tick(client);
 			SessionPlayers.capture(client);
-			while (openConsoleKey.consumeClick()) ChampionsScreens.open(client, console, () -> javaRuntime,
-				openConsoleKey, openJavaStudioKey, openLogViewerKey, ChampionsScreens.TERMINAL);
-			while (openJavaStudioKey.consumeClick()) ChampionsScreens.open(client, console, () -> javaRuntime,
-				openConsoleKey, openJavaStudioKey, openLogViewerKey, ChampionsScreens.JAVASTUDIO);
+			while (openConsoleKey.consumeClick()) {
+				if (desktop != null) desktop.show("terminal", () -> ChampionsScreens.open(client, console, () -> javaRuntime,
+					openConsoleKey, openJavaStudioKey, openLogViewerKey, ChampionsScreens.TERMINAL));
+				else ChampionsScreens.open(client, console, () -> javaRuntime,
+					openConsoleKey, openJavaStudioKey, openLogViewerKey, ChampionsScreens.TERMINAL);
+			}
+			while (openJavaStudioKey.consumeClick()) {
+				if (desktop != null) desktop.show("codespace", () -> ChampionsScreens.open(client, console, () -> javaRuntime,
+					openConsoleKey, openJavaStudioKey, openLogViewerKey, ChampionsScreens.JAVASTUDIO));
+				else ChampionsScreens.open(client, console, () -> javaRuntime,
+					openConsoleKey, openJavaStudioKey, openLogViewerKey, ChampionsScreens.JAVASTUDIO);
+			}
 			while (openLogViewerKey.consumeClick()) ChampionsScreens.open(client, console, () -> javaRuntime,
 				openConsoleKey, openJavaStudioKey, openLogViewerKey, ChampionsScreens.LOGVIEWER);
 		});

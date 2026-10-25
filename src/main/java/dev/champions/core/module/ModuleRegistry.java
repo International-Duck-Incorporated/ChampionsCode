@@ -1,5 +1,7 @@
 package dev.champions.core.module;
 
+import dev.champions.core.log.Log;
+
 import dev.champions.core.module.builtin.ChatGameFairnessModule;
 import dev.champions.core.module.builtin.ChatNormalizationAuditModule;
 import dev.champions.core.module.builtin.ChatPluginEnumeratorModule;
@@ -29,11 +31,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public final class ModuleRegistry {
-	private static final Logger LOG = LoggerFactory.getLogger("champions-modules");
 	private final Map<String, ResearchModule> modules = new LinkedHashMap<>();
 
 	public ModuleRegistry() {
@@ -75,7 +74,7 @@ public final class ModuleRegistry {
 		modules.clear();
 		modules.putAll(next);
 		for (Map.Entry<String, ResearchModule> entry : accepted) {
-			LOG.info("module registered: {} ({})", entry.getKey(), entry.getValue().getClass().getName());
+			Log.info("module registered: {} ({})", entry.getKey(), entry.getValue().getClass().getName());
 		}
 	}
 
@@ -99,9 +98,9 @@ public final class ModuleRegistry {
 		}
 		modules.clear();
 		modules.putAll(next);
-		for (String id : normalizedRemovals) LOG.info("module unregistered: {}", id);
+		for (String id : normalizedRemovals) Log.info("module unregistered: {}", id);
 		for (Map.Entry<String, ResearchModule> entry : accepted) {
-			LOG.info("module registered: {} ({})", entry.getKey(), entry.getValue().getClass().getName());
+			Log.info("module registered: {} ({})", entry.getKey(), entry.getValue().getClass().getName());
 		}
 	}
 

@@ -1,5 +1,9 @@
 package dev.champions.core.console;
 
+import dev.champions.core.log.Log;
+import dev.champions.core.mc.ClientCapabilities;
+import dev.champions.core.mc.VersionGated;
+
 import dev.champions.api.java.RuntimeJavaCommands;
 import dev.champions.core.module.EvidenceNode;
 import dev.champions.core.module.ExploitResearchModule;
@@ -32,12 +36,9 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /** Stateful msfconsole-inspired command shell for defensive, authorized modules. */
 public final class ChampionConsole {
-	private static final Logger LOG = LoggerFactory.getLogger("champions-console");
 	private static final int MAX_LINES = 1_000;
 	private static final int MAX_HISTORY = 100;
 	private final ModuleRegistry registry = new ModuleRegistry();
@@ -54,6 +55,8 @@ public final class ChampionConsole {
 	private final Runnable closeUi;
 	private final List<ConsoleLine> lines = new ArrayList<>();
 	private final List<String> history = new ArrayList<>();
+	private long lineSequence;
+	private volatile java.util.function.Supplier<ClientCapabilities> capabilitiesSupplier = () -> null;
 	private ResearchModule activeModule;
 	private String runningModuleId;
 	private String approvedExploitRunModuleId;
@@ -134,9 +137,22 @@ public final class ChampionConsole {
 	 * drop-in modules (the exploit and payload folders), which the core source
 	 * set cannot reach; the client entrypoint calls this once per drop-in module.
 	 */
+	/**
+	 * Declares what this build can do. Called by the client adapter with the
+	 * per-version capability set; the standalone desktop app leaves it unset and
+	 * everything that is not explicitly gated still runs.
+	 */
+	public void setCapabilitiesSupplier(java.util.function.Supplier<ClientCapabilities> supplier) {
+		this.capabilitiesSupplier = supplier == null ? () -> null : supplier;
+	}
+
+	public ClientCapabilities capabilities() {
+		return capabilitiesSupplier.get();
+	}
+
 	public synchronized void registerModule(ResearchModule module) {
 		registry.register(module);
-		LOG.info("drop-in module registered: {}", module.id());
+		Log.info("drop-in module registered: {}", module.id());
 	}
 
 	/** Atomically swaps the external runtime-module group without disturbing builtins. */
@@ -172,7 +188,7 @@ public final class ChampionConsole {
 		if (input.isEmpty()) return;
 		addHistory(input);
 		add(ConsoleLine.accent(prompt() + " > " + redactForEcho(input)));
-		LOG.info("command: {}", redactForEcho(input));
+		Log.info("command: {}", redactForEcho(input));
 
 		List<String> args;
 		try { args = CommandTokenizer.tokenize(input); }
@@ -202,7 +218,7 @@ public final class ChampionConsole {
 				case "update" -> update(args);
 				case "exit", "close", "quit" -> {
 					add(ConsoleLine.muted("Closing terminal."));
-					LOG.info("terminal closed via {} command", command);
+					Log.info("terminal closed via {} command", command);
 					closeUi.run();
 				}
 				case "java" -> runtimeJava.submit(commandRemainder(input));
@@ -546,13 +562,23 @@ public final class ChampionConsole {
 			return;
 		}
 		approvedExploitRunModuleId = null;
+		ClientCapabilities capabilities = capabilitiesSupplier.get();
+		if (capabilities != null && module instanceof VersionGated gated && !gated.availableOn(capabilities)) {
+			String missing = capabilities.missing(gated.requires());
+			add(ConsoleLine.warning("[!] " + module.id() + " needs " + missing
+				+ ", which this build for Minecraft " + capabilities.minecraftVersion() + " does not provide."));
+			add(ConsoleLine.muted("    Use a build of ChampionsCode for this Minecraft version, or run the module on a supported target."));
+			audit.record("module_run", AuthorizationPolicy.normalizeHost(contextSupplier.get().serverAddress()),
+				module.id(), "unavailable", missing);
+			return;
+		}
 		ModuleContext context = contextSupplier.get();
 		String confirm = activeOptions.getOrDefault("CONFIRM", "");
 		AuthorizationDecision decision = authorization.authorize(context.connected(), context.serverAddress(), activeOptions.get("RHOST"), confirm);
 		activeOptions.put("CONFIRM", ""); // one-run secret, consumed even on denial
 		if (module.requiresAuthorization() && !decision.allowed()) {
 			add(ConsoleLine.error("Authorization gate denied: " + decision.reason()));
-			LOG.warn("authorization denied for {}: {}", module.id(), decision.reason());
+			Log.warn("authorization denied for {}: {}", module.id(), decision.reason());
 			audit.record("module_run", AuthorizationPolicy.normalizeHost(context.serverAddress()), module.id(), "denied", decision.reason());
 			return;
 		}
@@ -562,7 +588,7 @@ public final class ChampionConsole {
 		boolean activeAction = module instanceof ActiveResearchModule active && active.performsActiveAction(options);
 		boolean activeJob = module instanceof ActiveResearchModule;
 		add(ConsoleLine.accent("[*] Running " + module.id() + " against current connection"));
-		LOG.info("module {} starting against {}", module.id(), decision.normalizedTarget());
+		Log.info("module {} starting against {}", module.id(), decision.normalizedTarget());
 		try {
 			if (module instanceof ActiveResearchModule active) {
 				runningModuleId = module.id();
@@ -651,7 +677,7 @@ public final class ChampionConsole {
 		if (error != null) {
 			Throwable cause = error.getCause() == null ? error : error.getCause();
 			add(ConsoleLine.error("Module stopped safely: " + safeMessage(cause)));
-			LOG.warn("module {} stopped after error: {}", module.id(), safeMessage(cause));
+			Log.warn("module {} stopped after error: {}", module.id(), safeMessage(cause));
 			audit.record("module_run", target, module.id(), "error", safeMessage(cause));
 			return;
 		}
@@ -662,7 +688,7 @@ public final class ChampionConsole {
 		}
 		long elapsed = (System.nanoTime() - started) / 1_000_000L;
 		add(ConsoleLine.success("[+] " + result.summary() + " (" + elapsed + " ms)"));
-		LOG.info("module {} completed in {} ms: {}", module.id(), elapsed, result.summary());
+		Log.info("module {} completed in {} ms: {}", module.id(), elapsed, result.summary());
 		audit.record("module_run", target, module.id(), "completed", result.summary());
 	}
 
@@ -673,6 +699,11 @@ public final class ChampionConsole {
 		add(ConsoleLine.info("  brand=" + c.serverBrand() + " version=" + c.advertisedVersion()));
 		add(ConsoleLine.info("  player=" + c.playerName() + " position=" + c.playerPosition()));
 		add(ConsoleLine.info("  active_job=" + (runningModuleId == null ? "none" : runningModuleId)));
+		ClientCapabilities capabilities = capabilitiesSupplier.get();
+		if (capabilities != null) {
+			add(ConsoleLine.info("  capabilities=" + capabilities.summary()));
+			if (!capabilities.guiScreens()) add(ConsoleLine.muted("  in-game windows are not part of this build; use the external app."));
+		}
 		add(ConsoleLine.muted("  audit=" + audit.file()));
 	}
 
@@ -736,8 +767,21 @@ public final class ChampionConsole {
 	}
 
 	private void add(ConsoleLine line) {
-		for (String textLine : line.text().split("\\n", -1)) lines.add(new ConsoleLine(line.tone(), limit(textLine, 500)));
+		for (String textLine : line.text().split("\\n", -1)) {
+			lines.add(new ConsoleLine(line.tone(), limit(textLine, 500)));
+			lineSequence++;
+		}
 		if (lines.size() > MAX_LINES) lines.subList(0, lines.size() - MAX_LINES).clear();
+	}
+
+	/**
+	 * Monotonic count of every line ever appended to the console, including lines
+	 * that have since been trimmed out of the bounded buffer. Remote views use it
+	 * to compute exact deltas: the buffer never loses track of how much was
+	 * dropped from the front.
+	 */
+	public synchronized long lineSequence() {
+		return lineSequence;
 	}
 
 	private void addHistory(String input) {

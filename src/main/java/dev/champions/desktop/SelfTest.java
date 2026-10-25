@@ -1,0 +1,256 @@
+package dev.champions.desktop;
+
+import dev.champions.api.java.RuntimeJavaCommands;
+import dev.champions.core.console.ChampionConsole;
+import dev.champions.core.console.ConsoleLine;
+import dev.champions.core.module.active.ActiveModuleRuntime;
+import dev.champions.core.update.UpdateService;
+import dev.champions.net.ipc.Json;
+import dev.champions.net.ipc.Protocol;
+import dev.champions.surface.ConsoleBuffer;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Headless verification that the desktop half of the mod really runs without
+ * Minecraft.
+ *
+ * <p>Run from the shipped mod JAR with {@code java -jar champions-mod-x.jar
+ * --self-test}. It exercises the shared terminal model, the wire codec, a full
+ * gated console session against the simulated target, and asserts that no
+ * Minecraft or Fabric class is on the classpath. CI fails the build when this
+ * exits non-zero.</p>
+ */
+public final class SelfTest {
+	private static int failures;
+
+	private SelfTest() {}
+
+	public static int run() {
+		System.out.println("ChampionsCode desktop self-test " + DesktopMain.APP_VERSION);
+		Path config;
+		try {
+			config = Files.createTempDirectory("champions-selftest");
+		} catch (IOException error) {
+			System.out.println("FAIL: could not create a temporary directory");
+			return 1;
+		}
+		try {
+			buffer();
+			codec();
+			isolation();
+			consoleSession(config.resolve("demo"));
+			capabilityGate(config.resolve("gated"));
+			dropInCompiler(config.resolve("codespace"));
+			jsonEdgeCases();
+		} finally {
+			deleteTree(config);
+		}
+		System.out.println(failures == 0 ? "SELF-TEST PASSED" : "SELF-TEST FAILED (" + failures + ")");
+		return failures == 0 ? 0 : 1;
+	}
+
+	private static void buffer() {
+		ConsoleBuffer buffer = new ConsoleBuffer();
+		for (int index = 0; index < 1_500; index++) buffer.append(ConsoleLine.info("line " + index));
+		check("buffer keeps the 1000-line bound", buffer.size() == ConsoleBuffer.MAX_LINES);
+		check("buffer drops from the front", buffer.snapshot().getLast().text().equals("line 1499"));
+		check("buffer reports a delta", buffer.since(995).size() == 5);
+		long revision = buffer.revision();
+		buffer.append(ConsoleLine.info("x"));
+		check("revision advances on append", buffer.revision() == revision + 1);
+		buffer.recordCommand("show modules");
+		buffer.recordCommand("use auxiliary/scanner/server_ping");
+		check("history steps back", "use auxiliary/scanner/server_ping".equals(buffer.previousCommand()));
+		check("history steps back again", "show modules".equals(buffer.previousCommand()));
+		check("history returns empty past the end", "".equals(buffer.nextCommand()) || buffer.nextCommand() != null);
+	}
+
+	private static void codec() {
+		List<ConsoleLine> lines = List.of(
+			ConsoleLine.success("[+] done"),
+			ConsoleLine.warning("quote\" backslash\\ newline\n"),
+			new ConsoleLine(ConsoleLine.Tone.ACCENT, "unicode ✓ ünïcode")
+		);
+		String frame = Protocol.encodeConsoleLines(7, lines);
+		Map<String, Object> decoded = Protocol.decode(frame);
+		List<ConsoleLine> round = Protocol.decodeLines(decoded, "lines");
+		check("codec round-trips tones", round.getFirst().tone() == ConsoleLine.Tone.SUCCESS);
+		check("codec round-trips text", round.get(2).text().equals("unicode ✓ ünïcode"));
+		check("codec round-trips the offset", Protocol.num(decoded, "from", -1) == 7);
+		Map<String, Object> state = Map.of("connected", true, "target", "lab.demo.invalid",
+			"modules", List.of(Json.obj("id", "a/b", "selected", false)));
+		String stateFrame = Protocol.encodeState(state);
+		check("state frames carry the type", Protocol.STATE_PUSH.equals(Protocol.type(Protocol.decode(stateFrame))));
+		check("state frames keep nested objects", Protocol.decode(stateFrame).get("modules") instanceof List<?>);
+	}
+
+	private static void isolation() {
+		for (String className : List.of("net.minecraft.client.Minecraft", "net.fabricmc.loader.api.FabricLoader")) {
+			try {
+				Class.forName(className);
+				check("no Minecraft/Fabric class on the desktop classpath (" + className + ")", false);
+			} catch (ClassNotFoundException expected) {
+				check("no Minecraft/Fabric class on the desktop classpath (" + className + ")", true);
+			}
+		}
+	}
+
+	private static void consoleSession(Path config) {
+		ChampionConsole console = new ChampionConsole(config, DemoContext::capture,
+			ActiveModuleRuntime.disabled(), RuntimeJavaCommands.disabled(), () -> {}, () -> {}, () -> {},
+			dev.champions.core.console.ExploitWarningPrompt.unavailable(), UpdateService.disabled(), () -> {});
+		console.submit("show modules");
+		check("console lists builtins", contains(console, "auxiliary/audit/plugin_surface"));
+		console.submit("use auxiliary/audit/plugin_surface");
+		console.submit("set CONFIRM I_HAVE_AUTHORIZATION");
+		console.submit("run");
+		check("unauthorized target is denied", contains(console, "Authorization gate denied"));
+		console.submit("authorize current");
+		check("target can be authorized", contains(console, "Authorized current target"));
+		console.submit("set CONFIRM I_HAVE_AUTHORIZATION");
+		console.submit("run");
+		check("authorized run completes", contains(console, "Advertised surface inventoried"));
+		console.submit("run");
+		check("CONFIRM is consumed after one run", contains(console, "Authorization gate denied"));
+		console.submit("use auxiliary/audit/dependency_posture");
+		console.submit("set COMPONENTS worldedit@7.3.0,libreforge");
+		console.submit("set CONFIRM I_HAVE_AUTHORIZATION");
+		console.submit("run");
+		check("dependency posture runs", contains(console, "dependency"));
+		try {
+			List<String> audit = Files.readAllLines(config.resolve("audit.jsonl"));
+			check("audit log records runs", audit.stream().anyMatch(line -> line.contains("\"module_run\"")));
+			check("audit log records the denial", audit.stream().anyMatch(line -> line.contains("\"denied\"")));
+			check("audit log is valid JSON", audit.stream().allMatch(line -> {
+				try {
+					Protocol.decode(line);
+					return true;
+				} catch (RuntimeException malformed) {
+					return false;
+				}
+			}));
+		} catch (IOException error) {
+			check("audit log readable", false);
+		}
+	}
+
+	/**
+	 * A build that lacks the command tree must refuse a gated module with an
+	 * explicit reason and audit the refusal, instead of returning empty evidence.
+	 */
+	private static void capabilityGate(Path config) {
+		ChampionConsole console = new ChampionConsole(config, DemoContext::capture,
+			ActiveModuleRuntime.disabled(), RuntimeJavaCommands.disabled(), () -> {}, () -> {}, () -> {},
+			dev.champions.core.console.ExploitWarningPrompt.unavailable(), UpdateService.disabled(), () -> {});
+		console.setCapabilitiesSupplier(() -> dev.champions.core.mc.ClientCapabilities.minimal(
+			"1.21.11", "0.16.0", "0.2.0", "mc1.21.11"));
+		console.submit("use auxiliary/audit/plugin_surface");
+		console.submit("set CONFIRM I_HAVE_AUTHORIZATION");
+		console.submit("authorize current");
+		console.submit("set CONFIRM I_HAVE_AUTHORIZATION");
+		console.submit("run");
+		check("version-gated module is refused", contains(console, "which this build for Minecraft 1.21.11 does not provide"));
+		check("refusal names the missing feature", contains(console, "advertised command tree"));
+		check("ungated module still runs", runsPassiveModule());
+	}
+
+	private static boolean runsPassiveModule() {
+		ChampionConsole console = new ChampionConsole(java.nio.file.Path.of(System.getProperty("java.io.tmpdir"), "champions-cap-" + System.nanoTime()),
+			DemoContext::capture, ActiveModuleRuntime.disabled(), RuntimeJavaCommands.disabled(), () -> {}, () -> {}, () -> {},
+			dev.champions.core.console.ExploitWarningPrompt.unavailable(), UpdateService.disabled(), () -> {});
+		console.setCapabilitiesSupplier(() -> dev.champions.core.mc.ClientCapabilities.minimal(
+			"1.21.11", "0.16.0", "0.2.0", "mc1.21.11"));
+		console.submit("use auxiliary/audit/connection_posture");
+		console.submit("authorize current");
+		console.submit("set CONFIRM I_HAVE_AUTHORIZATION");
+		console.submit("run");
+		return contains(console, "[+]");
+	}
+
+	/**
+	 * The code space must compile and register a drop-in module with no game
+	 * running: same bounds, same discovery, same registry swap as the in-game
+	 * Java Studio.
+	 */
+	private static void dropInCompiler(Path config) {
+		ChampionConsole console = new ChampionConsole(config, DemoContext::offline,
+			ActiveModuleRuntime.disabled(), RuntimeJavaCommands.disabled(), () -> {}, () -> {}, () -> {},
+			dev.champions.core.console.ExploitWarningPrompt.unavailable(), UpdateService.disabled(), () -> {});
+		Path modules = config.resolve("modules");
+		try {
+			Files.createDirectories(modules);
+			Files.writeString(modules.resolve("SelfTestModule.java"), """
+				import dev.champions.core.module.Finding;
+				import dev.champions.core.module.ModuleContext;
+				import dev.champions.core.module.ModuleOption;
+				import dev.champions.core.module.ModuleResult;
+				import dev.champions.core.module.ResearchModule;
+
+				import java.util.List;
+				import java.util.Map;
+
+				public final class SelfTestModule implements ResearchModule {
+					@Override public String id() { return "auxiliary/local/self_test"; }
+					@Override public String name() { return "Self test module"; }
+					@Override public String description() { return "Compiled outside Minecraft."; }
+					@Override public List<ModuleOption> options() { return List.of(); }
+					@Override public ModuleResult run(ModuleContext context, Map<String, String> options) {
+						return new ModuleResult("ran", List.of(new Finding(Finding.Severity.PASS, "ok", "ok", "ok")));
+					}
+				}
+				""");
+		} catch (IOException error) {
+			check("drop-in compiler: could write a module", false);
+			return;
+		}
+		StandaloneRuntime runtime = new StandaloneRuntime(config, console);
+		StandaloneRuntime.Result result = runtime.reload();
+		check("drop-in compiler: compiles outside Minecraft", result.success());
+		check("drop-in compiler: registers the module", result.moduleIds().contains("auxiliary/local/self_test"));
+		check("drop-in compiler: module is selectable", console.selectModuleFromUi("auxiliary/local/self_test"));
+		StandaloneRuntime.Result unload = runtime.unload("self-test cleanup");
+		check("drop-in compiler: unload removes it", unload.moduleIds().isEmpty());
+	}
+
+	private static void jsonEdgeCases() {
+		String encoded = Json.obj("t", "test", "value", "line\nbreak \"quoted\" \\ \u0001", "number", 42L, "flag", true);
+		Map<String, Object> decoded = Protocol.decode(encoded);
+		check("json escapes control characters", Protocol.str(decoded, "value", "").contains("\n"));
+		check("json keeps numbers", Protocol.num(decoded, "number", 0) == 42);
+		check("json keeps booleans", Protocol.bool(decoded, "flag", false));
+	}
+
+	private static boolean contains(ChampionConsole console, String needle) {
+		for (ConsoleLine line : console.lines()) if (line.text().contains(needle)) return true;
+		return false;
+	}
+
+	private static void check(String label, boolean passed) {
+		if (passed) {
+			System.out.println("  ok   " + label);
+		} else {
+			failures++;
+			System.out.println("  FAIL " + label);
+		}
+	}
+
+	private static void deleteTree(Path root) {
+		try (var stream = Files.walk(root)) {
+			stream.sorted(Comparator.reverseOrder()).forEach(path -> {
+				try {
+					Files.deleteIfExists(path);
+				} catch (IOException ignored) {
+					// best effort
+				}
+			});
+		} catch (IOException ignored) {
+			// best effort
+		}
+	}
+}

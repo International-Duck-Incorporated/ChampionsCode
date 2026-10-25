@@ -4,6 +4,8 @@ import dev.champions.core.module.Finding;
 import dev.champions.core.module.ModuleContext;
 import dev.champions.core.module.ModuleOption;
 import dev.champions.core.module.ModuleResult;
+import dev.champions.core.mc.ClientCapabilities;
+import dev.champions.core.mc.VersionGated;
 import dev.champions.core.module.ResearchModule;
 
 import java.util.ArrayList;
@@ -13,7 +15,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-public final class PluginSurfaceModule implements ResearchModule {
+public final class PluginSurfaceModule implements ResearchModule, VersionGated {
+	@Override public java.util.Set<ClientCapabilities.Feature> requires() { return java.util.Set.of(ClientCapabilities.Feature.COMMAND_TREE); }
+
 	private static final Set<String> COMMON_ADMIN_ROOTS = Set.of(
 		"plugins", "pl", "version", "ver", "bukkit", "paper", "spigot", "about", "icanhasbukkit"
 	);

@@ -5,6 +5,8 @@ import dev.champions.core.module.ModuleContext;
 import dev.champions.core.module.ModuleOption;
 import dev.champions.core.module.ModuleResult;
 import dev.champions.core.module.PlayerMotionObservation;
+import dev.champions.core.mc.ClientCapabilities;
+import dev.champions.core.mc.VersionGated;
 import dev.champions.core.module.ResearchModule;
 
 import java.util.ArrayList;
@@ -14,7 +16,9 @@ import java.util.Locale;
 import java.util.Map;
 
 /** Passive remote-player motion evidence with intentionally broad, non-verdict thresholds. */
-public final class MotionEvidenceModule implements ResearchModule {
+public final class MotionEvidenceModule implements ResearchModule, VersionGated {
+	@Override public java.util.Set<ClientCapabilities.Feature> requires() { return java.util.Set.of(ClientCapabilities.Feature.MOTION_TELEMETRY); }
+
 	@Override public String id() { return "auxiliary/observe/motion_evidence"; }
 	@Override public String name() { return "Motion Evidence observer"; }
 	@Override public String description() {
