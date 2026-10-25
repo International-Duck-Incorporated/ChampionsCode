@@ -14,6 +14,14 @@
   autostart toggle, the file locations, and the exact chat command to do the same
   in game.
 
+### Fixed
+- **Settings rows no longer clip.** The interface card used a scrolling column
+  with a fixed height, so the third switch could end up under the action bar and
+  a stray scrollbar appeared. The rows are plain rows again, sized by the card;
+  the buttons moved into a pinned footer.
+- **Editor scrollbars are themed.** The platform's light 3D scrollbar showed up
+  under the code editor and beside the tree; both now use a flat 10 px dark bar.
+
 ### Changed
 - **New desktop look.** One frameless window (`Shell`) with a drawn title bar
   (brand mark, minimise / maximise / close), a 96 px icon rail, rounded cards,

@@ -5,7 +5,6 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import java.awt.BorderLayout;
 import java.awt.Component;
@@ -33,6 +32,7 @@ public final class SettingsPanel extends JPanel {
 
 	private final ConsolePort port;
 	private final Path configFile;
+	/** Switch rows: one fixed row per setting, each as wide as the card. */
 	private final JPanel rows = new JPanel();
 	private final JLabel note = new JLabel(" ");
 
@@ -42,24 +42,25 @@ public final class SettingsPanel extends JPanel {
 		this.configFile = configDirectory.resolve("desktop.properties");
 		setOpaque(false);
 
-		rows.setLayout(new BoxLayout(rows, BoxLayout.Y_AXIS));
+		rows.setLayout(new java.awt.GridBagLayout());
 		rows.setOpaque(false);
+		rows.setBorder(BorderFactory.createEmptyBorder(6, 0, 8, 0));
 
 		JPanel card = Theme.card(new BorderLayout());
-		card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 330));
 		card.add(Theme.header("Interfaces", "Where ChampionsCode opens — in-game windows, the external app, or both"),
 			BorderLayout.NORTH);
-		JScrollPane scroll = new JScrollPane(rows,
-			JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-		scroll.setBorder(BorderFactory.createEmptyBorder());
-		scroll.setOpaque(false);
-		scroll.getViewport().setOpaque(false);
-		card.add(scroll, BorderLayout.CENTER);
+		card.add(rows, BorderLayout.CENTER);
 
 		note.setFont(Theme.mono(10));
 		note.setForeground(Theme.FAINT);
-		note.setBorder(Theme.padding(8, 16, 12, 16));
-		card.add(note, BorderLayout.SOUTH);
+		note.setBorder(Theme.padding(4, 12, 10, 16));
+
+		JPanel footer = new JPanel(new BorderLayout());
+		footer.setOpaque(false);
+		footer.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, Theme.BORDER));
+		footer.add(actions(), BorderLayout.WEST);
+		footer.add(note, BorderLayout.CENTER);
+		card.add(footer, BorderLayout.SOUTH);
 
 		// Both cards size to their content and stack from the top, so the page
 		// does not turn into one tall box of empty space on a large screen.
@@ -90,21 +91,17 @@ public final class SettingsPanel extends JPanel {
 		String clickGui = properties.getProperty("clickgui", "clickgui").strip().toLowerCase(java.util.Locale.ROOT);
 
 		rows.removeAll();
-		rows.add(segmented("Default interface",
+		addRow(segmented("Default interface",
 			"Decides what F8, F7 and the clickgui/logs commands open.",
 			UI_MODES, ui, value -> write("ui", value)));
-		rows.add(hint("both = in-game windows and the app · external = app only · in-game = the 0.1.x workspace only"));
-		rows.add(Box.createVerticalStrut(6));
-		rows.add(segmented("ClickGUI style",
+		addRow(hint("both = in-game windows and the app · external = app only · in-game = the 0.1.x workspace only"));
+		addRow(segmented("ClickGUI style",
 			"Which in-game interface the clickgui command opens.",
 			CLICKGUI_MODES, clickGui, value -> write("clickgui", value)));
-		rows.add(hint("clickgui = sorted module list · categorygui = movable category panels"));
-		rows.add(Box.createVerticalStrut(6));
-		rows.add(toggle("Start the desktop app automatically",
+		addRow(hint("clickgui = sorted module list · categorygui = movable category panels"));
+		addRow(toggle("Start the desktop app automatically",
 			"When a UI is opened and no app is attached, the game launches it.",
 			spawn, value -> write("spawnOnOpen", Boolean.toString(value))));
-		rows.add(Box.createVerticalStrut(10));
-		rows.add(actions());
 		rows.revalidate();
 		rows.repaint();
 	}
@@ -163,6 +160,17 @@ public final class SettingsPanel extends JPanel {
 		row.add(path, BorderLayout.CENTER);
 		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
 		return row;
+	}
+
+	/** Adds one switch row, stacked below the previous one at its natural height. */
+	private void addRow(JPanel row) {
+		java.awt.GridBagConstraints constraints = new java.awt.GridBagConstraints();
+		constraints.gridx = 0;
+		constraints.gridy = rows.getComponentCount();
+		constraints.weightx = 1;
+		constraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+		constraints.anchor = java.awt.GridBagConstraints.NORTH;
+		rows.add(row, constraints);
 	}
 
 	private JPanel segmented(String title, String description, List<String> options, String current,
@@ -228,8 +236,8 @@ public final class SettingsPanel extends JPanel {
 	private JPanel row(String title, String description) {
 		JPanel row = new JPanel(new BorderLayout(16, 0));
 		row.setOpaque(false);
-		row.setBorder(Theme.padding(6, 16, 6, 16));
-		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 62));
+		row.setBorder(Theme.padding(5, 16, 5, 16));
+		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 58));
 		row.setAlignmentX(Component.LEFT_ALIGNMENT);
 
 		JPanel text = new JPanel(new BorderLayout(0, 2));
