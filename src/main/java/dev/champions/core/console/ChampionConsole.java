@@ -57,6 +57,7 @@ public final class ChampionConsole {
 	private final List<String> history = new ArrayList<>();
 	private long lineSequence;
 	private volatile java.util.function.Supplier<ClientCapabilities> capabilitiesSupplier = () -> null;
+	private volatile InterfacePreferences interfaces = InterfacePreferences.unavailable();
 	private ResearchModule activeModule;
 	private String runningModuleId;
 	private String approvedExploitRunModuleId;
@@ -150,6 +151,15 @@ public final class ChampionConsole {
 		return capabilitiesSupplier.get();
 	}
 
+	/** Host bridge for the {@code interfaces} command (in-game window vs external app). */
+	public void setInterfacePreferences(InterfacePreferences preferences) {
+		this.interfaces = preferences == null ? InterfacePreferences.unavailable() : preferences;
+	}
+
+	public InterfacePreferences interfacePreferences() {
+		return interfaces;
+	}
+
 	public synchronized void registerModule(ResearchModule module) {
 		registry.register(module);
 		Log.info("drop-in module registered: {}", module.id());
@@ -201,6 +211,7 @@ public final class ChampionConsole {
 				case "clickgui" -> openClickGui.run();
 				case "categorygui", "windowgui", "panelgui" -> openCategoryGui.run();
 				case "logs", "log", "logviewer", "logview" -> openLogViewer.run();
+				case "interfaces", "interface", "ui" -> interfaces(args);
 				case "banner" -> banner();
 				case "clear" -> lines.clear();
 				case "show" -> show(args);
@@ -399,6 +410,7 @@ public final class ChampionConsole {
 				add(ConsoleLine.accent("Console command reference"));
 				add(ConsoleLine.info("  clickgui | categorygui | logs | show modules|exploits | search <text> | use <module> | info | back"));
 				add(ConsoleLine.info("  show options | set <name> <value> | unset <name> | run"));
+				add(ConsoleLine.info("  interfaces | interfaces both|external|in-game | interfaces reload"));
 				add(ConsoleLine.info("  authorize current | deauthorize current | show targets"));
 				add(ConsoleLine.info("  update check | update download <version>"));
 				add(ConsoleLine.info("  status | reload | clear | banner | exit"));
@@ -550,6 +562,62 @@ public final class ChampionConsole {
 			if (option.secret() && !value.isBlank()) value = "<armed for one run>";
 			add(ConsoleLine.info(String.format(Locale.ROOT, "  %-14s %-18s %s%s", option.name(), value.isBlank() ? "<unset>" : value, option.description(), option.required() ? " [required]" : "")));
 		}
+	}
+
+	/**
+	 * Switches between the in-game windows and the external desktop app from
+	 * chat: {@code interfaces}, {@code interfaces both|external|in-game},
+	 * {@code interfaces ingame on|off}, {@code interfaces spawn on|off},
+	 * {@code interfaces reload}.
+	 */
+	private void interfaces(List<String> args) {
+		InterfacePreferences preferences = interfaces;
+		if (args.size() == 1) {
+			add(ConsoleLine.accent("Interfaces"));
+			add(ConsoleLine.info("  mode          " + preferences.currentMode()));
+			add(ConsoleLine.info("  in-game       " + (preferences.inGameWindows() ? "on" : "off")
+				+ "   external app " + (preferences.desktopAttached() ? "attached" : "not attached")));
+			add(ConsoleLine.info("  spawnOnOpen   " + (preferences.spawnOnOpen() ? "on" : "off")));
+			for (InterfacePreferences.Mode mode : preferences.modes()) {
+				add(ConsoleLine.muted("    " + mode.id() + " - " + mode.description()));
+			}
+			add(ConsoleLine.muted("  Switch with: interfaces both | external | in-game"));
+			return;
+		}
+		String action = InterfacePreferences.normalise(args.get(1));
+		switch (action) {
+			case "reload" -> {
+				preferences.reload();
+				add(ConsoleLine.success("Interface settings reloaded: " + preferences.currentMode()));
+			}
+			case "spawn", "autostart" -> {
+				boolean enabled = args.size() > 2 && isOn(args.get(2));
+				preferences.setSpawnOnOpen(enabled);
+				add(ConsoleLine.success("Desktop app autostart " + (enabled ? "enabled" : "disabled") + "."));
+			}
+			case "ingame", "in-game-windows" -> {
+				boolean enabled = args.size() > 2 && isOn(args.get(2));
+				preferences.setInGameWindows(enabled);
+				add(ConsoleLine.success("In-game windows " + (enabled ? "enabled alongside the app" : "disabled") + "."));
+			}
+			default -> {
+				String mode = action.equals("ingame") ? "in-game" : action;
+				boolean known = preferences.modes().stream().anyMatch(candidate -> candidate.id().equals(mode));
+				if (!known) {
+					add(ConsoleLine.error("Unknown interface '" + args.get(1) + "'. Use both, external or in-game."));
+					return;
+				}
+				add(ConsoleLine.success(preferences.setMode(mode)));
+				add(ConsoleLine.muted("  Applies immediately; the desktop app picks it up on its next attach."));
+			}
+		}
+		audit.record("interface_mode", "client", "desktop", "changed", redactForEcho(String.join(" ", args)));
+	}
+
+	private static boolean isOn(String value) {
+		String normalised = InterfacePreferences.normalise(value);
+		return normalised.equals("on") || normalised.equals("true") || normalised.equals("yes")
+			|| normalised.equals("1") || normalised.equals("enable") || normalised.equals("enabled");
 	}
 
 	private void runActive() {

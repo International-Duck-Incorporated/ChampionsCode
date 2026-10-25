@@ -47,6 +47,7 @@ public final class SelfTest {
 			consoleSession(config.resolve("demo"));
 			capabilityGate(config.resolve("gated"));
 			dropInCompiler(config.resolve("codespace"));
+			interfacePreference(config.resolve("interfaces"));
 			jsonEdgeCases();
 		} finally {
 			deleteTree(config);
@@ -98,6 +99,47 @@ public final class SelfTest {
 			} catch (ClassNotFoundException expected) {
 				check("no Minecraft/Fabric class on the desktop classpath (" + className + ")", true);
 			}
+		}
+	}
+
+	/**
+	 * The `interfaces` command has to survive a round trip through the properties
+	 * file, because that is how the in-game chat, the app's Settings tab and the
+	 * next launch all agree on where the UI opens.
+	 */
+	private static void interfacePreference(Path config) {
+		try {
+			Files.createDirectories(config);
+		} catch (IOException error) {
+			check("interface settings directory exists", false);
+			return;
+		}
+		ChampionConsole console = new ChampionConsole(config, DemoContext::capture,
+			ActiveModuleRuntime.disabled(), RuntimeJavaCommands.disabled(), () -> {}, () -> {}, () -> {},
+			dev.champions.core.console.ExploitWarningPrompt.unavailable(), UpdateService.disabled(), () -> {});
+		FileInterfacePreferences preferences = new FileInterfacePreferences(config, () -> { });
+		console.setInterfacePreferences(preferences);
+
+		console.submit("interfaces");
+		check("interfaces prints the current mode", contains(console, "both"));
+		console.submit("interfaces in-game");
+		check("interfaces switches to in-game", contains(console, "in-game"));
+		check("interfaces persists the mode", preferences.currentMode().equals("in-game"));
+		console.submit("interfaces external");
+		check("interfaces switches to external", preferences.currentMode().equals("external"));
+		console.submit("interfaces ingame off");
+		check("interfaces toggles the in-game windows", !preferences.inGameWindows());
+		console.submit("interfaces spawn off");
+		check("interfaces toggles autostart", !preferences.spawnOnOpen());
+		console.submit("interfaces nonsense");
+		check("interfaces rejects an unknown mode", contains(console, "Unknown interface"));
+		try {
+			String file = Files.readString(config.resolve("desktop.properties"));
+			check("interfaces writes ui=", file.contains("ui=external"));
+			check("interfaces writes ingameWindows=", file.contains("ingameWindows=false"));
+			check("interfaces writes spawnOnOpen=", file.contains("spawnOnOpen=false"));
+		} catch (IOException error) {
+			check("desktop.properties readable", false);
 		}
 	}
 

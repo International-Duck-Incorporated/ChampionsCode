@@ -7,25 +7,19 @@ import dev.champions.core.module.ModuleContext;
 import dev.champions.core.module.active.ActiveModuleRuntime;
 import dev.champions.core.update.UpdateService;
 
-import javax.swing.BorderFactory;
-import javax.swing.JFrame;
-import javax.swing.JMenu;
-import javax.swing.JMenuBar;
-import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
-import java.awt.Color;
-import java.awt.Dimension;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Properties;
 import java.util.function.Supplier;
 
 /**
@@ -53,17 +47,179 @@ public final class DesktopMain {
 		return "0.2.0-desktop";
 	}
 
+	private static volatile ConsolePort port;
+	private static volatile Path configDirectory;
+	private static volatile Shell shell;
+	private static StandaloneRuntime RUNTIME;
+
+	private DesktopMain() {}
+
+	public static void main(String[] args) {
+		Map<String, String> options = parse(args);
+		if (options.containsKey("self-test")) {
+			System.exit(SelfTest.run());
+			return;
+		}
+		configureRendering(options.getOrDefault("ui-scale", "auto"));
+		configDirectory = options.containsKey("config")
+			? Path.of(options.get("config")).toAbsolutePath().normalize()
+			: defaultConfigDirectory();
+		boolean demo = options.containsKey("demo");
+		try {
+			if (options.containsKey("connect")) {
+				int portNumber = Integer.parseInt(options.get("connect"));
+				String token = options.getOrDefault("token", "");
+				port = RemoteConsolePort.connect("127.0.0.1", portNumber, token, APP_VERSION);
+				System.out.println("Attached to the game on 127.0.0.1:" + portNumber);
+			} else {
+				CONSOLE = buildConsole(configDirectory, demo);
+				port = new LocalConsolePort(CONSOLE,
+					demo ? DemoContext::capture : DemoContext::offline,
+					demo ? "demo harness, no real target" : "no game attached");
+			}
+		} catch (IOException | RuntimeException error) {
+			System.err.println("Could not start: " + error.getMessage());
+			System.err.println("Falling back to standalone mode.");
+			CONSOLE = buildConsole(configDirectory, false);
+			port = new LocalConsolePort(CONSOLE, DemoContext::offline, "no game attached");
+		}
+		SwingUtilities.invokeLater(() -> buildUi(options));
+	}
+
+	// ---- window ----------------------------------------------------------
+
+	private static void buildUi(Map<String, String> options) {
+		Theme.install();
+		boolean demo = options.containsKey("demo");
+
+		if (demo) {
+			port.buffer().append(dev.champions.core.console.ConsoleLine.warning(
+				"DEMO HARNESS: the simulated target " + DemoContext.DEMO_TARGET
+					+ " is not a real server and cannot resolve. Nothing leaves this machine."));
+		}
+
+		shell = new Shell("ChampionsCode " + APP_VERSION);
+		shell.setBounds(shellBounds());
+
+		shell.addTab("terminal", Icons.Glyph.TERMINAL, "Terminal", new TerminalPanel(port));
+		shell.addTab("modules", Icons.Glyph.MODULES, "Modules", new ModulesPanel(port));
+		shell.addTab("codespace", Icons.Glyph.CODE, "Code", new CodeSpacePanel(port,
+			port instanceof LocalConsolePort ? runtime() : null, moduleFolder()));
+		shell.addTab("settings", Icons.Glyph.SETTINGS, "Settings", new SettingsPanel(port, configDirectory));
+		shell.railFooter("v" + APP_VERSION);
+
+		String initial = options.containsKey("window") ? options.get("window")
+			: options.containsKey("tab") ? options.get("tab")
+			: loadWindowBounds().getProperty("tab", "terminal");
+		shell.show(normaliseTab(initial));
+		shell.setVisible(true);
+		shell.addWindowListener(new WindowAdapter() {
+			@Override public void windowClosing(WindowEvent event) {
+				saveWindowBounds();
+			}
+		});
+
+		// One status line for the whole app, fed by the console snapshot.
+		new Timer(500, event -> {
+			if (shell == null) return;
+			ConsolePort.Status status = port.status();
+			String capabilities = port.capabilities();
+			shell.status(port.mode().toUpperCase(Locale.ROOT) + "   " + status.summary(),
+				capabilities.isBlank() ? "" : capabilities);
+			shell.setStatusColour(status.connected()
+				? (status.authorized() ? Theme.GREEN : Theme.YELLOW) : Theme.DIM);
+		}).start();
+
+		if (port instanceof RemoteConsolePort remote) remote.onExploitPrompt(() -> answerPrompts(remote));
+		if (demo) runDemoScript();
+		System.out.println("ChampionsCode desktop " + APP_VERSION + " started in "
+			+ (port instanceof RemoteConsolePort ? "attached" : "standalone") + " mode; config: " + configDirectory);
+	}
+
+	/** Accepts the ids the game uses (terminal, modules, codespace, log, settings). */
+	private static String normaliseTab(String id) {
+		return switch (id == null ? "" : id.toLowerCase(Locale.ROOT)) {
+			case "modules", "clickgui", "categorygui" -> "modules";
+			case "codespace", "java", "javastudio", "code" -> "codespace";
+			case "settings", "config" -> "settings";
+			default -> "terminal";
+		};
+	}
+
+	/** Called from the game over the bridge, and from the app's own rail. */
+	public static void raiseWindow(String windowId) {
+		SwingUtilities.invokeLater(() -> {
+			Shell current = shell;
+			if (current == null) return;
+			current.show(normaliseTab(windowId));
+			if ((current.getExtendedState() & java.awt.Frame.ICONIFIED) != 0) {
+				current.setState(java.awt.Frame.NORMAL);
+			}
+			current.setVisible(true);
+			current.toFront();
+			current.requestFocus();
+		});
+	}
+
+	private static java.awt.Rectangle shellBounds() {
+		java.awt.Rectangle screen = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
+			.getMaximumWindowBounds();
+		int width = Math.min(1460, Math.max(980, Math.round(screen.width * 0.84f)));
+		int height = Math.min(920, Math.max(640, Math.round(screen.height * 0.86f)));
+		java.awt.Rectangle computed = new java.awt.Rectangle(
+			screen.x + (screen.width - width) / 2, screen.y + (screen.height - height) / 2, width, height);
+		String value = loadWindowBounds().getProperty("shell");
+		if (value == null) return computed;
+		String[] parts = value.split(",");
+		if (parts.length != 4) return computed;
+		try {
+			java.awt.Rectangle saved = new java.awt.Rectangle(
+				Integer.parseInt(parts[0].trim()), Integer.parseInt(parts[1].trim()),
+				Integer.parseInt(parts[2].trim()), Integer.parseInt(parts[3].trim()));
+			return screen.intersects(saved) ? saved : computed;
+		} catch (NumberFormatException invalid) {
+			return computed;
+		}
+	}
+
+	private static Properties loadWindowBounds() {
+		Properties properties = new Properties();
+		Path file = configDirectory.resolve("desktop-windows.properties");
+		if (!Files.exists(file)) return properties;
+		try (var reader = Files.newBufferedReader(file, java.nio.charset.StandardCharsets.UTF_8)) {
+			properties.load(reader);
+		} catch (IOException ignored) {
+			// fall back to the computed geometry
+		}
+		return properties;
+	}
+
+	private static void saveWindowBounds() {
+		Shell current = shell;
+		if (current == null || !current.isVisible()) return;
+		Properties properties = new Properties();
+		java.awt.Rectangle bounds = current.getBounds();
+		properties.setProperty("shell", bounds.x + "," + bounds.y + "," + bounds.width + "," + bounds.height);
+		properties.setProperty("tab", String.valueOf(current.currentTab()));
+		try {
+			Files.createDirectories(configDirectory);
+			try (var writer = Files.newBufferedWriter(configDirectory.resolve("desktop-windows.properties"),
+					java.nio.charset.StandardCharsets.UTF_8)) {
+				writer.write("# ChampionsCode desktop window geometry (delete to re-centre)\n");
+				properties.store(writer, null);
+			}
+		} catch (IOException ignored) {
+			// geometry is a convenience, never a failure
+		}
+	}
+
 	/**
 	 * Crisp text before any AWT/Swing class is touched.
 	 *
-	 * <p>These are the properties that decide whether the window is drawn at the
-	 * display's real resolution or bitmap-stretched by Windows at 150 %: with
-	 * {@code dpiaware} off the whole window (including its native title bar) is
-	 * upscaled and looks blurry. {@code lcd} turns on subpixel antialiasing,
-	 * which is what makes small monospace text look sharp instead of grey.</p>
-	 *
-	 * <p>{@code --ui-scale 1|1.25|1.5|2} forces a scale for setups where the JVM
-	 * guesses wrong; {@code auto} keeps the JVM's own per-monitor detection.</p>
+	 * <p>These properties decide whether the window is drawn at the display's real
+	 * resolution or bitmap-stretched by Windows at 150 %, and whether small
+	 * monospace text is subpixel-antialiased. {@code --ui-scale 1|1.25|1.5|2}
+	 * overrides detection when the JVM guesses wrong.</p>
 	 */
 	private static void configureRendering(String uiScale) {
 		System.setProperty("awt.useSystemAAFontSettings", "lcd");
@@ -79,85 +235,8 @@ public final class DesktopMain {
 		}
 	}
 
-	private static final Map<String, JFrame> FRAMES = new ConcurrentHashMap<>();
-	private static volatile ConsolePort port;
-	private static volatile Path configDirectory;
+	// ---- console ---------------------------------------------------------
 
-	private DesktopMain() {}
-
-	public static void main(String[] args) {
-		Map<String, String> options = parse(args);
-		configureRendering(options.getOrDefault("ui-scale", "auto"));
-		if (options.containsKey("self-test")) {
-			System.exit(SelfTest.run());
-			return;
-		}
-		configDirectory = options.containsKey("config")
-			? Path.of(options.get("config")).toAbsolutePath().normalize()
-			: defaultConfigDirectory();
-		try {
-			if (options.containsKey("connect")) {
-				int portNumber = Integer.parseInt(options.get("connect"));
-				String token = options.getOrDefault("token", "");
-				port = RemoteConsolePort.connect("127.0.0.1", portNumber, token, APP_VERSION);
-				System.out.println("Attached to the game on 127.0.0.1:" + portNumber);
-			} else {
-				boolean demo = options.containsKey("demo");
-				CONSOLE = buildConsole(configDirectory, demo);
-				port = new LocalConsolePort(CONSOLE,
-					demo ? DemoContext::capture : DemoContext::offline,
-					demo ? "demo harness, no real target" : "no game attached");
-			}
-		} catch (IOException | RuntimeException error) {
-			System.err.println("Could not start: " + error.getMessage());
-			System.err.println("Falling back to standalone mode.");
-			CONSOLE = buildConsole(configDirectory, false);
-			port = new LocalConsolePort(CONSOLE, DemoContext::offline, "no game attached");
-		}
-
-		SwingUtilities.invokeLater(() -> buildUi(options));
-	}
-
-	private static void buildUi(Map<String, String> options) {
-		Theme.install();
-		boolean demo = options.containsKey("demo");
-		boolean attached = port instanceof RemoteConsolePort;
-
-		if (demo) {
-			port.buffer().append(dev.champions.core.console.ConsoleLine.warning(
-				"DEMO HARNESS: the simulated target " + DemoContext.DEMO_TARGET
-					+ " is not a real server and cannot resolve. Nothing leaves this machine."));
-		}
-
-		JFrame terminal = frame("ChampionsCode — Terminal", new TerminalPanel(port));
-		JFrame modules = frame("ChampionsCode — Modules", new ModulesPanel(port));
-		JFrame code = frame("ChampionsCode — Code Space",
-			new CodeSpacePanel(port, port instanceof LocalConsolePort ? runtime() : null, moduleFolder()));
-
-		FRAMES.put("terminal", terminal);
-		FRAMES.put("modules", modules);
-		FRAMES.put("codespace", code);
-
-		terminal.setJMenuBar(menu());
-		layout(terminal, modules, code);
-
-		terminal.addWindowListener(exitWhenAllHidden());
-		modules.addWindowListener(exitWhenAllHidden());
-		code.addWindowListener(exitWhenAllHidden());
-
-		terminal.setVisible(true);
-		modules.setVisible(true);
-		code.setVisible(true);
-
-		if (port instanceof RemoteConsolePort remote) {
-			remote.onExploitPrompt(() -> answerPrompts(remote));
-		}
-		if (demo) runDemoScript();
-		System.out.println("ChampionsCode desktop " + APP_VERSION + " started in "
-			+ (attached ? "attached" : "standalone") + " mode; config: " + configDirectory);
-	}
-
-	private static StandaloneRuntime RUNTIME;
 	private static ChampionConsole CONSOLE;
 
 	private static synchronized StandaloneRuntime runtime() {
@@ -191,177 +270,21 @@ public final class DesktopMain {
 			if (choice == JOptionPane.YES_OPTION) request.confirm();
 			else request.cancel();
 		});
-		return new ChampionConsole(configDirectory, context,
+		ChampionConsole console = new ChampionConsole(configDirectory, context,
 			ActiveModuleRuntime.disabled(), RuntimeJavaCommands.disabled(),
 			() -> raiseWindow("modules"), () -> raiseWindow("modules"), () -> raiseWindow("terminal"),
 			prompt, UpdateService.disabled(), () -> System.exit(0));
-	}
-
-	private static JFrame frame(String title, javax.swing.JComponent content) {
-		JFrame frame = new JFrame(title);
-		frame.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
-		frame.setContentPane(content);
-		frame.setBackground(Theme.BACKGROUND);
-		frame.getContentPane().setBackground(Theme.BACKGROUND);
-		frame.setMinimumSize(new Dimension(560, 340));
-		return frame;
-	}
-
-	private static JMenuBar menu() {
-		JMenuBar bar = new JMenuBar();
-		JMenu windows = new JMenu("Windows");
-		windows.add(menuItem("Terminal", "terminal"));
-		windows.add(menuItem("Modules", "modules"));
-		windows.add(menuItem("Code space", "codespace"));
-		bar.add(windows);
-		JMenu help = new JMenu("Help");
-		JMenuItem about = new JMenuItem("About");
-		about.addActionListener(event -> JOptionPane.showMessageDialog(null,
-			"ChampionsCode desktop " + APP_VERSION + "\n"
-				+ "Mode: " + port.mode() + "\n"
-				+ "Config: " + configDirectory + "\n\n"
-				+ "Commands run in the same gated console as the in-game terminal:\n"
-				+ "authorization allowlist, one-run CONFIRM, per-run exploit warning, audit log.",
-			"About ChampionsCode", JOptionPane.INFORMATION_MESSAGE));
-		help.add(about);
-		bar.add(help);
-		return bar;
-	}
-
-	private static JMenuItem menuItem(String label, String windowId) {
-		JMenuItem item = new JMenuItem(label);
-		item.addActionListener(event -> raiseWindow(windowId));
-		return item;
-	}
-
-	/**
-	 * Tiles the three windows inside the usable screen area, in logical pixels so
-	 * Windows display scaling (150 %, 200 %) never pushes a window off-screen.
-	 * Restores the previous geometry when one was saved.
-	 */
-	private static void layout(JFrame terminal, JFrame modules, JFrame code) {
-		java.awt.Rectangle screen = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
-			.getMaximumWindowBounds();
-		int gap = Math.max(8, Math.round(12 * uiScale(screen)));
-		int width = screen.width - gap * 3;
-		int height = screen.height - gap * 3;
-
-		// Saved geometry wins when it still fits on this screen.
-		java.util.Properties saved = loadWindowBounds();
-		boolean restored = restore(terminal, saved, "terminal", screen)
-			&& restore(modules, saved, "modules", screen)
-			&& restore(code, saved, "codespace", screen);
-		if (restored) return;
-
-		// The modules window needs room for the list plus an option editor, so it
-		// keeps a floor of 430 logical pixels; the terminal gives up width first.
-		int leftWidth = Math.max(480, Math.round(width * 0.60f));
-		int rightWidth = Math.max(430, width - leftWidth);
-		while (leftWidth > 480 && leftWidth + rightWidth > width) {
-			leftWidth -= 20;
-			rightWidth = Math.max(430, width - leftWidth);
-		}
-		int topHeight = Math.max(360, Math.round(height * 0.60f));
-		int bottomHeight = Math.max(240, height - topHeight);
-
-		terminal.setBounds(screen.x + gap, screen.y + gap, leftWidth, topHeight);
-		modules.setBounds(screen.x + gap * 2 + leftWidth, screen.y + gap, rightWidth,
-			Math.min(screen.height - gap * 2, topHeight + bottomHeight + gap));
-		code.setBounds(screen.x + gap, screen.y + gap * 2 + topHeight, leftWidth, bottomHeight);
-	}
-
-	private static float uiScale(java.awt.Rectangle screen) {
-		java.awt.GraphicsConfiguration configuration = java.awt.GraphicsEnvironment
-			.getLocalGraphicsEnvironment().getDefaultScreenDevice().getDefaultConfiguration();
-		float scale = (float) configuration.getDefaultTransform().getScaleX();
-		return scale <= 0 ? 1f : scale;
-	}
-
-	private static java.util.Properties loadWindowBounds() {
-		java.util.Properties properties = new java.util.Properties();
-		Path file = configDirectory.resolve("desktop-windows.properties");
-		if (!Files.exists(file)) return properties;
-		try (var reader = Files.newBufferedReader(file, java.nio.charset.StandardCharsets.UTF_8)) {
-			properties.load(reader);
-		} catch (IOException ignored) {
-			// fall back to the default tiling
-		}
-		return properties;
-	}
-
-	private static boolean restore(JFrame frame, java.util.Properties properties, String key,
-			java.awt.Rectangle screen) {
-		String value = properties.getProperty(key);
-		if (value == null) return false;
-		String[] parts = value.split(",");
-		if (parts.length != 4) return false;
-		try {
-			java.awt.Rectangle bounds = new java.awt.Rectangle(
-				Integer.parseInt(parts[0].trim()), Integer.parseInt(parts[1].trim()),
-				Integer.parseInt(parts[2].trim()), Integer.parseInt(parts[3].trim()));
-			// Ignore geometry from a monitor that is no longer attached.
-			if (!screen.intersects(bounds)) return false;
-			frame.setBounds(bounds);
-			return true;
-		} catch (NumberFormatException invalid) {
-			return false;
-		}
-	}
-
-	private static void saveWindowBounds() {
-		java.util.Properties properties = new java.util.Properties();
-		FRAMES.forEach((key, frame) -> {
-			if (!frame.isVisible() || (frame.getExtendedState() & java.awt.Frame.ICONIFIED) != 0) return;
-			java.awt.Rectangle bounds = frame.getBounds();
-			properties.setProperty(key, bounds.x + "," + bounds.y + "," + bounds.width + "," + bounds.height);
-		});
-		try {
-			Files.createDirectories(configDirectory);
-			Path file = configDirectory.resolve("desktop-windows.properties");
-			try (var writer = Files.newBufferedWriter(file, java.nio.charset.StandardCharsets.UTF_8)) {
-				properties.store(writer, "ChampionsCode desktop window geometry (delete to re-tile)");
-			}
-		} catch (IOException ignored) {
-			// geometry is a convenience, never a failure
-		}
-	}
-
-	private static WindowAdapter exitWhenAllHidden() {
-		return new WindowAdapter() {
-			@Override public void windowClosing(WindowEvent event) {
-				SwingUtilities.invokeLater(() -> {
-					boolean anyVisible = FRAMES.values().stream().anyMatch(JFrame::isVisible);
-					if (anyVisible) return;
-					saveWindowBounds();
-					System.exit(0);
-				});
-			}
-
-			@Override public void windowOpened(WindowEvent event) {
-				Runtime.getRuntime().addShutdownHook(new Thread(DesktopMain::saveWindowBounds, "champions-bounds-save"));
-			}
-		};
-	}
-
-	/** Called from the game over the bridge, and from the app's own menus. */
-	public static void raiseWindow(String windowId) {
-		SwingUtilities.invokeLater(() -> {
-			JFrame frame = FRAMES.get(windowId);
-			if (frame == null) frame = FRAMES.get("terminal");
-			if (frame == null) return;
-			frame.setVisible(true);
-			frame.toFront();
-			frame.requestFocus();
-		});
+		console.setInterfacePreferences(new FileInterfacePreferences(configDirectory, () -> { }));
+		return console;
 	}
 
 	private static void answerPrompts(RemoteConsolePort remote) {
-		for (Map<String, Object> prompt : remote.pendingExploitPrompts()) {
-			String requestId = String.valueOf(prompt.get("requestId"));
+		for (Map<String, Object> request : remote.pendingExploitPrompts()) {
+			String requestId = String.valueOf(request.get("requestId"));
 			int choice = JOptionPane.showConfirmDialog(null,
-				"<html><b>" + prompt.get("name") + "</b><br>"
-					+ "Target: " + prompt.get("target") + "<br><br>"
-					+ prompt.get("risk") + "<br><br>"
+				"<html><b>" + request.get("name") + "</b><br>"
+					+ "Target: " + request.get("target") + "<br><br>"
+					+ request.get("risk") + "<br><br>"
 					+ "Acknowledge for this single run in the game?</html>",
 				"Exploit research — legal risk", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
 			remote.answerExploitPrompt(requestId, choice == JOptionPane.YES_OPTION);
@@ -382,8 +305,7 @@ public final class DesktopMain {
 			"use auxiliary/audit/dependency_posture",
 			"set COMPONENTS worldedit@7.3.0,essentialsx@2.20.1,protocollib@5.1.0,libreforge",
 			"set CONFIRM I_HAVE_AUTHORIZATION",
-			"run",
-			"clickgui"
+			"run"
 		);
 		Timer timer = new Timer(420, null);
 		int[] index = {0};
@@ -394,14 +316,13 @@ public final class DesktopMain {
 			}
 			String command = script.get(index[0]++);
 			port.submit(command);
-			if (command.equals("clickgui")) raiseWindow("modules");
 		});
 		timer.setInitialDelay(600);
 		timer.start();
 	}
 
 	private static Map<String, String> parse(String[] args) {
-		Map<String, String> options = new java.util.LinkedHashMap<>();
+		Map<String, String> options = new LinkedHashMap<>();
 		for (int index = 0; index < args.length; index++) {
 			String arg = args[index];
 			if (!arg.startsWith("--")) continue;

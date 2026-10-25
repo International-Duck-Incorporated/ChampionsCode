@@ -259,6 +259,26 @@ issues a new token on every launch.
 * First run writes `desktop/launch.cmd` and `desktop/launch.sh` (same command, absolute
   paths) so a desktop shortcut is one right-click away.
 
+**As built (0.2.0).** The JSON sketch above became a flat properties file,
+`config/champions-mod/desktop.properties`, because it has to be editable by a player
+in Notepad and readable by the in-game command parser:
+
+```properties
+ui=both              # both | external | in-game
+clickgui=clickgui    # clickgui (sorted list) | categorygui (movable panels)
+ingameWindows=true   # false = keep the app, drop the in-game windows
+spawnOnOpen=true     # false = the game never launches the app by itself
+```
+
+Three interchangeable front ends write the same file: the desktop app's **Settings**
+tab, the in-game chat command `interfaces both|external|in-game|reload` plus
+`interfaces spawn on|off` and `interfaces ingame on|off`, and the text editor. The
+core exposes this as `InterfacePreferences` (`dev.champions.core.console`), so the
+console command works in both processes and neither depends on the other.
+
+Window geometry lives next door in `desktop-windows.properties` (one `shell=` entry
+plus the last tab), written on close and ignored if it would land off-screen.
+
 ---
 
 ## 6. Parity matrix

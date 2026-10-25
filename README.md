@@ -32,11 +32,26 @@ java -jar champions-mod-<version>.jar --ui-scale 1.5                 # force a U
 
 The app is DPI-aware and uses a real monospace family (Consolas / Cascadia Mono /
 JetBrains Mono / DejaVu Sans Mono, in that order), so text stays sharp on a scaled
-display instead of being stretched.
+display instead of being stretched. It is one frameless window with a title bar,
+an icon rail (Terminal · Modules · Code · Settings), a status line and edge-drag
+resizing — the brand mark sits top-left and in the rail.
 
-In game, F8 opens the terminal, F7 the code space and ClickGUI the modules window;
-`config/champions-mod/desktop.properties` picks `ui=both` (default), `ui=external`
-or `ui=in-game`. The external app talks to the running game over loopback only and
+![The external desktop app: terminal, modules, settings and code space](docs/branding/external-desktop.png)
+
+In game, F8 opens the terminal, F7 the code space and ClickGUI the modules window.
+**Where the UI opens is a user setting**, and it can be changed three ways:
+
+| Way | Example |
+| --- | --- |
+| Desktop app → **Settings** | Default interface `both` / `external` / `in-game`, autostart, ClickGUI style |
+| In-game chat command | `interfaces`, `interfaces both`, `interfaces external`, `interfaces in-game`, `interfaces reload` |
+| The file itself | `config/champions-mod/desktop.properties` |
+
+The file is the same in all three cases, so a change made anywhere applies
+everywhere — `ui=both` (default), `ui=external` (windows stay closed in game) or
+`ui=in-game` (the 0.1.x behaviour, no external process). `ingameWindows=false`
+keeps the app but drops the in-game windows, and `spawnOnOpen=false` stops the
+game from launching the app by itself. The external app talks to the running game over loopback only and
 sends the same console calls the in-game windows make, so the authorization
 allowlist, the one-run `CONFIRM` phrase, the exploit warning and the audit log all
 stay in the game process. `status` prints what this build supports, and modules

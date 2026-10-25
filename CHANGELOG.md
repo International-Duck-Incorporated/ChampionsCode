@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+### Added
+- **`interfaces` console command.** `interfaces` prints the current placement,
+  `interfaces both|external|in-game` switches it, `interfaces reload` re-reads
+  `desktop.properties`, `interfaces spawn on|off` toggles autostart and
+  `interfaces ingame on|off` keeps/drops the in-game windows. It is the chat-side
+  twin of the app's Settings tab, backed by `InterfacePreferences` in `core` so
+  both front ends edit the same file. `ingameWindows` joins `ui` and
+  `spawnOnOpen` as a user setting.
+- **Settings tab** in the desktop app: segmented interface mode, ClickGUI style,
+  autostart toggle, the file locations, and the exact chat command to do the same
+  in game.
+
+### Changed
+- **New desktop look.** One frameless window (`Shell`) with a drawn title bar
+  (brand mark, minimise / maximise / close), a 96 px icon rail, rounded cards,
+  pills and a single status line, replacing the three separate OS windows. The
+  palette is taken from the logo: crimson `#E8484F` on near-black `#0E0E12`,
+  with monospace body text, sans headings, and green reserved for success.
+  Geometry is remembered in `desktop-windows.properties` (one `shell=` entry).
+- Terminal, Modules and Code space were rebuilt on the card layout: header chip
+  per pane, crimson primary action, list selection that follows the open module,
+  a painted search placeholder, a dark split gutter, tree glyphs instead of
+  platform icons, tabs expanded to four spaces and the first module opened
+  automatically.
+
 ## 0.2.0-desktop - 2026-10-25
 
 ### Added

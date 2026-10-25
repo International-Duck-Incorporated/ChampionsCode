@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 
@@ -14,6 +16,7 @@ import java.util.Properties;
  * ui=both        in-game windows and the external app (default)
  * ui=external    only the external app
  * ui=in-game     only the in-game workspace windows (the 0.1.x behaviour)
+ * ingameWindows=true keep the in-game windows working alongside the external app
  * spawnOnOpen=true   start the desktop app automatically the first time a UI is opened
  * </pre>
  */
@@ -23,6 +26,7 @@ public final class DesktopSettings {
 	private final Path file;
 	private volatile Mode mode = Mode.BOTH;
 	private volatile boolean spawnOnOpen = true;
+	private volatile boolean inGameWindows = true;
 
 	public DesktopSettings(Path configDirectory) {
 		this.file = configDirectory.resolve("desktop.properties");
@@ -47,6 +51,29 @@ public final class DesktopSettings {
 		}
 		String spawn = properties.getProperty("spawnOnOpen");
 		if (spawn != null) spawnOnOpen = Boolean.parseBoolean(spawn.strip());
+		String inGame = properties.getProperty("ingameWindows");
+		if (inGame != null) inGameWindows = Boolean.parseBoolean(inGame.strip());
+	}
+
+	/** Rewrites {@code ui=} while keeping the explanatory comments in the file. */
+	public synchronized Mode setMode(Mode value) {
+		mode = value == null ? Mode.BOTH : value;
+		write("ui", mode.name().toLowerCase(Locale.ROOT).replace('_', '-'));
+		return mode;
+	}
+
+	public synchronized void setSpawnOnOpen(boolean value) {
+		spawnOnOpen = value;
+		write("spawnOnOpen", Boolean.toString(value));
+	}
+
+	public synchronized void setInGameWindows(boolean value) {
+		inGameWindows = value;
+		write("ingameWindows", Boolean.toString(value));
+	}
+
+	public boolean inGameWindows() {
+		return inGameWindows;
 	}
 
 	public Mode mode() {
@@ -61,12 +88,38 @@ public final class DesktopSettings {
 		return mode != Mode.IN_GAME;
 	}
 
+	/** In-game windows stay available unless the user asked for the app only. */
 	public boolean usesInGame() {
-		return mode != Mode.EXTERNAL;
+		return inGameWindows && mode != Mode.EXTERNAL;
 	}
 
 	public Path file() {
 		return file;
+	}
+
+	/** Sets {@code key=value}, creating the file with defaults if needed. */
+	private void write(String key, String value) {
+		initialize(file.getParent());
+		List<String> lines = new ArrayList<>();
+		try {
+			lines.addAll(Files.readAllLines(file, StandardCharsets.UTF_8));
+		} catch (IOException unreadable) {
+			// start from an empty file
+		}
+		boolean replaced = false;
+		for (int index = 0; index < lines.size(); index++) {
+			String trimmed = lines.get(index).strip();
+			if (trimmed.startsWith(key + "=") || trimmed.startsWith(key + " =")) {
+				lines.set(index, key + "=" + value);
+				replaced = true;
+			}
+		}
+		if (!replaced) lines.add(key + "=" + value);
+		try {
+			Files.write(file, lines, StandardCharsets.UTF_8);
+		} catch (IOException unwritable) {
+			// the in-memory value still applies for this session
+		}
 	}
 
 	private void initialize(Path configDirectory) {

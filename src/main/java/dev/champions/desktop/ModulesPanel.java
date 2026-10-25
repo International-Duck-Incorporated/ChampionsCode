@@ -40,7 +40,26 @@ public final class ModulesPanel extends JPanel {
 	private static final String SEARCH_HINT = "search modules";
 
 	private final ConsolePort port;
-	private final JTextField search = new JTextField();
+	private final JTextField search = new JTextField() {
+		@Override protected void paintComponent(java.awt.Graphics graphics) {
+			super.paintComponent(graphics);
+			if (getText().isEmpty() && !isFocusOwner()) {
+				java.awt.Graphics2D g = (java.awt.Graphics2D) graphics.create();
+				try {
+					g.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING,
+						java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+					g.setFont(getFont());
+					g.setColor(Theme.FAINT);
+					java.awt.FontMetrics metrics = g.getFontMetrics();
+					g.drawString(SEARCH_HINT, getInsets().left + 2,
+						getInsets().top + metrics.getAscent() + (getHeight() - getInsets().top
+							- getInsets().bottom - metrics.getHeight()) / 2);
+				} finally {
+					g.dispose();
+				}
+			}
+		}
+	};
 	private final JPanel categories = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
 	private final DefaultListModel<String> listModel = new DefaultListModel<>();
 	private final JList<String> list = new JList<>(listModel);
@@ -56,16 +75,22 @@ public final class ModulesPanel extends JPanel {
 	private final Timer timer;
 
 	public ModulesPanel(ConsolePort port) {
-		super(new BorderLayout());
+		super(new BorderLayout(0, 10));
 		this.port = port;
-		setBackground(Theme.BACKGROUND);
+		setOpaque(false);
 
-		details.setBackground(Theme.BACKGROUND);
+		statusLabel.setFont(Theme.monoBold(9));
+		statusLabel.setForeground(Theme.FAINT);
+		add(Theme.header("Modules", "typed options, confirmation arming and run control", statusLabel), BorderLayout.NORTH);
+
+		details.setOpaque(false);
 		// Resizable so a long module id or a wide option field is one drag away.
 		JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, buildSidebar(), details);
 		split.setBorder(BorderFactory.createEmptyBorder());
 		split.setContinuousLayout(true);
 		split.setResizeWeight(0.0);
+		split.setOpaque(false);
+		split.setBorder(BorderFactory.createEmptyBorder());
 		add(split, BorderLayout.CENTER);
 		// Proportional divider: on a narrow window the list gives room to the
 		// option editors instead of squeezing them off the edge.
@@ -86,34 +111,18 @@ public final class ModulesPanel extends JPanel {
 	}
 
 	private JPanel buildSidebar() {
-		JPanel sidebar = new JPanel(new BorderLayout(0, 8));
-		sidebar.setBackground(Theme.PANEL);
-		sidebar.setBorder(BorderFactory.createCompoundBorder(
-			BorderFactory.createMatteBorder(0, 0, 0, 1, Theme.BORDER),
-			BorderFactory.createEmptyBorder(10, 10, 10, 10)));
-		sidebar.setPreferredSize(new Dimension(262, 600));
+		JPanel sidebar = Theme.card(new BorderLayout(0, 8));
+		sidebar.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+		sidebar.setPreferredSize(new Dimension(272, 600));
 
 		search.setFont(Theme.mono(12));
 		search.setForeground(Theme.DIM);
-		search.setText(SEARCH_HINT);
+		search.setBackground(Theme.FIELD);
+		search.setCaretColor(Theme.ACCENT_SOFT);
+		search.setSelectionColor(Theme.SELECTION);
 		search.setBorder(BorderFactory.createCompoundBorder(
 			BorderFactory.createLineBorder(Theme.BORDER),
 			BorderFactory.createEmptyBorder(6, 9, 6, 9)));
-		search.addFocusListener(new java.awt.event.FocusAdapter() {
-			@Override public void focusGained(java.awt.event.FocusEvent event) {
-				if (search.getText().equals(SEARCH_HINT)) {
-					search.setText("");
-					search.setForeground(Theme.TEXT);
-				}
-			}
-
-			@Override public void focusLost(java.awt.event.FocusEvent event) {
-				if (search.getText().isBlank()) {
-					search.setForeground(Theme.DIM);
-					search.setText(SEARCH_HINT);
-				}
-			}
-		});
 		search.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
 			@Override public void insertUpdate(javax.swing.event.DocumentEvent event) { refreshList(); }
 			@Override public void removeUpdate(javax.swing.event.DocumentEvent event) { refreshList(); }
@@ -144,9 +153,6 @@ public final class ModulesPanel extends JPanel {
 		listScroll.getViewport().setBackground(Theme.PANEL);
 		sidebar.add(listScroll, BorderLayout.CENTER);
 
-		statusLabel.setFont(Theme.mono(10));
-		statusLabel.setForeground(Theme.FAINT);
-		sidebar.add(statusLabel, BorderLayout.SOUTH);
 		return sidebar;
 	}
 
@@ -158,7 +164,8 @@ public final class ModulesPanel extends JPanel {
 		ordered.add("all");
 		ordered.addAll(found.stream().sorted().toList());
 		for (String name : ordered) {
-			JButton chip = Theme.button(name, name.equals(category) ? Theme.GREEN : Theme.DIM, null);
+			boolean current = name.equals(category);
+			JButton chip = current ? Theme.filled(name, null) : Theme.button(name, Theme.DIM, null);
 			chip.setFont(Theme.mono(11));
 			chip.addActionListener(event -> {
 				category = name;
@@ -206,6 +213,10 @@ public final class ModulesPanel extends JPanel {
 		activeId = active.id();
 		if (!active.id().equals(renderedActiveId)) {
 			renderedActiveId = active.id();
+			String shown = displayId(active.id());
+			if (list.getSelectedValue() == null || !list.getSelectedValue().equals(shown)) {
+				list.setSelectedValue(shown, true);
+			}
 			buildDetails(active);
 		} else {
 			updateValues(active);
@@ -222,7 +233,7 @@ public final class ModulesPanel extends JPanel {
 		details.removeAll();
 		editors.clear();
 		JPanel centre = new JPanel(new GridBagLayout());
-		centre.setBackground(Theme.BACKGROUND);
+		centre.setOpaque(false);
 		JPanel box = new JPanel();
 		box.setOpaque(false);
 		box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
@@ -248,7 +259,9 @@ public final class ModulesPanel extends JPanel {
 		box.add(command);
 
 		centre.add(box);
-		details.add(centre, BorderLayout.CENTER);
+		JPanel shell = Theme.card(new BorderLayout());
+		shell.add(centre, BorderLayout.CENTER);
+		details.add(shell, BorderLayout.CENTER);
 		details.revalidate();
 		details.repaint();
 	}
@@ -259,19 +272,19 @@ public final class ModulesPanel extends JPanel {
 
 		JPanel header = new JPanel();
 		header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
-		header.setBackground(Theme.BACKGROUND);
+		header.setOpaque(false);
 		header.setBorder(BorderFactory.createEmptyBorder(14, 18, 8, 18));
 
 		JLabel title = new JLabel(active.id());
 		title.setFont(Theme.monoBold(15));
-		title.setForeground(active.exploit() ? Theme.RED : Theme.BLUE);
+		title.setForeground(active.exploit() ? Theme.RED : Theme.TEXT);
 		title.setAlignmentX(Component.LEFT_ALIGNMENT);
 		header.add(title);
 
 		javax.swing.JTextArea description = new javax.swing.JTextArea(active.description());
 		description.setFont(Theme.sans(12, false));
 		description.setForeground(Theme.DIM);
-		description.setBackground(Theme.BACKGROUND);
+		description.setOpaque(false);
 		description.setEditable(false);
 		description.setFocusable(false);
 		description.setLineWrap(true);
@@ -290,11 +303,9 @@ public final class ModulesPanel extends JPanel {
 			header.add(Box.createVerticalStrut(8));
 			header.add(badge);
 		}
-		details.add(header, BorderLayout.NORTH);
-
 		JPanel options = new JPanel();
 		options.setLayout(new BoxLayout(options, BoxLayout.Y_AXIS));
-		options.setBackground(Theme.BACKGROUND);
+		options.setOpaque(false);
 		for (ConsolePort.OptionInfo option : active.options()) {
 			options.add(optionRow(option));
 			options.add(Box.createVerticalStrut(8));
@@ -302,24 +313,41 @@ public final class ModulesPanel extends JPanel {
 		JScrollPane optionScroll = new JScrollPane(options,
 			JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
 		optionScroll.setBorder(BorderFactory.createEmptyBorder(0, 18, 0, 18));
-		optionScroll.getViewport().setBackground(Theme.BACKGROUND);
-		details.add(optionScroll, BorderLayout.CENTER);
+		optionScroll.setOpaque(false);
+		optionScroll.getViewport().setOpaque(false);
 
-		JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 10));
-		actions.setBackground(Theme.PANEL);
-		actions.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, Theme.BORDER));
-
-		JButton run = Theme.button("Run", Theme.GREEN, event -> port.run());
+		JButton run = Theme.filled("Run", event -> port.run());
 		run.setToolTipText("Run the selected module. CONFIRM is consumed on every run, allowed or denied.");
 		JButton back = Theme.button("Back", Theme.DIM, event -> port.clearSelection());
 		ConsolePort.Status status = port.status();
 		JButton authorize = Theme.button(status.authorized() ? "Deauthorize" : "Authorize target",
 			status.authorized() ? Theme.YELLOW : Theme.BLUE, event -> port.setAuthorized(!port.status().authorized()));
 		authorize.setEnabled(status.authorizeAvailable());
-		actions.add(run);
-		actions.add(back);
-		actions.add(authorize);
-		details.add(actions, BorderLayout.SOUTH);
+
+		JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 10));
+		buttons.setOpaque(false);
+		buttons.add(run);
+		buttons.add(back);
+		buttons.add(authorize);
+
+		JLabel hint = new JLabel("CONFIRM is consumed on every run, allowed or denied");
+		hint.setFont(Theme.sans(11, false));
+		hint.setForeground(Theme.FAINT);
+		hint.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 16));
+
+		JPanel actionBar = new JPanel(new BorderLayout());
+		actionBar.setOpaque(false);
+		actionBar.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, Theme.BORDER));
+		actionBar.add(buttons, BorderLayout.WEST);
+		actionBar.add(hint, BorderLayout.EAST);
+
+		// One card owns the whole right-hand column: header, scrolling options,
+		// and the action bar pinned to its bottom edge.
+		JPanel card = Theme.card(new BorderLayout());
+		card.add(header, BorderLayout.NORTH);
+		card.add(optionScroll, BorderLayout.CENTER);
+		card.add(actionBar, BorderLayout.SOUTH);
+		details.add(card, BorderLayout.CENTER);
 
 		details.revalidate();
 		details.repaint();
@@ -327,12 +355,12 @@ public final class ModulesPanel extends JPanel {
 
 	private JPanel optionRow(ConsolePort.OptionInfo option) {
 		JPanel row = new JPanel(new GridBagLayout());
-		row.setBackground(Theme.BACKGROUND);
+		row.setOpaque(false);
 		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 58));
 		row.setAlignmentX(Component.LEFT_ALIGNMENT);
 
 		JPanel labels = new JPanel(new BorderLayout(0, 2));
-		labels.setBackground(Theme.BACKGROUND);
+		labels.setOpaque(false);
 		String name = option.name() + (option.required() ? "  *" : "");
 		JLabel nameLabel = new JLabel(name);
 		nameLabel.setFont(Theme.monoBold(12));
@@ -411,7 +439,7 @@ public final class ModulesPanel extends JPanel {
 
 	private void refreshList() {
 		String query = search.getText().strip().toLowerCase(Locale.ROOT);
-		if (query.equals(SEARCH_HINT)) query = "";
+		if (query.isEmpty()) query = "";
 		String previous = list.getSelectedValue();
 		visible.clear();
 		listModel.clear();
@@ -452,8 +480,8 @@ public final class ModulesPanel extends JPanel {
 			String prefix = id.substring(0, Math.max(0, id.lastIndexOf('/') + 1));
 			String leaf = id.substring(prefix.length());
 			String color = info != null && info.exploit() ? "#FF6868"
-				: info != null && info.selected() ? "#55D65A"
-				: selected ? "#FFFFFF" : "#F0F0F0";
+				: selected ? "#FFD3D5"
+				: info != null && info.selected() ? "#55D65A" : "#E6E6EC";
 			label.setText("<html><span style='color:#6A6A6A'>" + escape(prefix) + "</span>"
 				+ "<span style='color:" + color + "'>" + escape(leaf) + "</span></html>");
 			label.setHorizontalAlignment(SwingConstants.LEFT);

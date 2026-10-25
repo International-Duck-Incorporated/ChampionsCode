@@ -41,11 +41,11 @@ public final class CodeSpacePanel extends JPanel {
 	private Path openFile;
 
 	public CodeSpacePanel(ConsolePort port, StandaloneRuntime runtime, Path moduleFolder) {
-		super(new BorderLayout());
+		super(new BorderLayout(0, 10));
 		this.port = port;
 		this.runtime = runtime;
 		this.folder = moduleFolder;
-		setBackground(Theme.BACKGROUND);
+		setOpaque(false);
 
 		tree.setFont(Theme.mono(12));
 		tree.setBackground(Theme.PANEL);
@@ -53,18 +53,21 @@ public final class CodeSpacePanel extends JPanel {
 		tree.setRootVisible(false);
 		tree.setShowsRootHandles(true);
 		tree.setCellRenderer(new FlatTreeRenderer());
+		// No connector lines: the glyphs carry the hierarchy.
+		tree.putClientProperty("JTree.lineStyle", "None");
 		tree.addTreeSelectionListener(event -> {
 			DefaultMutableTreeNode node = (DefaultMutableTreeNode) tree.getLastSelectedPathComponent();
+			if (node != null && node.getUserObject() instanceof FileNode fileNode
+					&& !java.nio.file.Files.isRegularFile(fileNode.path())) {
+				return;
+			}
 			if (node == null) return;
 			Object user = node.getUserObject();
 			if (user instanceof FileNode file && file.path() != null && Files.isRegularFile(file.path())) open(file.path());
 		});
 
-		JPanel treePane = new JPanel(new BorderLayout(0, 6));
-		treePane.setBackground(Theme.PANEL);
-		treePane.setBorder(BorderFactory.createCompoundBorder(
-			BorderFactory.createMatteBorder(0, 0, 0, 1, Theme.BORDER),
-			BorderFactory.createEmptyBorder(10, 10, 10, 10)));
+		JPanel treePane = Theme.card(new BorderLayout(0, 6));
+		treePane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 		JLabel root = new JLabel("modules/");
 		root.setFont(Theme.monoBold(12));
 		root.setForeground(Theme.GREEN);
@@ -78,19 +81,25 @@ public final class CodeSpacePanel extends JPanel {
 		editor.setFont(Theme.mono(13));
 		editor.setBackground(Theme.FIELD);
 		editor.setForeground(Theme.TEXT);
-		editor.setCaretColor(Theme.GREEN_BRIGHT);
+		editor.setCaretColor(Theme.ACCENT_SOFT);
 		editor.setSelectionColor(Theme.SELECTION);
 		editor.setTabSize(4);
 		editor.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+		editor.setText("");
+		editor.setToolTipText("New module… to start a file, or pick one in the tree.");
 
 		JScrollPane editorScroll = new JScrollPane(editor);
 		editorScroll.setBorder(Theme.line());
 		editorScroll.setRowHeaderView(new LineNumbers(editor));
 
-		JPanel editorPane = new JPanel(new BorderLayout());
-		editorPane.setBackground(Theme.BACKGROUND);
-		editorPane.add(editorScroll, BorderLayout.CENTER);
+		JPanel editorBody = new JPanel(new BorderLayout());
+		editorBody.setOpaque(false);
+		editorBody.setBorder(Theme.padding(8, 8, 8, 8));
+		editorBody.add(editorScroll, BorderLayout.CENTER);
+
+		JPanel editorPane = Theme.card(new BorderLayout());
 		editorPane.add(toolbar(), BorderLayout.NORTH);
+		editorPane.add(editorBody, BorderLayout.CENTER);
 
 		status.setFont(Theme.mono(11));
 		status.setForeground(Theme.DIM);
@@ -103,9 +112,23 @@ public final class CodeSpacePanel extends JPanel {
 
 		JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, treePane, editorPane);
 		split.setBorder(BorderFactory.createEmptyBorder());
+		split.setDividerSize(12);
+		split.setUI(new javax.swing.plaf.basic.BasicSplitPaneUI() {
+			@Override public javax.swing.plaf.basic.BasicSplitPaneDivider createDefaultDivider() {
+				return new javax.swing.plaf.basic.BasicSplitPaneDivider(this) {
+					@Override public void paint(java.awt.Graphics graphics) {
+						graphics.setColor(Theme.BACKGROUND);
+						graphics.fillRect(0, 0, getWidth(), getHeight());
+					}
+				};
+			}
+		});
 		split.setDividerLocation(260);
 		split.setContinuousLayout(true);
+		split.setOpaque(false);
 		add(split, BorderLayout.CENTER);
+		status.setFont(Theme.monoBold(9));
+		add(Theme.header("Code space", "drop-in Java modules · compiled and loaded without restarting", status), BorderLayout.NORTH);
 
 		refreshTree();
 		status.setText("Drop .java files into " + folder + " — compile and run them without restarting.");
@@ -113,11 +136,12 @@ public final class CodeSpacePanel extends JPanel {
 
 	private JPanel toolbar() {
 		JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 8));
-		bar.setBackground(Theme.PANEL);
 		bar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Theme.BORDER));
-		bar.add(Theme.button("Save", Theme.GREEN, event -> save()));
-		bar.add(Theme.button("New module", Theme.BLUE, event -> newModule()));
-		bar.add(Theme.button("Compile & load", Theme.BLUE, event -> compile()));
+		bar.setOpaque(false);
+		bar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Theme.BORDER));
+		bar.add(Theme.button("Save", Theme.TEXT, event -> save()));
+		bar.add(Theme.button("New module", Theme.TEXT, event -> newModule()));
+		bar.add(Theme.filled("Compile & load", event -> compile()));
 		bar.add(Theme.button("Unload", Theme.YELLOW, event -> unload()));
 		bar.add(Theme.button("Refresh", Theme.DIM, event -> refreshTree()));
 		return bar;
@@ -222,8 +246,22 @@ public final class CodeSpacePanel extends JPanel {
 			status.setForeground(Theme.RED);
 			status.setText("Could not read the module folder: " + error.getMessage());
 		}
+		if (rootNode.getChildCount() == 0) {
+			rootNode.add(new DefaultMutableTreeNode(new FileNode(folder, "no .java files yet — New module…")));
+		}
 		tree.setModel(new DefaultTreeModel(rootNode));
 		for (int row = 0; row < tree.getRowCount(); row++) tree.expandRow(row);
+		if (openFile == null) {
+			try (Stream<Path> modules = Files.walk(folder, 4)) {
+				modules.map(path -> path.toAbsolutePath().normalize())
+					.filter(path -> path.getFileName().toString().endsWith(".java"))
+					.sorted()
+					.findFirst()
+					.ifPresent(this::open);
+			} catch (IOException ignored) {
+				// an unreadable folder is reported by the status line above
+			}
+		}
 	}
 
 	private DefaultMutableTreeNode parentFor(DefaultMutableTreeNode rootNode, Path parent) {
@@ -243,6 +281,22 @@ public final class CodeSpacePanel extends JPanel {
 	 * Builds its own label rather than reconfiguring the platform renderer, whose
 	 * opaque/background handling differs between LAFs.
 	 */
+	private static javax.swing.Icon glyph(Icons.Glyph glyph, java.awt.Color colour) {
+		return new javax.swing.Icon() {
+			@Override public void paintIcon(java.awt.Component target, java.awt.Graphics graphics, int x, int y) {
+				java.awt.Graphics2D g = (java.awt.Graphics2D) graphics.create();
+				try {
+					g.translate(x, y);
+					Icons.paint(g, glyph, 0, 0, getIconWidth(), colour);
+				} finally {
+					g.dispose();
+				}
+			}
+			@Override public int getIconWidth() { return 13; }
+			@Override public int getIconHeight() { return 13; }
+		};
+	}
+
 	private static final class FlatTreeRenderer extends javax.swing.tree.DefaultTreeCellRenderer {
 		@Override
 		public java.awt.Component getTreeCellRendererComponent(JTree tree, Object value, boolean selected,
@@ -254,8 +308,11 @@ public final class CodeSpacePanel extends JPanel {
 			label.setBackground(selected ? Theme.SELECTION : Theme.PANEL);
 			if (value instanceof DefaultMutableTreeNode node && node.getUserObject() instanceof FileNode file) {
 				boolean directory = file.path() != null && Files.isDirectory(file.path());
-				label.setText(directory ? "▾ " + file.label() + "/" : "  " + file.label());
-				label.setForeground(selected ? java.awt.Color.WHITE : directory ? Theme.GREEN : Theme.TEXT);
+				label.setText(directory ? file.label() + "/" : file.label());
+				label.setIcon(glyph(directory ? Icons.Glyph.FOLDER : Icons.Glyph.FILE,
+					selected ? java.awt.Color.WHITE : directory ? Theme.ACCENT_SOFT : Theme.DIM));
+				label.setIconTextGap(7);
+				label.setForeground(selected ? java.awt.Color.WHITE : directory ? Theme.TEXT : Theme.DIM);
 			} else {
 				label.setText(String.valueOf(value));
 				label.setForeground(Theme.DIM);

@@ -124,6 +124,12 @@ public final class ChampionsClient implements ClientModInitializer {
 		desktop = new DesktopRuntime(configDirectory, console, contextSupplier,
 			dev.champions.client.SessionPlayers::names, () -> modVersion,
 			runnable -> Minecraft.getInstance().execute(runnable));
+		// The chat command `interfaces` edits the same desktop.properties the
+		// Settings tab writes; re-read it and start the bridge if it was off.
+		console.setInterfacePreferences(new dev.champions.client.desktop.ChatInterfacePreferences(
+			desktop, () -> {
+				if (desktop.settings().usesExternal()) desktop.start();
+			}));
 		desktop.start();
 		LOGGER.info("interface mode {} (settings: {}); external app attached: {}",
 			desktop.settings().mode(), desktop.settings().file(), desktop.isAttached());
@@ -191,7 +197,7 @@ public final class ChampionsClient implements ClientModInitializer {
 			FabricLoader.getInstance().getEnvironmentType());
 		LOGGER.info("drop-in module folder (searched recursively): {} - .java files here are compiled and registered automatically",
 			javaRuntime.moduleFolder());
-		LOGGER.info("keybinds: F8 console, F7 Java Studio, F6 log viewer (toggle their window while the workspace is open); commands: clickgui, categorygui, logs, java, exit");
+		LOGGER.info("keybinds: F8 console, F7 Java Studio, F6 log viewer (toggle their window while the workspace is open); commands: clickgui, categorygui, logs, java, interfaces (both|external|in-game), exit");
 	}
 
 	public static Identifier id(String path) {

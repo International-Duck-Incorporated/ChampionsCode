@@ -44,20 +44,17 @@ public final class TerminalPanel extends JPanel {
 	private final Timer timer;
 
 	public TerminalPanel(ConsolePort port) {
-		super(new BorderLayout());
+		super(new BorderLayout(0, 10));
 		this.port = port;
-		setBackground(Theme.BACKGROUND);
+		setOpaque(false);
+
+		statusBar = new JLabel(" ");
+		JPanel card = Theme.card(new BorderLayout());
+		card.add(Theme.header("Terminal", "msfconsole workflow · same gates as the in-game console", statusBar),
+			BorderLayout.NORTH);
 
 		output = new OutputArea();
-		add(output, BorderLayout.CENTER);
-
-		statusBar = new JLabel();
-		statusBar.setOpaque(true);
-		statusBar.setBackground(Theme.TITLE);
-		statusBar.setForeground(Theme.DIM);
-		statusBar.setFont(Theme.mono(11));
-		statusBar.setBorder(BorderFactory.createEmptyBorder(5, 12, 5, 12));
-		add(statusBar, BorderLayout.NORTH);
+		card.add(output, BorderLayout.CENTER);
 
 		JPanel promptRow = new JPanel(new BorderLayout(8, 0));
 		promptRow.setBackground(Theme.PANEL);
@@ -74,7 +71,7 @@ public final class TerminalPanel extends JPanel {
 		input.setFont(Theme.mono(13));
 		input.setBackground(Theme.FIELD);
 		input.setForeground(Theme.TEXT);
-		input.setCaretColor(Theme.GREEN_BRIGHT);
+		input.setCaretColor(Theme.ACCENT_SOFT);
 		input.setBorder(BorderFactory.createCompoundBorder(
 			BorderFactory.createLineBorder(Theme.BORDER),
 			BorderFactory.createEmptyBorder(6, 9, 6, 9)));
@@ -84,7 +81,8 @@ public final class TerminalPanel extends JPanel {
 		hint.setFont(Theme.mono(10));
 		hint.setForeground(Theme.FAINT);
 		promptRow.add(hint, BorderLayout.EAST);
-		add(promptRow, BorderLayout.SOUTH);
+		card.add(promptRow, BorderLayout.SOUTH);
+		add(card, BorderLayout.CENTER);
 
 		input.addActionListener(event -> submitInput());
 		installHistoryKeys();
@@ -144,13 +142,14 @@ public final class TerminalPanel extends JPanel {
 		String prompt = port.prompt() + " ❯";
 		if (!prompt.equals(promptLabel.getText())) promptLabel.setText(prompt);
 		ConsolePort.Status status = port.status();
-		String text = " ● " + port.mode() + "   " + status.summary();
-		String capabilities = port.capabilities();
-		if (!capabilities.isBlank()) text += "   [" + capabilities + "]";
-		if (text.length() > 170) text = text.substring(0, 167) + "...";
+		String text = port.mode().toUpperCase(java.util.Locale.ROOT) + " · "
+			+ (status.connected() ? status.target() : "no game")
+			+ (status.connected() && !status.authorized() ? " · not authorized" : "");
 		if (!text.equals(statusBar.getText())) {
 			statusBar.setText(text);
-			statusBar.setForeground(status.connected() ? (status.authorized() ? Theme.GREEN : Theme.YELLOW) : Theme.DIM);
+			statusBar.setForeground(status.connected()
+				? (status.authorized() ? Theme.GREEN : Theme.YELLOW) : Theme.DIM);
+			statusBar.setFont(Theme.monoBold(9));
 		}
 	}
 
@@ -241,7 +240,9 @@ public final class TerminalPanel extends JPanel {
 			FontMetrics metrics = getFontMetrics(getFont());
 			int width = Math.max(120, getWidth() - 28);
 			for (ConsoleLine line : lines) {
-				String text = line.text().isEmpty() ? " " : line.text();
+				// Tabs become four spaces so indented recommendations line up with
+				// the monospace grid instead of jumping to an arbitrary tab stop.
+				String text = line.text().isEmpty() ? " " : line.text().replace("\t", "    ");
 				Color color = Theme.tone(line.tone());
 				int start = 0;
 				while (start < text.length()) {
