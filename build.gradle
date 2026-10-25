@@ -7,28 +7,6 @@ base {
 	archivesName = project.archives_base_name
 }
 
-// The same JAR is also the external desktop application. Fabric ignores
-// Main-Class entirely; `java -jar champions-mod-<version>.jar` starts the Swing
-// front end with no Minecraft classes on the classpath.
-ext.desktopMainClass = 'dev.champions.desktop.DesktopMain'
-
-tasks.named('jar') {
-	manifest {
-		attributes('Main-Class': project.ext.desktopMainClass)
-	}
-}
-
-// Headless proof that the desktop half really runs without Minecraft. CI runs
-// this against the packaged JAR, so the property can never regress silently.
-tasks.register('desktopSelfTest', JavaExec) {
-	dependsOn tasks.named('jar')
-	group = 'verification'
-	description = 'Runs the desktop app self-test from the built mod JAR (no Minecraft on the classpath).'
-	classpath = files(tasks.named('jar').flatMap { it.archiveFile })
-	mainClass = project.ext.desktopMainClass
-	args '--self-test'
-}
-
 repositories {
 }
 
@@ -161,5 +139,55 @@ publishing {
 			artifactId = project.archives_base_name
 			from components.java
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Desktop application packaging.
+//
+// The mod JAR is also the external ChampionsCode app: Fabric ignores
+// Main-Class entirely, while `java -jar champions-mod-<version>.jar` starts the
+// Swing front end with no Minecraft classes on its classpath.
+//
+// Loom publishes the remapped JAR (remapJar) and keeps the plain jar as the
+// pre-remap artifact, so the attribute is set on whichever of the two exist and
+// the self-test runs against the file users actually download.
+// ---------------------------------------------------------------------------
+ext.desktopMainClass = 'dev.champions.desktop.DesktopMain'
+
+tasks.matching { it.name == 'jar' || it.name == 'remapJar' }.configureEach { archiveTask ->
+	if (archiveTask.hasProperty('manifest')) {
+		archiveTask.manifest {
+			attributes('Main-Class': project.ext.desktopMainClass)
+		}
+	}
+}
+
+// Headless proof that the desktop half really runs without Minecraft: the
+// terminal model, the wire codec, the gated console session, the version gate
+// and the drop-in compiler, plus an assertion that no Minecraft/Fabric class is
+// even loadable. CI runs the same check against the packaged JAR.
+//
+// The classpath is resolved at execution time so it always picks the shipped
+// (remapped) JAR, whichever filename Loom produced for this Gradle version.
+tasks.register('desktopSelfTest', JavaExec) {
+	dependsOn 'build'
+	group = 'verification'
+	description = 'Runs the desktop app self-test from the built mod JAR (no Minecraft on the classpath).'
+	mainClass = project.ext.desktopMainClass
+	args '--self-test'
+	doFirst {
+		def libs = project.layout.buildDirectory.dir('libs').get().asFile
+		def candidate = new File(libs, "${project.archives_base_name}-${project.version}.jar")
+		if (!candidate.exists()) {
+			candidate = (libs.listFiles() ?: new File[0]).find { file ->
+				file.name.endsWith('.jar') && !file.name.contains('sources') && !file.name.contains('-dev')
+			}
+		}
+		if (candidate == null || !candidate.exists()) {
+			throw new GradleException("No packaged JAR in ${libs}; run a full build first.")
+		}
+		println "Self-testing ${candidate.name}"
+		classpath = files(candidate)
 	}
 }
