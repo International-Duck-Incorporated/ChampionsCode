@@ -53,6 +53,32 @@ public final class DesktopMain {
 		return "0.2.0-desktop";
 	}
 
+	/**
+	 * Crisp text before any AWT/Swing class is touched.
+	 *
+	 * <p>These are the properties that decide whether the window is drawn at the
+	 * display's real resolution or bitmap-stretched by Windows at 150 %: with
+	 * {@code dpiaware} off the whole window (including its native title bar) is
+	 * upscaled and looks blurry. {@code lcd} turns on subpixel antialiasing,
+	 * which is what makes small monospace text look sharp instead of grey.</p>
+	 *
+	 * <p>{@code --ui-scale 1|1.25|1.5|2} forces a scale for setups where the JVM
+	 * guesses wrong; {@code auto} keeps the JVM's own per-monitor detection.</p>
+	 */
+	private static void configureRendering(String uiScale) {
+		System.setProperty("awt.useSystemAAFontSettings", "lcd");
+		System.setProperty("swing.aatext", "true");
+		if (System.getProperty("sun.java2d.dpiaware") == null) {
+			System.setProperty("sun.java2d.dpiaware", "true");
+		}
+		if (System.getProperty("sun.java2d.uiScale.enabled") == null) {
+			System.setProperty("sun.java2d.uiScale.enabled", "true");
+		}
+		if (System.getProperty("sun.java2d.uiScale") == null && !uiScale.equals("auto")) {
+			System.setProperty("sun.java2d.uiScale", uiScale);
+		}
+	}
+
 	private static final Map<String, JFrame> FRAMES = new ConcurrentHashMap<>();
 	private static volatile ConsolePort port;
 	private static volatile Path configDirectory;
@@ -61,6 +87,7 @@ public final class DesktopMain {
 
 	public static void main(String[] args) {
 		Map<String, String> options = parse(args);
+		configureRendering(options.getOrDefault("ui-scale", "auto"));
 		if (options.containsKey("self-test")) {
 			System.exit(SelfTest.run());
 			return;
@@ -175,7 +202,8 @@ public final class DesktopMain {
 		frame.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
 		frame.setContentPane(content);
 		frame.setBackground(Theme.BACKGROUND);
-		frame.setMinimumSize(new Dimension(520, 320));
+		frame.getContentPane().setBackground(Theme.BACKGROUND);
+		frame.setMinimumSize(new Dimension(560, 340));
 		return frame;
 	}
 
@@ -206,10 +234,96 @@ public final class DesktopMain {
 		return item;
 	}
 
+	/**
+	 * Tiles the three windows inside the usable screen area, in logical pixels so
+	 * Windows display scaling (150 %, 200 %) never pushes a window off-screen.
+	 * Restores the previous geometry when one was saved.
+	 */
 	private static void layout(JFrame terminal, JFrame modules, JFrame code) {
-		terminal.setBounds(16, 16, 900, 540);
-		modules.setBounds(926, 16, 650, 600);
-		code.setBounds(16, 566, 900, 420);
+		java.awt.Rectangle screen = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
+			.getMaximumWindowBounds();
+		int gap = Math.max(8, Math.round(12 * uiScale(screen)));
+		int width = screen.width - gap * 3;
+		int height = screen.height - gap * 3;
+
+		// Saved geometry wins when it still fits on this screen.
+		java.util.Properties saved = loadWindowBounds();
+		boolean restored = restore(terminal, saved, "terminal", screen)
+			&& restore(modules, saved, "modules", screen)
+			&& restore(code, saved, "codespace", screen);
+		if (restored) return;
+
+		// The modules window needs room for the list plus an option editor, so it
+		// keeps a floor of 430 logical pixels; the terminal gives up width first.
+		int leftWidth = Math.max(480, Math.round(width * 0.60f));
+		int rightWidth = Math.max(430, width - leftWidth);
+		while (leftWidth > 480 && leftWidth + rightWidth > width) {
+			leftWidth -= 20;
+			rightWidth = Math.max(430, width - leftWidth);
+		}
+		int topHeight = Math.max(360, Math.round(height * 0.60f));
+		int bottomHeight = Math.max(240, height - topHeight);
+
+		terminal.setBounds(screen.x + gap, screen.y + gap, leftWidth, topHeight);
+		modules.setBounds(screen.x + gap * 2 + leftWidth, screen.y + gap, rightWidth,
+			Math.min(screen.height - gap * 2, topHeight + bottomHeight + gap));
+		code.setBounds(screen.x + gap, screen.y + gap * 2 + topHeight, leftWidth, bottomHeight);
+	}
+
+	private static float uiScale(java.awt.Rectangle screen) {
+		java.awt.GraphicsConfiguration configuration = java.awt.GraphicsEnvironment
+			.getLocalGraphicsEnvironment().getDefaultScreenDevice().getDefaultConfiguration();
+		float scale = (float) configuration.getDefaultTransform().getScaleX();
+		return scale <= 0 ? 1f : scale;
+	}
+
+	private static java.util.Properties loadWindowBounds() {
+		java.util.Properties properties = new java.util.Properties();
+		Path file = configDirectory.resolve("desktop-windows.properties");
+		if (!Files.exists(file)) return properties;
+		try (var reader = Files.newBufferedReader(file, java.nio.charset.StandardCharsets.UTF_8)) {
+			properties.load(reader);
+		} catch (IOException ignored) {
+			// fall back to the default tiling
+		}
+		return properties;
+	}
+
+	private static boolean restore(JFrame frame, java.util.Properties properties, String key,
+			java.awt.Rectangle screen) {
+		String value = properties.getProperty(key);
+		if (value == null) return false;
+		String[] parts = value.split(",");
+		if (parts.length != 4) return false;
+		try {
+			java.awt.Rectangle bounds = new java.awt.Rectangle(
+				Integer.parseInt(parts[0].trim()), Integer.parseInt(parts[1].trim()),
+				Integer.parseInt(parts[2].trim()), Integer.parseInt(parts[3].trim()));
+			// Ignore geometry from a monitor that is no longer attached.
+			if (!screen.intersects(bounds)) return false;
+			frame.setBounds(bounds);
+			return true;
+		} catch (NumberFormatException invalid) {
+			return false;
+		}
+	}
+
+	private static void saveWindowBounds() {
+		java.util.Properties properties = new java.util.Properties();
+		FRAMES.forEach((key, frame) -> {
+			if (!frame.isVisible() || (frame.getExtendedState() & java.awt.Frame.ICONIFIED) != 0) return;
+			java.awt.Rectangle bounds = frame.getBounds();
+			properties.setProperty(key, bounds.x + "," + bounds.y + "," + bounds.width + "," + bounds.height);
+		});
+		try {
+			Files.createDirectories(configDirectory);
+			Path file = configDirectory.resolve("desktop-windows.properties");
+			try (var writer = Files.newBufferedWriter(file, java.nio.charset.StandardCharsets.UTF_8)) {
+				properties.store(writer, "ChampionsCode desktop window geometry (delete to re-tile)");
+			}
+		} catch (IOException ignored) {
+			// geometry is a convenience, never a failure
+		}
 	}
 
 	private static WindowAdapter exitWhenAllHidden() {
@@ -217,8 +331,14 @@ public final class DesktopMain {
 			@Override public void windowClosing(WindowEvent event) {
 				SwingUtilities.invokeLater(() -> {
 					boolean anyVisible = FRAMES.values().stream().anyMatch(JFrame::isVisible);
-					if (!anyVisible) System.exit(0);
+					if (anyVisible) return;
+					saveWindowBounds();
+					System.exit(0);
 				});
+			}
+
+			@Override public void windowOpened(WindowEvent event) {
+				Runtime.getRuntime().addShutdownHook(new Thread(DesktopMain::saveWindowBounds, "champions-bounds-save"));
 			}
 		};
 	}

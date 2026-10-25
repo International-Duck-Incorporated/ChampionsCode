@@ -1,71 +1,107 @@
 package dev.champions.desktop;
 
-import dev.champions.core.console.ConsoleLine;
-
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
 import javax.swing.JTextField;
 import javax.swing.ListSelectionModel;
-import javax.swing.SwingUtilities;
+import javax.swing.SwingConstants;
 import javax.swing.Timer;
 import java.awt.BorderLayout;
-import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
-import java.awt.GridLayout;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * External ClickGUI: the same module tree, option editors, dropdowns and run
+ * External ClickGUI: the module tree, option editors, dropdowns and run
  * controls the in-game sorted-list interface shows, driven through the same
  * {@code *FromUi} facade on the console.
  */
 public final class ModulesPanel extends JPanel {
+	private static final String SEARCH_HINT = "search modules";
+
 	private final ConsolePort port;
 	private final JTextField search = new JTextField();
+	private final JPanel categories = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
 	private final DefaultListModel<String> listModel = new DefaultListModel<>();
 	private final JList<String> list = new JList<>(listModel);
 	private final JPanel details = new JPanel(new BorderLayout());
 	private final JLabel statusLabel = new JLabel(" ");
-	private final Map<String, ModuleItem> visible = new LinkedHashMap<>();
-	private final Map<String, Component> editors = new LinkedHashMap<>();
+	private final Map<String, ConsolePort.ModuleInfo> visible = new LinkedHashMap<>();
+	private final Map<String, JComponent> editors = new LinkedHashMap<>();
+
 	private List<ConsolePort.ModuleInfo> modules = List.of();
+	private String category = "all";
 	private String activeId;
 	private String renderedActiveId;
 	private final Timer timer;
-
-	record ModuleItem(ConsolePort.ModuleInfo info) {
-		@Override public String toString() {
-			return info.id();
-		}
-	}
 
 	public ModulesPanel(ConsolePort port) {
 		super(new BorderLayout());
 		this.port = port;
 		setBackground(Theme.BACKGROUND);
 
-		JPanel left = new JPanel(new BorderLayout(0, 6));
-		left.setBackground(Theme.PANEL);
-		left.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+		details.setBackground(Theme.BACKGROUND);
+		// Resizable so a long module id or a wide option field is one drag away.
+		JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, buildSidebar(), details);
+		split.setBorder(BorderFactory.createEmptyBorder());
+		split.setContinuousLayout(true);
+		split.setResizeWeight(0.0);
+		add(split, BorderLayout.CENTER);
+		// Proportional divider: on a narrow window the list gives room to the
+		// option editors instead of squeezing them off the edge.
+		addComponentListener(new java.awt.event.ComponentAdapter() {
+			private boolean placed;
+
+			@Override public void componentResized(java.awt.event.ComponentEvent event) {
+				if (placed || getWidth() < 200) return;
+				placed = true;
+				split.setDividerLocation(Math.clamp(Math.round(getWidth() * 0.40f), 200, 330));
+			}
+		});
+
+		timer = new Timer(250, event -> tick());
+		timer.start();
+		showPlaceholder();
+		tick();
+	}
+
+	private JPanel buildSidebar() {
+		JPanel sidebar = new JPanel(new BorderLayout(0, 8));
+		sidebar.setBackground(Theme.PANEL);
+		sidebar.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createMatteBorder(0, 0, 0, 1, Theme.BORDER),
+			BorderFactory.createEmptyBorder(10, 10, 10, 10)));
+		sidebar.setPreferredSize(new Dimension(262, 600));
+
 		search.setFont(Theme.mono(12));
 		search.setForeground(Theme.DIM);
-		search.setText("search modules");
+		search.setText(SEARCH_HINT);
+		search.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createLineBorder(Theme.BORDER),
+			BorderFactory.createEmptyBorder(6, 9, 6, 9)));
 		search.addFocusListener(new java.awt.event.FocusAdapter() {
 			@Override public void focusGained(java.awt.event.FocusEvent event) {
-				if (search.getText().equals("search modules")) {
+				if (search.getText().equals(SEARCH_HINT)) {
 					search.setText("");
 					search.setForeground(Theme.TEXT);
 				}
@@ -74,50 +110,87 @@ public final class ModulesPanel extends JPanel {
 			@Override public void focusLost(java.awt.event.FocusEvent event) {
 				if (search.getText().isBlank()) {
 					search.setForeground(Theme.DIM);
-					search.setText("search modules");
+					search.setText(SEARCH_HINT);
 				}
 			}
 		});
-		search.setBorder(BorderFactory.createCompoundBorder(
-			BorderFactory.createLineBorder(Theme.BORDER), BorderFactory.createEmptyBorder(5, 7, 5, 7)));
 		search.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
 			@Override public void insertUpdate(javax.swing.event.DocumentEvent event) { refreshList(); }
 			@Override public void removeUpdate(javax.swing.event.DocumentEvent event) { refreshList(); }
 			@Override public void changedUpdate(javax.swing.event.DocumentEvent event) { refreshList(); }
 		});
-		left.add(search, BorderLayout.NORTH);
+
+		JPanel top = new JPanel(new BorderLayout(0, 8));
+		top.setBackground(Theme.PANEL);
+		top.add(search, BorderLayout.NORTH);
+		categories.setBackground(Theme.PANEL);
+		top.add(categories, BorderLayout.CENTER);
+		sidebar.add(top, BorderLayout.NORTH);
 
 		list.setFont(Theme.mono(12));
 		list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 		list.setCellRenderer(new ModuleRenderer());
 		list.addListSelectionListener(event -> {
 			if (event.getValueIsAdjusting()) return;
-			ModuleItem item = list.getSelectedValue() == null ? null : visible.get(list.getSelectedValue());
-			if (item == null) return;
-			if (!item.info().id().equals(activeId)) port.selectModule(item.info().id());
+			Object selected = list.getSelectedValue();
+			if (selected == null) return;
+			ConsolePort.ModuleInfo info = visible.get(String.valueOf(selected));
+			if (info != null && !info.id().equals(activeId)) port.selectModule(info.id());
 		});
+		list.setToolTipText("");
 		JScrollPane listScroll = new JScrollPane(list,
 			JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-		listScroll.setBorder(BorderFactory.createLineBorder(Theme.BORDER));
-		left.add(listScroll, BorderLayout.CENTER);
+		listScroll.setBorder(Theme.line());
+		listScroll.getViewport().setBackground(Theme.PANEL);
+		sidebar.add(listScroll, BorderLayout.CENTER);
+
 		statusLabel.setFont(Theme.mono(10));
-		statusLabel.setForeground(Theme.DIM);
-		left.add(statusLabel, BorderLayout.SOUTH);
-		left.setPreferredSize(new Dimension(300, 600));
-		add(left, BorderLayout.WEST);
+		statusLabel.setForeground(Theme.FAINT);
+		sidebar.add(statusLabel, BorderLayout.SOUTH);
+		return sidebar;
+	}
 
-		details.setBackground(Theme.BACKGROUND);
-		add(details, BorderLayout.CENTER);
+	private void rebuildCategories() {
+		categories.removeAll();
+		Set<String> found = new LinkedHashSet<>();
+		for (ConsolePort.ModuleInfo info : modules) found.add(categoryOf(info.id()));
+		List<String> ordered = new ArrayList<>();
+		ordered.add("all");
+		ordered.addAll(found.stream().sorted().toList());
+		for (String name : ordered) {
+			JButton chip = Theme.button(name, name.equals(category) ? Theme.GREEN : Theme.DIM, null);
+			chip.setFont(Theme.mono(11));
+			chip.addActionListener(event -> {
+				category = name;
+				rebuildCategories();
+				refreshList();
+			});
+			chip.setBorder(BorderFactory.createEmptyBorder(4, 9, 4, 9));
+			categories.add(chip);
+		}
+		categories.revalidate();
+		categories.repaint();
+	}
 
-		timer = new Timer(250, event -> tick());
-		timer.start();
-		tick();
+	/**
+	 * Ids are shown without the leading {@code auxiliary/} that every module
+	 * shares, which keeps the full path readable in a narrow list.
+	 */
+	private static String displayId(String id) {
+		return id.startsWith("auxiliary/") ? id.substring("auxiliary/".length()) : id;
+	}
+
+	private static String categoryOf(String id) {
+		String[] parts = id.split("/");
+		return parts.length > 1 ? parts[1] : id;
 	}
 
 	private void tick() {
 		List<ConsolePort.ModuleInfo> next = port.modules();
 		if (!sameModules(next, modules)) {
+			boolean categoriesChanged = !categoriesOf(next).equals(categoriesOf(modules));
 			modules = next;
+			if (categoriesChanged) rebuildCategories();
 			refreshList();
 			statusLabel.setText(modules.size() + " modules · " + port.mode());
 		}
@@ -139,13 +212,43 @@ public final class ModulesPanel extends JPanel {
 		}
 	}
 
+	private static Set<String> categoriesOf(List<ConsolePort.ModuleInfo> infos) {
+		Set<String> out = new LinkedHashSet<>();
+		for (ConsolePort.ModuleInfo info : infos) out.add(categoryOf(info.id()));
+		return out;
+	}
+
 	private void showPlaceholder() {
 		details.removeAll();
-		JLabel label = new JLabel("Select a module. Console commands work too: use <module>");
-		label.setFont(Theme.mono(12));
-		label.setForeground(Theme.DIM);
-		label.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
-		details.add(label, BorderLayout.NORTH);
+		editors.clear();
+		JPanel centre = new JPanel(new GridBagLayout());
+		centre.setBackground(Theme.BACKGROUND);
+		JPanel box = new JPanel();
+		box.setOpaque(false);
+		box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
+
+		JLabel title = new JLabel("No module selected");
+		title.setFont(Theme.monoBold(15));
+		title.setForeground(Theme.DIM);
+		title.setAlignmentX(Component.CENTER_ALIGNMENT);
+		box.add(title);
+		box.add(Box.createVerticalStrut(10));
+
+		JLabel hint = new JLabel("Pick a module on the left, or drive the console:");
+		hint.setFont(Theme.sans(12, false));
+		hint.setForeground(Theme.FAINT);
+		hint.setAlignmentX(Component.CENTER_ALIGNMENT);
+		box.add(hint);
+		box.add(Box.createVerticalStrut(6));
+
+		JLabel command = new JLabel("use <module>   ·   show options   ·   run");
+		command.setFont(Theme.mono(12));
+		command.setForeground(Theme.BLUE);
+		command.setAlignmentX(Component.CENTER_ALIGNMENT);
+		box.add(command);
+
+		centre.add(box);
+		details.add(centre, BorderLayout.CENTER);
 		details.revalidate();
 		details.repaint();
 	}
@@ -157,10 +260,10 @@ public final class ModulesPanel extends JPanel {
 		JPanel header = new JPanel();
 		header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
 		header.setBackground(Theme.BACKGROUND);
-		header.setBorder(BorderFactory.createEmptyBorder(10, 14, 6, 14));
+		header.setBorder(BorderFactory.createEmptyBorder(14, 18, 8, 18));
 
 		JLabel title = new JLabel(active.id());
-		title.setFont(Theme.monoBold(14));
+		title.setFont(Theme.monoBold(15));
 		title.setForeground(active.exploit() ? Theme.RED : Theme.BLUE);
 		title.setAlignmentX(Component.LEFT_ALIGNMENT);
 		header.add(title);
@@ -175,55 +278,47 @@ public final class ModulesPanel extends JPanel {
 		description.setWrapStyleWord(true);
 		description.setBorder(null);
 		description.setAlignmentX(Component.LEFT_ALIGNMENT);
-		description.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
-		header.add(Box.createVerticalStrut(4));
+		description.setMaximumSize(new Dimension(Integer.MAX_VALUE, 72));
+		header.add(Box.createVerticalStrut(6));
 		header.add(description);
+
 		if (active.exploit()) {
 			JLabel badge = new JLabel("EXPLOIT RESEARCH · per-run legal warning required");
 			badge.setFont(Theme.monoBold(10));
 			badge.setForeground(Theme.RED);
 			badge.setAlignmentX(Component.LEFT_ALIGNMENT);
-			header.add(Box.createVerticalStrut(6));
+			header.add(Box.createVerticalStrut(8));
 			header.add(badge);
 		}
-		header.add(Box.createVerticalStrut(10));
 		details.add(header, BorderLayout.NORTH);
 
 		JPanel options = new JPanel();
 		options.setLayout(new BoxLayout(options, BoxLayout.Y_AXIS));
 		options.setBackground(Theme.BACKGROUND);
-		options.setBorder(BorderFactory.createEmptyBorder(0, 14, 8, 14));
 		for (ConsolePort.OptionInfo option : active.options()) {
 			options.add(optionRow(option));
-			options.add(Box.createVerticalStrut(6));
+			options.add(Box.createVerticalStrut(8));
 		}
-		options.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 14));
 		JScrollPane optionScroll = new JScrollPane(options,
 			JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-		optionScroll.setBorder(BorderFactory.createEmptyBorder());
+		optionScroll.setBorder(BorderFactory.createEmptyBorder(0, 18, 0, 18));
 		optionScroll.getViewport().setBackground(Theme.BACKGROUND);
 		details.add(optionScroll, BorderLayout.CENTER);
 
-		JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
-		actions.setBackground(Theme.TITLE);
-		JButton run = new JButton("Run");
-		run.setFont(Theme.monoBold(12));
-		run.setForeground(Theme.GREEN);
-		run.setBackground(new Color(0x1F3322));
-		run.addActionListener(event -> port.run());
-		JButton clear = new JButton("Back");
-		clear.setFont(Theme.mono(12));
-		clear.addActionListener(event -> port.clearSelection());
-		JButton authorize = new JButton();
-		authorize.setFont(Theme.mono(12));
+		JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 10));
+		actions.setBackground(Theme.PANEL);
+		actions.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, Theme.BORDER));
+
+		JButton run = Theme.button("Run", Theme.GREEN, event -> port.run());
+		run.setToolTipText("Run the selected module. CONFIRM is consumed on every run, allowed or denied.");
+		JButton back = Theme.button("Back", Theme.DIM, event -> port.clearSelection());
 		ConsolePort.Status status = port.status();
-		authorize.setText(status.authorized() ? "Deauthorize" : "Authorize");
+		JButton authorize = Theme.button(status.authorized() ? "Deauthorize" : "Authorize target",
+			status.authorized() ? Theme.YELLOW : Theme.BLUE, event -> port.setAuthorized(!port.status().authorized()));
 		authorize.setEnabled(status.authorizeAvailable());
-		authorize.addActionListener(event -> port.setAuthorized(!port.status().authorized()));
 		actions.add(run);
-		actions.add(clear);
+		actions.add(back);
 		actions.add(authorize);
-		run.setToolTipText("Runs the selected module. CONFIRM is consumed on every run, allowed or denied.");
 		details.add(actions, BorderLayout.SOUTH);
 
 		details.revalidate();
@@ -231,46 +326,55 @@ public final class ModulesPanel extends JPanel {
 	}
 
 	private JPanel optionRow(ConsolePort.OptionInfo option) {
-		JPanel row = new JPanel(new java.awt.GridBagLayout());
+		JPanel row = new JPanel(new GridBagLayout());
 		row.setBackground(Theme.BACKGROUND);
-		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 54));
+		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 58));
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-		JPanel labels = new JPanel(new GridLayout(2, 1));
+		JPanel labels = new JPanel(new BorderLayout(0, 2));
 		labels.setBackground(Theme.BACKGROUND);
-		labels.setPreferredSize(new Dimension(180, 44));
 		String name = option.name() + (option.required() ? "  *" : "");
 		JLabel nameLabel = new JLabel(name);
 		nameLabel.setFont(Theme.monoBold(12));
 		nameLabel.setForeground(option.required() ? Theme.YELLOW : Theme.TEXT);
 		JLabel description = new JLabel(option.description());
 		description.setFont(Theme.sans(11, false));
-		description.setForeground(Theme.DIM);
-		labels.add(nameLabel);
-		labels.add(description);
-		java.awt.GridBagConstraints labelConstraints = new java.awt.GridBagConstraints();
+		description.setForeground(Theme.FAINT);
+		labels.add(nameLabel, BorderLayout.NORTH);
+		labels.add(description, BorderLayout.CENTER);
+		labels.setToolTipText(option.description());
+		description.setToolTipText(option.description());
+		labels.setPreferredSize(new Dimension(168, 46));
+
+		GridBagConstraints labelConstraints = new GridBagConstraints();
 		labelConstraints.gridx = 0;
 		labelConstraints.weightx = 0;
-		labelConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
-		labelConstraints.insets = new java.awt.Insets(0, 0, 0, 10);
+		labelConstraints.fill = GridBagConstraints.HORIZONTAL;
+		labelConstraints.insets = new Insets(0, 0, 0, 12);
 		row.add(labels, labelConstraints);
 
 		Component editor;
 		if (!option.choices().isEmpty()) {
 			JComboBox<String> combo = new JComboBox<>(option.choices().toArray(new String[0]));
 			combo.setFont(Theme.mono(12));
+			combo.setBackground(Theme.FIELD);
+			combo.setForeground(Theme.TEXT);
 			combo.setSelectedItem(option.displayValue());
+			combo.setPreferredSize(new Dimension(10, 28));
 			combo.addActionListener(event -> {
 				Object selected = combo.getSelectedItem();
 				if (selected != null) port.setOption(option.name(), String.valueOf(selected));
 			});
 			editor = combo;
-			combo.setPreferredSize(new Dimension(10, 26));
 		} else {
-			JTextField field = new JTextField();
-			field.setText(option.displayValue());
+			JTextField field = new JTextField(option.displayValue());
 			field.setFont(Theme.mono(12));
+			field.setBackground(Theme.FIELD);
+			field.setForeground(option.secret() ? (option.configured() ? Theme.GREEN : Theme.DIM) : Theme.TEXT);
+			field.setCaretColor(Theme.GREEN);
+			field.setBorder(BorderFactory.createCompoundBorder(
+				Theme.line(), BorderFactory.createEmptyBorder(6, 8, 6, 8)));
 			if (option.secret()) {
-				field.setForeground(option.configured() ? Theme.GREEN : Theme.DIM);
 				field.setToolTipText("Secret: redacted in echo, history and the audit log.");
 			}
 			field.addActionListener(event -> port.setOption(option.name(), field.getText()));
@@ -281,11 +385,11 @@ public final class ModulesPanel extends JPanel {
 			});
 			editor = field;
 		}
-		editors.put(option.name(), editor);
-		java.awt.GridBagConstraints editorConstraints = new java.awt.GridBagConstraints();
+		editors.put(option.name(), (JComponent) editor);
+		GridBagConstraints editorConstraints = new GridBagConstraints();
 		editorConstraints.gridx = 1;
 		editorConstraints.weightx = 1;
-		editorConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+		editorConstraints.fill = GridBagConstraints.HORIZONTAL;
 		row.add(editor, editorConstraints);
 		return row;
 	}
@@ -306,17 +410,18 @@ public final class ModulesPanel extends JPanel {
 	}
 
 	private void refreshList() {
-		String query = search.getText().strip().toLowerCase(java.util.Locale.ROOT);
-		if (query.equals("search modules")) query = "";
+		String query = search.getText().strip().toLowerCase(Locale.ROOT);
+		if (query.equals(SEARCH_HINT)) query = "";
 		String previous = list.getSelectedValue();
 		visible.clear();
 		listModel.clear();
 		for (ConsolePort.ModuleInfo info : modules) {
-			if (!query.isEmpty() && !info.id().toLowerCase(java.util.Locale.ROOT).contains(query)
-				&& !info.name().toLowerCase(java.util.Locale.ROOT).contains(query)) continue;
-			ModuleItem item = new ModuleItem(info);
-			visible.put(info.id(), item);
-			listModel.addElement(info.id());
+			if (!category.equals("all") && !categoryOf(info.id()).equals(category)) continue;
+			if (!query.isEmpty()
+					&& !info.id().toLowerCase(Locale.ROOT).contains(query)
+					&& !info.name().toLowerCase(Locale.ROOT).contains(query)) continue;
+			visible.put(displayId(info.id()), info);
+			listModel.addElement(displayId(info.id()));
 		}
 		if (previous != null && visible.containsKey(previous)) list.setSelectedValue(previous, true);
 		else if (activeId != null && visible.containsKey(activeId)) list.setSelectedValue(activeId, true);
@@ -332,24 +437,32 @@ public final class ModulesPanel extends JPanel {
 		return true;
 	}
 
-	private static String escape(String text) {
-		return text == null ? "" : text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-	}
-
-	/** Row renderer: exploit modules are red, the selected module is highlighted. */
+	/** Row renderer: category dimmed, exploit modules red, selection highlighted. */
 	private final class ModuleRenderer extends javax.swing.DefaultListCellRenderer {
 		@Override
 		public Component getListCellRendererComponent(JList<?> list, Object value, int index,
 				boolean selected, boolean focused) {
 			JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, selected, focused);
-			ModuleItem item = visible.get(String.valueOf(value));
+			String id = String.valueOf(value);
+			ConsolePort.ModuleInfo info = visible.get(id);
 			label.setFont(Theme.mono(12));
-			label.setBorder(BorderFactory.createEmptyBorder(3, 8, 3, 8));
-			label.setBackground(selected ? new Color(0x2C3E5A) : Theme.PANEL);
-			label.setText("<html><span style='color:#"
-				+ (item != null && item.info().exploit() ? "FF6868" : item != null && item.info().selected() ? "55D65A" : "F0F0F0")
-				+ "'>" + escape(String.valueOf(value)) + "</span></html>");
+			label.setBorder(BorderFactory.createEmptyBorder(4, 10, 4, 10));
+			label.setBackground(selected ? Theme.SELECTION : Theme.PANEL);
+
+			String prefix = id.substring(0, Math.max(0, id.lastIndexOf('/') + 1));
+			String leaf = id.substring(prefix.length());
+			String color = info != null && info.exploit() ? "#FF6868"
+				: info != null && info.selected() ? "#55D65A"
+				: selected ? "#FFFFFF" : "#F0F0F0";
+			label.setText("<html><span style='color:#6A6A6A'>" + escape(prefix) + "</span>"
+				+ "<span style='color:" + color + "'>" + escape(leaf) + "</span></html>");
+			label.setHorizontalAlignment(SwingConstants.LEFT);
+			label.setToolTipText(info == null ? id : info.id() + " — " + info.name());
 			return label;
 		}
+	}
+
+	private static String escape(String text) {
+		return text == null ? "" : text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
 	}
 }

@@ -126,6 +126,29 @@ Logs if something misbehaves:
 
 ---
 
+## 4b. If it looks blurry or pixelated
+
+Fixed in `0.2.0-desktop`, but for reference: a Swing window is stretched by Windows
+when the JVM is not DPI-aware, and `Font.MONOSPACED` falls back to Courier New. Both
+are handled now — the app sets `awt.useSystemAAFontSettings=lcd`,
+`sun.java2d.dpiaware=true` and `sun.java2d.uiScale.enabled=true` before loading AWT,
+and picks the best installed monospace family.
+
+If it still looks wrong on your setup:
+
+```powershell
+java -jar .\build\libs\champions-mod-*.jar --demo --ui-scale 1.25
+```
+
+* `--ui-scale 1` — window untouched by Windows scaling (text smaller, always sharp)
+* `--ui-scale 1.25` / `1.5` / `2` — match your Windows display scaling exactly
+* default `auto` — the JVM's per-monitor detection (correct on most setups)
+
+The game-side launcher already passes the rendering flags, so an app spawned by the
+mod inherits them.
+
+---
+
 ## 5. If the build fails
 
 The two spots I could not verify in my sandbox are `src/client/**` and the Groovy blocks in

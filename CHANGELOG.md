@@ -45,6 +45,27 @@
   `docs/version-compatibility.md` (why one JAR cannot span 1.21.11 and 26.3, the
   Stonecutter matrix, artifact naming and the updater change).
 
+### Fixed
+- **Crisp rendering on scaled displays.** The app now declares DPI awareness
+  (`sun.java2d.dpiaware`, `sun.java2d.uiScale.enabled`) and enables LCD subpixel
+  antialiasing before any AWT class loads, so Windows at 125/150/200 % no longer
+  bitmap-stretches the window. The launcher passes the same flags when the game
+  starts the app, and `--ui-scale 1|1.25|1.5|2` overrides detection.
+- **Real monospace and UI fonts.** `Font.MONOSPACED` fell back to Courier New on
+  Windows; `dev.champions.desktop.Fonts` now selects the first installed family
+  from JetBrains Mono, Cascadia Mono, Consolas, SF Mono, Menlo, DejaVu Sans Mono,
+  Liberation Mono, and the same for the interface font.
+- **Window layout.** Windows are tiled against the usable screen area in logical
+  pixels (never a fixed 1600x900 assumption), the modules window keeps a floor
+  wide enough for its option editors, and geometry is remembered in
+  `desktop-windows.properties` (delete it to re-tile).
+- **Modules window polish.** Resizable list/editor split, ids shown without the
+  shared `auxiliary/` prefix, constrained options as dropdowns, flat hover
+  buttons, category filter chips, and a placeholder pane instead of an empty
+  panel when nothing is selected.
+- **Code space polish.** Line-number gutter, flat icon-free tree (folders green),
+  flat toolbar buttons.
+
 ### Changed
 - Logging in the version-free core goes through `dev.champions.core.log.Log`,
   which delegates to SLF4J inside the game and to stderr outside it. The desktop

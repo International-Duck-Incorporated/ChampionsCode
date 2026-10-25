@@ -41,6 +41,7 @@ public final class DesktopLauncher {
 	public List<String> commandPreview(int port) {
 		List<String> command = new ArrayList<>();
 		command.add(javaBinary());
+		command.addAll(renderingFlags());
 		command.addAll(launchArguments(port, "<token>"));
 		return List.copyOf(command);
 	}
@@ -60,6 +61,7 @@ public final class DesktopLauncher {
 		}
 		List<String> command = new ArrayList<>();
 		command.add(javaBinary());
+		command.addAll(renderingFlags());
 		command.addAll(launchArguments(port, token));
 		if (configDirectory != null && !configDirectory.isBlank()) {
 			command.add("--config");
@@ -80,6 +82,21 @@ public final class DesktopLauncher {
 			LOG.warn("could not start the desktop app: {}. In-game windows remain available.", error.getMessage());
 			return false;
 		}
+	}
+
+	/**
+	 * Crisp text on scaled displays. A process launched without these can be
+	 * rendered at 1x and bitmap-stretched by Windows at 150 %, which looks
+	 * blurry; the app also sets them itself, this makes sure they are in place
+	 * before the JVM initialises the graphics environment.
+	 */
+	private static List<String> renderingFlags() {
+		return List.of(
+			"-Dawt.useSystemAAFontSettings=lcd",
+			"-Dswing.aatext=true",
+			"-Dsun.java2d.dpiaware=true",
+			"-Dsun.java2d.uiScale.enabled=true"
+		);
 	}
 
 	/** {@code -jar <this mod jar> --connect <port> --token <token>} (or the dev classes dir). */

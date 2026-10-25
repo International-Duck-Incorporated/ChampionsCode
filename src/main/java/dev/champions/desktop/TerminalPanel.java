@@ -6,7 +6,6 @@ import javax.swing.BorderFactory;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
-import javax.swing.JScrollBar;
 import javax.swing.JTextField;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
@@ -14,6 +13,7 @@ import javax.swing.Timer;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
@@ -30,7 +30,7 @@ import java.util.List;
 
 /**
  * The external msfconsole: the same prompt, tones, history and 1 000-line
- * bound as the in-game terminal, rendered natively with a monospaced font.
+ * bound as the in-game terminal, rendered natively with a real monospace font.
  */
 public final class TerminalPanel extends JPanel {
 	private final ConsolePort port;
@@ -56,12 +56,14 @@ public final class TerminalPanel extends JPanel {
 		statusBar.setBackground(Theme.TITLE);
 		statusBar.setForeground(Theme.DIM);
 		statusBar.setFont(Theme.mono(11));
-		statusBar.setBorder(BorderFactory.createEmptyBorder(4, 10, 4, 10));
+		statusBar.setBorder(BorderFactory.createEmptyBorder(5, 12, 5, 12));
 		add(statusBar, BorderLayout.NORTH);
 
-		JPanel promptRow = new JPanel(new BorderLayout(6, 0));
-		promptRow.setBackground(Theme.BACKGROUND);
-		promptRow.setBorder(BorderFactory.createEmptyBorder(6, 8, 8, 8));
+		JPanel promptRow = new JPanel(new BorderLayout(8, 0));
+		promptRow.setBackground(Theme.PANEL);
+		promptRow.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createMatteBorder(1, 0, 0, 0, Theme.BORDER),
+			BorderFactory.createEmptyBorder(8, 12, 8, 12)));
 
 		promptLabel = new JLabel();
 		promptLabel.setFont(Theme.monoBold(13));
@@ -72,12 +74,16 @@ public final class TerminalPanel extends JPanel {
 		input.setFont(Theme.mono(13));
 		input.setBackground(Theme.FIELD);
 		input.setForeground(Theme.TEXT);
-		input.setCaretColor(Theme.GREEN);
+		input.setCaretColor(Theme.GREEN_BRIGHT);
 		input.setBorder(BorderFactory.createCompoundBorder(
 			BorderFactory.createLineBorder(Theme.BORDER),
-			BorderFactory.createEmptyBorder(5, 7, 5, 7)));
+			BorderFactory.createEmptyBorder(6, 9, 6, 9)));
 		promptRow.add(input, BorderLayout.CENTER);
-		promptRow.add(hint(), BorderLayout.EAST);
+
+		JLabel hint = new JLabel("↵ run   ↑↓ history   ctrl+c copy");
+		hint.setFont(Theme.mono(10));
+		hint.setForeground(Theme.FAINT);
+		promptRow.add(hint, BorderLayout.EAST);
 		add(promptRow, BorderLayout.SOUTH);
 
 		input.addActionListener(event -> submitInput());
@@ -87,14 +93,6 @@ public final class TerminalPanel extends JPanel {
 		timer = new Timer(100, event -> tick());
 		timer.start();
 		tick();
-	}
-
-	private JLabel hint() {
-		JLabel label = new JLabel("↵ run   ↑↓ history   ctrl+c copy");
-		label.setFont(Theme.mono(10));
-		label.setForeground(new Color(0x6A6A6A));
-		label.setBorder(BorderFactory.createEmptyBorder(0, 6, 0, 2));
-		return label;
 	}
 
 	private void submitInput() {
@@ -108,45 +106,31 @@ public final class TerminalPanel extends JPanel {
 	}
 
 	private void installHistoryKeys() {
-		input.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), "history-prev");
-		input.getActionMap().put("history-prev", new javax.swing.AbstractAction() {
-			@Override public void actionPerformed(ActionEvent event) {
-				if (localHistory.isEmpty()) return;
-				historyIndex = Math.max(0, historyIndex - 1);
-				input.setText(localHistory.get(historyIndex));
-			}
+		bind(KeyEvent.VK_UP, 0, "history-prev", () -> {
+			if (localHistory.isEmpty()) return;
+			historyIndex = Math.max(0, historyIndex - 1);
+			input.setText(localHistory.get(historyIndex));
 		});
-		input.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), "history-next");
-		input.getActionMap().put("history-next", new javax.swing.AbstractAction() {
-			@Override public void actionPerformed(ActionEvent event) {
-				if (localHistory.isEmpty()) return;
-				historyIndex = Math.min(localHistory.size(), historyIndex + 1);
-				input.setText(historyIndex >= localHistory.size() ? "" : localHistory.get(historyIndex));
-			}
+		bind(KeyEvent.VK_DOWN, 0, "history-next", () -> {
+			if (localHistory.isEmpty()) return;
+			historyIndex = Math.min(localHistory.size(), historyIndex + 1);
+			input.setText(historyIndex >= localHistory.size() ? "" : localHistory.get(historyIndex));
 		});
-		input.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_L, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()), "clear-view");
-		input.getActionMap().put("clear-view", new javax.swing.AbstractAction() {
-			@Override public void actionPerformed(ActionEvent event) {
-				output.clearView();
-			}
-		});
+		bind(KeyEvent.VK_L, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx(), "clear-view", output::clearView);
 	}
 
 	private void installScrollKeys() {
-		bindScroll(KeyEvent.VK_PAGE_UP, -10);
-		bindScroll(KeyEvent.VK_PAGE_DOWN, 10);
-		bindScroll(KeyEvent.VK_HOME, Integer.MIN_VALUE);
-		bindScroll(KeyEvent.VK_END, Integer.MAX_VALUE);
+		bind(KeyEvent.VK_PAGE_UP, 0, "pgup", () -> output.scrollBy(-10));
+		bind(KeyEvent.VK_PAGE_DOWN, 0, "pgdn", () -> output.scrollBy(10));
+		bind(KeyEvent.VK_HOME, 0, "top", output::scrollToTop);
+		bind(KeyEvent.VK_END, 0, "end", output::scrollToBottom);
 	}
 
-	private void bindScroll(int keyCode, int delta) {
-		String name = "scroll-" + keyCode;
-		input.getInputMap().put(KeyStroke.getKeyStroke(keyCode, 0), name);
+	private void bind(int keyCode, int modifiers, String name, Runnable action) {
+		input.getInputMap().put(KeyStroke.getKeyStroke(keyCode, modifiers), name);
 		input.getActionMap().put(name, new javax.swing.AbstractAction() {
 			@Override public void actionPerformed(ActionEvent event) {
-				if (delta == Integer.MIN_VALUE) output.scrollToTop();
-				else if (delta == Integer.MAX_VALUE) output.scrollToBottom();
-				else output.scrollBy(delta);
+				action.run();
 			}
 		});
 	}
@@ -157,15 +141,13 @@ public final class TerminalPanel extends JPanel {
 			seenRevision = buffer.revision();
 			output.setLines(buffer.snapshot());
 		}
-		String prompt = port.prompt() + ":~$";
+		String prompt = port.prompt() + " ❯";
 		if (!prompt.equals(promptLabel.getText())) promptLabel.setText(prompt);
 		ConsolePort.Status status = port.status();
-		String text = " " + port.mode() + "  " + status.summary();
+		String text = " ● " + port.mode() + "   " + status.summary();
 		String capabilities = port.capabilities();
 		if (!capabilities.isBlank()) text += "   [" + capabilities + "]";
-		// Keep the status bar readable in a narrow window: the capability detail is
-		// available in full from the console 'status' command.
-		if (text.length() > 150) text = text.substring(0, 147) + "...";
+		if (text.length() > 170) text = text.substring(0, 167) + "...";
 		if (!text.equals(statusBar.getText())) {
 			statusBar.setText(text);
 			statusBar.setForeground(status.connected() ? (status.authorized() ? Theme.GREEN : Theme.YELLOW) : Theme.DIM);
@@ -177,7 +159,7 @@ public final class TerminalPanel extends JPanel {
 	}
 
 	/** One wrapped visual row: a slice of a logical line plus its tone colour. */
-	record Row(String text, Color color, int logicalIndex) {}
+	record Row(String text, Color color) {}
 
 	private final class OutputArea extends JComponent {
 		private final List<ConsoleLine> lines = new ArrayList<>();
@@ -192,9 +174,8 @@ public final class TerminalPanel extends JPanel {
 			setFocusable(true);
 			MouseAdapter mouse = new MouseAdapter() {
 				@Override public void mousePressed(MouseEvent event) {
-					int row = rowAt(event.getY());
-					selectionStart = row;
-					selectionEnd = row;
+					selectionStart = rowAt(event.getY());
+					selectionEnd = selectionStart;
 					repaint();
 				}
 
@@ -243,51 +224,62 @@ public final class TerminalPanel extends JPanel {
 		}
 
 		void scrollToBottom() { scrollOffset = 0; repaint(); }
+
 		void scrollToTop() { scrollOffset = Math.max(0, rows.size() - visibleRows()); repaint(); }
 
-		private int visibleRows() {
+		private int lineHeight() {
 			FontMetrics metrics = getFontMetrics(getFont());
-			return Math.max(1, (getHeight() - 12) / metrics.getHeight());
+			return metrics.getHeight() + 3;
+		}
+
+		private int visibleRows() {
+			return Math.max(1, (getHeight() - 16) / Math.max(1, lineHeight()));
 		}
 
 		private void reflow() {
 			rows.clear();
 			FontMetrics metrics = getFontMetrics(getFont());
-			int width = Math.max(120, getWidth() - 24);
-			for (int index = 0; index < lines.size(); index++) {
-				ConsoleLine line = lines.get(index);
+			int width = Math.max(120, getWidth() - 28);
+			for (ConsoleLine line : lines) {
 				String text = line.text().isEmpty() ? " " : line.text();
 				Color color = Theme.tone(line.tone());
-				StringBuilder current = new StringBuilder();
-				for (int i = 0; i < text.length(); i++) {
-					current.append(text.charAt(i));
-					if (metrics.stringWidth(current.toString()) > width) {
-						rows.add(new Row(current.toString(), color, index));
-						current.setLength(0);
+				int start = 0;
+				while (start < text.length()) {
+					int count = 0;
+					int lastSpace = -1;
+					while (start + count < text.length()
+							&& metrics.stringWidth(text.substring(start, start + count + 1)) <= width) {
+						if (text.charAt(start + count) == ' ') lastSpace = count;
+						count++;
 					}
+					if (count == 0) count = 1;
+					// Break on the last space so wrapped text stays readable; leave the
+					// space out of the row when it was only a wrap point.
+					if (start + count < text.length() && lastSpace > 0) count = lastSpace + 1;
+					rows.add(new Row(text.substring(start, start + count).stripTrailing(), color));
+					start += count;
 				}
-				rows.add(new Row(current.toString(), color, index));
 			}
 		}
 
 		private int rowAt(int y) {
-			FontMetrics metrics = getFontMetrics(getFont());
-			int index = (y - 6) / Math.max(1, metrics.getHeight());
+			int index = (y - 8) / Math.max(1, lineHeight());
 			int top = rows.size() - visibleRows() - scrollOffset;
-			return Math.max(0, Math.min(rows.size() - 1, top + index));
+			return Math.max(0, Math.min(Math.max(0, rows.size() - 1), top + index));
 		}
 
 		private void copySelection() {
 			StringBuilder out = new StringBuilder();
-			if (selectionStart >= 0 && selectionEnd >= 0) {
+			if (selectionStart >= 0 && selectionEnd >= 0 && !rows.isEmpty()) {
 				int from = Math.min(selectionStart, selectionEnd);
 				int to = Math.max(selectionStart, selectionEnd);
-				for (int i = from; i <= to && i < rows.size(); i++) out.append(rows.get(i).text()).append('\n');
+				for (int index = from; index <= to && index < rows.size(); index++) {
+					out.append(rows.get(index).text()).append('\n');
+				}
 			} else {
 				for (ConsoleLine line : lines) out.append(line.text()).append('\n');
 			}
-			Toolkit.getDefaultToolkit().getSystemClipboard()
-				.setContents(new StringSelection(out.toString()), null);
+			Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(out.toString()), null);
 		}
 
 		@Override
@@ -295,28 +287,31 @@ public final class TerminalPanel extends JPanel {
 			Graphics2D g = (Graphics2D) graphics.create();
 			try {
 				g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+				g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+				g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_OFF);
 				g.setColor(Theme.BACKGROUND);
 				g.fillRect(0, 0, getWidth(), getHeight());
 				g.setFont(getFont());
 				FontMetrics metrics = getFontMetrics(getFont());
-				int lineHeight = metrics.getHeight();
+				int lineHeight = lineHeight();
 				int first = Math.max(0, rows.size() - visibleRows() - scrollOffset);
-				int y = 6 + metrics.getAscent();
+				int y = 8 + metrics.getAscent();
 				for (int index = first; index < rows.size() && y < getHeight(); index++) {
 					Row row = rows.get(index);
 					boolean selected = selectionStart >= 0 && selectionEnd >= 0
-						&& index >= Math.min(selectionStart, selectionEnd) && index <= Math.max(selectionStart, selectionEnd);
+						&& index >= Math.min(selectionStart, selectionEnd)
+						&& index <= Math.max(selectionStart, selectionEnd);
 					if (selected) {
-						g.setColor(new Color(0x2C3E5A));
+						g.setColor(Theme.SELECTION);
 						g.fillRect(0, y - metrics.getAscent(), getWidth(), lineHeight);
 					}
 					g.setColor(row.color());
-					g.drawString(row.text(), 12, y);
+					g.drawString(row.text(), 14, y);
 					y += lineHeight;
 				}
 				if (rows.isEmpty()) {
 					g.setColor(Theme.DIM);
-					g.drawString("Welcome to ChampionsCode. Type 'help' for the command list.", 12, 6 + metrics.getAscent());
+					g.drawString("Welcome to ChampionsCode. Type 'help' for the command list.", 14, 8 + metrics.getAscent());
 				}
 			} finally {
 				g.dispose();

@@ -27,7 +27,12 @@ The mod JAR is also the desktop application:
 java -jar champions-mod-<version>.jar                    # standalone, no game needed
 java -jar champions-mod-<version>.jar --demo             # simulated target, safe to try
 java -jar champions-mod-<version>.jar --connect <port> --token <t>   # started by the game
+java -jar champions-mod-<version>.jar --ui-scale 1.5                 # force a UI scale
 ```
+
+The app is DPI-aware and uses a real monospace family (Consolas / Cascadia Mono /
+JetBrains Mono / DejaVu Sans Mono, in that order), so text stays sharp on a scaled
+display instead of being stretched.
 
 In game, F8 opens the terminal, F7 the code space and ClickGUI the modules window;
 `config/champions-mod/desktop.properties` picks `ui=both` (default), `ui=external`

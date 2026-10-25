@@ -1,19 +1,25 @@
 package dev.champions.desktop;
 
 import javax.swing.BorderFactory;
-import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
 import javax.swing.JTree;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+import javax.swing.text.Element;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import java.awt.BorderLayout;
-import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Rectangle;
+import java.awt.RenderingHints;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -22,8 +28,8 @@ import java.util.stream.Stream;
 
 /**
  * Volt-style code space: a file tree over the drop-in module folder, a plain
- * editor, and compile/reload/unload wired to the same bound-checked pipeline
- * the in-game Java Studio uses.
+ * editor with line numbers, and compile/reload/unload wired to the same
+ * bound-checked pipeline the in-game Java Studio uses.
  */
 public final class CodeSpacePanel extends JPanel {
 	private final ConsolePort port;
@@ -42,9 +48,11 @@ public final class CodeSpacePanel extends JPanel {
 		setBackground(Theme.BACKGROUND);
 
 		tree.setFont(Theme.mono(12));
+		tree.setBackground(Theme.PANEL);
+		tree.setRowHeight(Math.max(18, tree.getFontMetrics(Theme.mono(12)).getHeight() + 3));
 		tree.setRootVisible(false);
 		tree.setShowsRootHandles(true);
-		tree.setBackground(Theme.PANEL);
+		tree.setCellRenderer(new FlatTreeRenderer());
 		tree.addTreeSelectionListener(event -> {
 			DefaultMutableTreeNode node = (DefaultMutableTreeNode) tree.getLastSelectedPathComponent();
 			if (node == null) return;
@@ -52,40 +60,51 @@ public final class CodeSpacePanel extends JPanel {
 			if (user instanceof FileNode file && file.path() != null && Files.isRegularFile(file.path())) open(file.path());
 		});
 
-		JPanel treePane = new JPanel(new BorderLayout());
+		JPanel treePane = new JPanel(new BorderLayout(0, 6));
 		treePane.setBackground(Theme.PANEL);
-		treePane.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+		treePane.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createMatteBorder(0, 0, 0, 1, Theme.BORDER),
+			BorderFactory.createEmptyBorder(10, 10, 10, 10)));
 		JLabel root = new JLabel("modules/");
 		root.setFont(Theme.monoBold(12));
 		root.setForeground(Theme.GREEN);
 		treePane.add(root, BorderLayout.NORTH);
 		JScrollPane treeScroll = new JScrollPane(tree);
-		treeScroll.setBorder(BorderFactory.createLineBorder(Theme.BORDER));
+		treeScroll.setBorder(Theme.line());
+		treeScroll.getViewport().setBackground(Theme.PANEL);
 		treePane.add(treeScroll, BorderLayout.CENTER);
-		treePane.setPreferredSize(new Dimension(280, 500));
+		treePane.setPreferredSize(new Dimension(260, 500));
 
 		editor.setFont(Theme.mono(13));
 		editor.setBackground(Theme.FIELD);
 		editor.setForeground(Theme.TEXT);
-		editor.setCaretColor(Theme.GREEN);
+		editor.setCaretColor(Theme.GREEN_BRIGHT);
+		editor.setSelectionColor(Theme.SELECTION);
 		editor.setTabSize(4);
+		editor.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+
 		JScrollPane editorScroll = new JScrollPane(editor);
-		editorScroll.setBorder(BorderFactory.createLineBorder(Theme.BORDER));
+		editorScroll.setBorder(Theme.line());
+		editorScroll.setRowHeaderView(new LineNumbers(editor));
 
 		JPanel editorPane = new JPanel(new BorderLayout());
 		editorPane.setBackground(Theme.BACKGROUND);
 		editorPane.add(editorScroll, BorderLayout.CENTER);
 		editorPane.add(toolbar(), BorderLayout.NORTH);
+
 		status.setFont(Theme.mono(11));
 		status.setForeground(Theme.DIM);
-		status.setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 10));
 		status.setOpaque(true);
-		status.setBackground(Theme.TITLE);
+		status.setBackground(Theme.PANEL);
+		status.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createMatteBorder(1, 0, 0, 0, Theme.BORDER),
+			BorderFactory.createEmptyBorder(6, 12, 6, 12)));
 		editorPane.add(status, BorderLayout.SOUTH);
 
 		JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, treePane, editorPane);
 		split.setBorder(BorderFactory.createEmptyBorder());
-		split.setDividerLocation(280);
+		split.setDividerLocation(260);
+		split.setContinuousLayout(true);
 		add(split, BorderLayout.CENTER);
 
 		refreshTree();
@@ -93,21 +112,15 @@ public final class CodeSpacePanel extends JPanel {
 	}
 
 	private JPanel toolbar() {
-		JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 6));
-		bar.setBackground(Theme.TITLE);
-		bar.add(button("Save", event -> save()));
-		bar.add(button("New module", event -> newModule()));
-		bar.add(button("Compile & load", event -> compile()));
-		bar.add(button("Unload", event -> unload()));
-		bar.add(button("Refresh", event -> refreshTree()));
+		JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 8));
+		bar.setBackground(Theme.PANEL);
+		bar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Theme.BORDER));
+		bar.add(Theme.button("Save", Theme.GREEN, event -> save()));
+		bar.add(Theme.button("New module", Theme.BLUE, event -> newModule()));
+		bar.add(Theme.button("Compile & load", Theme.BLUE, event -> compile()));
+		bar.add(Theme.button("Unload", Theme.YELLOW, event -> unload()));
+		bar.add(Theme.button("Refresh", Theme.DIM, event -> refreshTree()));
 		return bar;
-	}
-
-	private JButton button(String label, java.awt.event.ActionListener action) {
-		JButton button = new JButton(label);
-		button.setFont(Theme.mono(12));
-		button.addActionListener(action);
-		return button;
 	}
 
 	private void open(Path file) {
@@ -145,9 +158,10 @@ public final class CodeSpacePanel extends JPanel {
 		Path file = folder.resolve(name + ".java");
 		int suffix = 1;
 		while (Files.exists(file)) file = folder.resolve(name + (suffix++) + ".java");
+		String className = file.getFileName().toString().replace(".java", "");
 		try {
 			Files.createDirectories(folder);
-			Files.writeString(file, template(name + (suffix == 1 ? "" : String.valueOf(suffix - 1))), StandardCharsets.UTF_8);
+			Files.writeString(file, template(className), StandardCharsets.UTF_8);
 			refreshTree();
 			open(file);
 			status.setForeground(Theme.GREEN);
@@ -188,12 +202,14 @@ public final class CodeSpacePanel extends JPanel {
 	}
 
 	private void refreshTree() {
-		DefaultMutableTreeNode rootNode = new DefaultMutableTreeNode(new FileNode(folder, folder.getFileName() == null ? "modules" : folder.getFileName().toString()));
+		DefaultMutableTreeNode rootNode = new DefaultMutableTreeNode(
+			new FileNode(folder, folder.getFileName() == null ? "modules" : folder.getFileName().toString()));
 		try {
 			Files.createDirectories(folder);
+			Path rootPath = folder.toAbsolutePath().normalize();
 			try (Stream<Path> stream = Files.walk(folder, 4)) {
 				stream.map(path -> path.toAbsolutePath().normalize())
-					.filter(path -> !path.equals(folder.toAbsolutePath().normalize()))
+					.filter(path -> !path.equals(rootPath))
 					.filter(path -> !path.getFileName().toString().startsWith("."))
 					.sorted()
 					.forEach(path -> {
@@ -212,7 +228,7 @@ public final class CodeSpacePanel extends JPanel {
 
 	private DefaultMutableTreeNode parentFor(DefaultMutableTreeNode rootNode, Path parent) {
 		if (parent == null || parent.equals(folder.getParent())) return null;
-		if (parent.equals(folder)) return rootNode;
+		if (parent.equals(folder.toAbsolutePath().normalize())) return rootNode;
 		DefaultMutableTreeNode result = null;
 		java.util.Enumeration<javax.swing.tree.TreeNode> nodes = rootNode.depthFirstEnumeration();
 		while (nodes.hasMoreElements()) {
@@ -222,10 +238,92 @@ public final class CodeSpacePanel extends JPanel {
 		return result;
 	}
 
+	/**
+	 * Icon-free, monospaced rows: folders green, files light, selection highlighted.
+	 * Builds its own label rather than reconfiguring the platform renderer, whose
+	 * opaque/background handling differs between LAFs.
+	 */
+	private static final class FlatTreeRenderer extends javax.swing.tree.DefaultTreeCellRenderer {
+		@Override
+		public java.awt.Component getTreeCellRendererComponent(JTree tree, Object value, boolean selected,
+				boolean expanded, boolean leaf, int row, boolean focused) {
+			JLabel label = new JLabel();
+			label.setOpaque(true);
+			label.setFont(Theme.mono(12));
+			label.setBorder(BorderFactory.createEmptyBorder(3, 4, 3, 4));
+			label.setBackground(selected ? Theme.SELECTION : Theme.PANEL);
+			if (value instanceof DefaultMutableTreeNode node && node.getUserObject() instanceof FileNode file) {
+				boolean directory = file.path() != null && Files.isDirectory(file.path());
+				label.setText(directory ? "▾ " + file.label() + "/" : "  " + file.label());
+				label.setForeground(selected ? java.awt.Color.WHITE : directory ? Theme.GREEN : Theme.TEXT);
+			} else {
+				label.setText(String.valueOf(value));
+				label.setForeground(Theme.DIM);
+			}
+			return label;
+		}
+	}
+
 	private record FileNode(Path path, String label) {
 		@Override public String toString() {
 			return label + (path != null && Files.isDirectory(path) ? "/" : "");
 		}
+	}
+
+	/** Monospaced line-number gutter that follows the editor's font and scrolling. */
+	private static final class LineNumbers extends JPanel implements DocumentListener {
+		private final JTextArea area;
+
+		LineNumbers(JTextArea area) {
+			this.area = area;
+			setBackground(Theme.PANEL);
+			setFont(Theme.mono(12));
+			area.getDocument().addDocumentListener(this);
+			area.addCaretListener(event -> repaint());
+		}
+
+		@Override public Dimension getPreferredSize() {
+			int lines = Math.max(1, area.getLineCount());
+			FontMetrics metrics = getFontMetrics(getFont());
+			int width = metrics.stringWidth(String.valueOf(lines)) + 18;
+			return new Dimension(width, Math.max(area.getHeight(), lines * metrics.getHeight()));
+		}
+
+		@Override
+		protected void paintComponent(Graphics graphics) {
+			Graphics2D g = (Graphics2D) graphics.create();
+			try {
+				g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+				g.setColor(Theme.PANEL);
+				g.fillRect(0, 0, getWidth(), getHeight());
+				g.setFont(getFont());
+				FontMetrics metrics = getFontMetrics(getFont());
+				Rectangle clip = g.getClipBounds();
+				Element root = area.getDocument().getDefaultRootElement();
+				int caretLine = root.getElementIndex(area.getCaretPosition());
+				for (int line = 0; line < root.getElementCount(); line++) {
+					int offset = root.getElement(line).getStartOffset();
+					int y;
+					try {
+						java.awt.geom.Rectangle2D view = area.modelToView2D(offset);
+						if (view == null) continue;
+						y = (int) Math.round(view.getY()) + metrics.getAscent();
+					} catch (javax.swing.text.BadLocationException | NullPointerException unavailable) {
+						continue;
+					}
+					if (y < clip.y - metrics.getHeight() || y > clip.y + clip.height + metrics.getHeight()) continue;
+					g.setColor(line == caretLine ? Theme.TEXT : Theme.FAINT);
+					String label = String.valueOf(line + 1);
+					g.drawString(label, getWidth() - 8 - metrics.stringWidth(label), y);
+				}
+			} finally {
+				g.dispose();
+			}
+		}
+
+		@Override public void insertUpdate(DocumentEvent event) { revalidate(); repaint(); }
+		@Override public void removeUpdate(DocumentEvent event) { revalidate(); repaint(); }
+		@Override public void changedUpdate(DocumentEvent event) { revalidate(); repaint(); }
 	}
 
 	/** Starter module matching the documented drop-in contract. */
