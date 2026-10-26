@@ -24,7 +24,13 @@ import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.AWTEventListener;
 import java.awt.event.MouseMotionAdapter;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.awt.AWTEvent;
+import java.awt.Toolkit;
+import javax.swing.SwingUtilities;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -331,10 +337,42 @@ public final class Shell extends JFrame {
 		}
 	}
 
+	/**
+	 * Which window edge a point is on, as a bit mask: 2 left, 4 right, 8 top,
+	 * 16 bottom, 0 for none, -1 for outside the window.
+	 *
+	 * <p>Separate from the listener so the decision can be tested without a
+	 * display: the stuck-cursor bug was in how often this was asked, but the
+	 * mapping was wrong too (a bottom-right corner reported north-east).</p>
+	 */
+	static int edgeMask(Point point, int width, int height, int border) {
+		if (point.x < 0 || point.y < 0 || point.x > width || point.y > height) return -1;
+		int mask = 0;
+		if (point.x <= border) mask |= 2;
+		if (point.x >= width - border) mask |= 4;
+		if (point.y <= border) mask |= 8;
+		if (point.y >= height - border) mask |= 16;
+		return mask;
+	}
+
+	/** The AWT cursor constant for an {@link #edgeMask} value. */
+	static int cursorForMask(int mask) {
+		return switch (mask) {
+			case 2, 4 -> Cursor.E_RESIZE_CURSOR;
+			case 8, 16 -> Cursor.N_RESIZE_CURSOR;
+			case 2 | 8 -> Cursor.NW_RESIZE_CURSOR;
+			case 4 | 16 -> Cursor.SE_RESIZE_CURSOR;
+			case 4 | 8 -> Cursor.NE_RESIZE_CURSOR;
+			case 2 | 16 -> Cursor.SW_RESIZE_CURSOR;
+			default -> Cursor.DEFAULT_CURSOR;
+		};
+	}
+
 	/** Edge/corner resizing for an undecorated window. */
 	private static final class WindowResizer {
 		private final JFrame frame;
 		private final int border;
+		private AWTEventListener motion;
 		private int edge = -1;
 		private Point origin;
 		private Rectangle startBounds;
@@ -345,15 +383,33 @@ public final class Shell extends JFrame {
 		}
 
 		void install() {
-			java.awt.Container pane = frame.getRootPane();
-			pane.addMouseMotionListener(new MouseMotionAdapter() {
-				@Override public void mouseMoved(MouseEvent event) {
-					int next = edgeAt(event.getPoint());
-					if (next != -1) {
-						pane.setCursor(Cursor.getPredefinedCursor(cursorFor(next)));
-					} else {
-						pane.setCursor(Cursor.getDefaultCursor());
-					}
+			// A motion listener on the root pane only receives events while the
+			// pointer is over the root pane itself. Moving from a window edge onto a
+			// tab or a table therefore left the last resize cursor set, and every
+			// child without a cursor of its own inherited it -- the diagonal
+			// "expand" arrow stayed on screen wherever you hovered. Drive the cursor
+			// from every motion event in this window instead, and set it on the frame
+			// so children that do declare a cursor (buttons, links) still win.
+			motion = event -> {
+				if (!(event instanceof MouseEvent mouse) || mouse.getComponent() == null) return;
+				if (SwingUtilities.getWindowAncestor(mouse.getComponent()) != frame) return;
+				Point point = SwingUtilities.convertPoint(mouse.getComponent(), mouse.getPoint(), frame);
+				int next = edgeAt(point);
+				frame.setCursor(next == -1 ? Cursor.getDefaultCursor()
+					: Cursor.getPredefinedCursor(cursorFor(next)));
+			};
+			Toolkit.getDefaultToolkit().addAWTEventListener(motion, AWTEvent.MOUSE_MOTION_EVENT_MASK);
+			frame.addWindowListener(new WindowAdapter() {
+				@Override public void windowClosed(WindowEvent event) {
+					Toolkit.getDefaultToolkit().removeAWTEventListener(motion);
+				}
+			});
+
+			MouseAdapter resizer = new MouseAdapter() {
+				@Override public void mousePressed(MouseEvent event) {
+					edge = edgeAt(SwingUtilities.convertPoint(event.getComponent(), event.getPoint(), frame));
+					origin = event.getLocationOnScreen();
+					startBounds = frame.getBounds();
 				}
 
 				@Override public void mouseDragged(MouseEvent event) {
@@ -374,40 +430,23 @@ public final class Shell extends JFrame {
 						frame.setBounds(x, y, width, height);
 					}
 				}
-			});
-			pane.addMouseListener(new MouseAdapter() {
-				@Override public void mousePressed(MouseEvent event) {
-					edge = edgeAt(event.getPoint());
-					origin = event.getLocationOnScreen();
-					startBounds = frame.getBounds();
-				}
 
 				@Override public void mouseReleased(MouseEvent event) {
 					edge = -1;
 					startBounds = null;
 				}
-			});
+			};
+			frame.getRootPane().addMouseListener(resizer);
+			frame.getRootPane().addMouseMotionListener(resizer);
 		}
 
-		/** Bit mask: 2 left, 4 right, 8 top, 16 bottom. */
 		private int edgeAt(Point point) {
-			int width = frame.getWidth();
-			int height = frame.getHeight();
-			int mask = 0;
-			if (point.x <= border) mask |= 2;
-			if (point.x >= width - border) mask |= 4;
-			if (point.y <= border) mask |= 8;
-			if (point.y >= height - border) mask |= 16;
-			return mask;
+			return edgeMask(point, frame.getWidth(), frame.getHeight(), border);
 		}
 
 		private int cursorFor(int mask) {
-			return switch (mask) {
-				case 2, 4 -> Cursor.E_RESIZE_CURSOR;
-				case 8, 16 -> Cursor.N_RESIZE_CURSOR;
-				case 2 | 8, 4 | 16 -> Cursor.NW_RESIZE_CURSOR;
-				default -> Cursor.NE_RESIZE_CURSOR;
-			};
+			return cursorForMask(mask);
 		}
 	}
+
 }

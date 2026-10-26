@@ -149,6 +149,32 @@ public final class SelfTest {
 		} catch (IOException error) {
 			check("desktop.properties readable", false);
 		}
+
+		// The two interface fixes, checked from inside the packaged jar.
+		try {
+			Path probe = config.resolve("settings-probe");
+			Files.createDirectories(probe);
+			Path probeFile = probe.resolve("desktop.properties");
+			Files.writeString(probeFile, "ui=both\n");
+			DesktopSettings settings = new DesktopSettings(probe);
+			boolean startedWithInGame = settings.usesInGame();
+			Files.writeString(probeFile, "ui=external\n");
+			Files.setLastModifiedTime(probeFile, java.nio.file.attribute.FileTime.fromMillis(
+				Files.getLastModifiedTime(probeFile).toMillis() + 5000L));
+			boolean noticed = settings.refreshIfChanged();
+			check("an edited interface file is noticed",
+				noticed && startedWithInGame && !settings.usesInGame() && settings.usesExternal());
+		} catch (IOException error) {
+			check("an edited interface file is noticed", false);
+		}
+
+		java.util.List<java.awt.Image> icons = Brand.windowIcons();
+		boolean opaque = !icons.isEmpty() && icons.stream().allMatch(image -> {
+			java.awt.image.BufferedImage icon = (java.awt.image.BufferedImage) image;
+			return icon.getType() == java.awt.image.BufferedImage.TYPE_INT_RGB
+				&& ((icon.getRGB(0, 0) >>> 24) & 0xFF) == 255;
+		});
+		check("the window icon keeps its black background", opaque);
 	}
 
 	private static void consoleSession(Path config) {

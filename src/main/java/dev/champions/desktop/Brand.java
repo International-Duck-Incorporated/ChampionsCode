@@ -33,6 +33,9 @@ public final class Brand {
 	private static boolean loaded;
 	private static BufferedImage cropped;
 	private static boolean cropAttempted;
+	private static BufferedImage raw;
+	private static BufferedImage croppedRaw;
+	private static boolean rawCropAttempted;
 	private static List<Image> icons;
 
 	private Brand() {}
@@ -57,15 +60,21 @@ public final class Brand {
 		});
 	}
 
-	/** Window icons in the sizes the OS asks for (taskbar, alt-tab, dock). */
+	/**
+	 * Window icons in the sizes the OS asks for (taskbar, alt-tab, dock).
+	 *
+	 * <p>These keep the artwork's black background. The title-bar logo is keyed
+	 * to transparency because it sits on the window's own dark chrome, but a
+	 * taskbar button is composited onto whatever the desktop shows, where a
+	 * transparent background reads as a floating mark with no shape. The icon is
+	 * therefore drawn opaque, on black, with the mark centred.</p>
+	 */
 	public static synchronized List<Image> windowIcons() {
 		if (icons != null) return icons;
-		BufferedImage source = source();
-		if (source == null) return List.of();
-		BufferedImage artwork = trimmed();
+		BufferedImage artwork = trimmedRaw();
 		if (artwork == null) return List.of();
 		List<Image> sizes = new ArrayList<>();
-		for (int size : ICON_SIZES) sizes.add(square(artwork, size));
+		for (int size : ICON_SIZES) sizes.add(iconSquare(artwork, size));
 		icons = List.copyOf(sizes);
 		return icons;
 	}
@@ -172,6 +181,65 @@ public final class Brand {
 
 	private static BufferedImage square(BufferedImage artwork, int size) {
 		return resizeToSquare(artwork, size);
+	}
+
+	/** The untouched artwork (black background intact), margins cropped. */
+	private static synchronized BufferedImage trimmedRaw() {
+		if (croppedRaw != null || rawCropAttempted) return croppedRaw;
+		rawCropAttempted = true;
+		if (raw == null) raw = read(LOGO);
+		if (raw == null) return null;
+		int minX = raw.getWidth();
+		int minY = raw.getHeight();
+		int maxX = -1;
+		int maxY = -1;
+		for (int y = 0; y < raw.getHeight(); y++) {
+			for (int x = 0; x < raw.getWidth(); x++) {
+				int pixel = raw.getRGB(x, y);
+				int r = (pixel >> 16) & 0xFF;
+				int g = (pixel >> 8) & 0xFF;
+				int b = pixel & 0xFF;
+				if (Math.max(r, Math.max(g, b)) > 6) {
+					if (x < minX) minX = x;
+					if (y < minY) minY = y;
+					if (x > maxX) maxX = x;
+					if (y > maxY) maxY = y;
+				}
+			}
+		}
+		if (maxX < minX || maxY < minY) {
+			croppedRaw = raw;
+			return croppedRaw;
+		}
+		int pad = Math.max(2, Math.round((maxY - minY + 1) * PAD));
+		int x = Math.max(0, minX - pad);
+		int y = Math.max(0, minY - pad);
+		int w = Math.min(raw.getWidth() - x, maxX - minX + 1 + pad * 2);
+		int h = Math.min(raw.getHeight() - y, maxY - minY + 1 + pad * 2);
+		croppedRaw = raw.getSubimage(x, y, w, h);
+		return croppedRaw;
+	}
+
+	/** Opaque black square with the mark centred: what the taskbar shows. */
+	private static BufferedImage iconSquare(BufferedImage artwork, int size) {
+		BufferedImage out = new BufferedImage(size, size, BufferedImage.TYPE_INT_RGB);
+		Graphics2D g = out.createGraphics();
+		try {
+			g.setColor(java.awt.Color.BLACK);
+			g.fillRect(0, 0, size, size);
+			g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+				RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+			g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+			int inner = Math.max(1, Math.round(size * 0.86f));
+			double ratio = Math.min((double) inner / artwork.getWidth(),
+				(double) inner / artwork.getHeight());
+			int w = Math.max(1, (int) Math.round(artwork.getWidth() * ratio));
+			int h = Math.max(1, (int) Math.round(artwork.getHeight() * ratio));
+			g.drawImage(artwork, (size - w) / 2, (size - h) / 2, w, h, null);
+		} finally {
+			g.dispose();
+		}
+		return out;
 	}
 
 	private static BufferedImage resizeToSquare(BufferedImage artwork, int size) {

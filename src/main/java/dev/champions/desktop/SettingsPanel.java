@@ -320,6 +320,12 @@ public final class SettingsPanel extends JPanel {
 	 * Writes one key, preserving the comments in the file so the documentation
 	 * the game generated is not lost.
 	 */
+	/** True when the panel is talking to a running game rather than editing files. */
+	private boolean attached() {
+		ConsolePort.Status status = port.status();
+		return status != null && status.connected();
+	}
+
 	private void write(String key, String value) {
 		try {
 			Files.createDirectories(configFile.getParent());
@@ -337,7 +343,16 @@ public final class SettingsPanel extends JPanel {
 			if (!replaced) lines.add(key + "=" + value);
 			Files.write(configFile, lines, StandardCharsets.UTF_8);
 			note.setForeground(Theme.GREEN);
-			note.setText("Saved " + key + "=" + value + " to " + configFile.getFileName());
+			// Writing the file is not enough: the running game holds these values
+			// in memory, so without this the change only applied after a restart
+			// and F8 kept opening whatever was configured before.
+			if (attached()) {
+				port.submit("interfaces reload");
+				note.setText("Saved " + key + "=" + value + " and sent interfaces reload to the game.");
+			} else {
+				note.setText("Saved " + key + "=" + value + " to " + configFile.getFileName()
+					+ ". Standalone: the game applies it on its next start or on 'interfaces reload'.");
+			}
 		} catch (IOException error) {
 			note.setForeground(Theme.RED);
 			note.setText("Could not write " + configFile + ": " + error.getMessage());

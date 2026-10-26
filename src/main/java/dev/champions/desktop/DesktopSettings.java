@@ -1,9 +1,10 @@
-package dev.champions.client.desktop;
+package dev.champions.desktop;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -27,11 +28,39 @@ public final class DesktopSettings {
 	private volatile Mode mode = Mode.BOTH;
 	private volatile boolean spawnOnOpen = true;
 	private volatile boolean inGameWindows = true;
+	/** Stamp of the file the values above were read from, for {@link #refreshIfChanged()}. */
+	private volatile FileTime stamp;
+	private volatile long stampSize = -1L;
 
 	public DesktopSettings(Path configDirectory) {
 		this.file = configDirectory.resolve("desktop.properties");
 		initialize(configDirectory);
 		reload();
+	}
+
+	/**
+	 * Re-reads the file when something other than this object changed it.
+	 *
+	 * <p>The desktop app writes {@code desktop.properties} directly, and a user
+	 * may edit it in a text editor. Without this, those changes only took effect
+	 * after a restart, so a mode chosen in the external app's Settings tab did
+	 * nothing until the game was relaunched -- which is exactly what "F8 opens
+	 * both windows no matter what" looked like.</p>
+	 *
+	 * @return true when the values were reloaded
+	 */
+	public synchronized boolean refreshIfChanged() {
+		FileTime current;
+		long size;
+		try {
+			current = Files.getLastModifiedTime(file);
+			size = Files.size(file);
+		} catch (IOException missing) {
+			return false;
+		}
+		if (current.equals(stamp) && size == stampSize) return false;
+		reload();
+		return true;
 	}
 
 	public synchronized void reload() {
@@ -41,6 +70,8 @@ public final class DesktopSettings {
 		} catch (IOException unreadable) {
 			return;
 		}
+		stamp();
+		if (properties.isEmpty()) return;
 		String value = properties.getProperty("ui");
 		if (value != null) {
 			try {
@@ -117,8 +148,20 @@ public final class DesktopSettings {
 		if (!replaced) lines.add(key + "=" + value);
 		try {
 			Files.write(file, lines, StandardCharsets.UTF_8);
+			stamp();
 		} catch (IOException unwritable) {
 			// the in-memory value still applies for this session
+		}
+	}
+
+	/** Records the current file stamp so a later write by us is not seen as foreign. */
+	private void stamp() {
+		try {
+			stamp = Files.getLastModifiedTime(file);
+			stampSize = Files.size(file);
+		} catch (IOException unreadable) {
+			stamp = null;
+			stampSize = -1L;
 		}
 	}
 

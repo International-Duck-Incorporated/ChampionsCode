@@ -1,6 +1,7 @@
 package dev.champions.client.desktop;
 
 import dev.champions.core.console.InterfacePreferences;
+import dev.champions.desktop.DesktopSettings;
 
 import java.util.List;
 import java.util.Locale;

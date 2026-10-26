@@ -5,6 +5,7 @@ import dev.champions.core.console.ChampionConsole;
 import dev.champions.core.console.ExploitWarningPrompt;
 import dev.champions.core.module.ModuleContext;
 import dev.champions.core.module.net.PlayerIdentityEvents;
+import dev.champions.desktop.DesktopSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -74,18 +75,32 @@ public final class DesktopRuntime implements AutoCloseable {
 	 * @param openInGame fallback used when the external app is off or unavailable
 	 */
 	public void show(String windowId, Runnable openInGame) {
+		// The app's Settings tab and a text editor both edit the same file; pick
+		// those edits up here so "external" means external on the next F8 rather
+		// than after a restart.
+		settings.refreshIfChanged();
 		if (!settings.usesExternal()) {
 			if (openInGame != null) openInGame.run();
+			else LOG.warn("interface mode is in-game only, but no in-game window was supplied for '{}'", windowId);
 			return;
 		}
 		if (openInGame != null && settings.usesInGame()) openInGame.run();
 		start();
-		if (bridge == null) return;
+		if (bridge == null) {
+			LOG.warn("external interface is selected for '{}' but the bridge is not running; "
+				+ "nothing was opened. Check {} and run 'interfaces in-game' to fall back.",
+				windowId, settings.file());
+			return;
+		}
 		if (bridge.isAttached()) {
 			bridge.showWindow(windowId);
 			return;
 		}
-		if (!settings.spawnOnOpen()) return;
+		if (!settings.spawnOnOpen()) {
+			LOG.warn("external interface is selected for '{}' but no app is attached and spawnOnOpen=false; "
+				+ "nothing was opened. Start the app with 'desktop' or set spawnOnOpen=true.", windowId);
+			return;
+		}
 		if (launcher.spawn(bridge.port(), bridge.token(), configDirectory.toString())) {
 			waitForAttachmentAndShow(windowId);
 		}

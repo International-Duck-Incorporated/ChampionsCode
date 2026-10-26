@@ -4,6 +4,33 @@
 
 Nothing yet.
 
+## 0.2.0-beta.13 - 2026-10-26
+
+### Fixed
+- **F8 opened both windows whatever the interface was set to.** The external app's
+  Settings tab wrote `ui=` to `desktop.properties`, but the running game kept the
+  values it read at startup, so the choice only took effect after a restart.
+  `DesktopSettings` now notices an outside edit (timestamp and size) and re-reads
+  before anything is routed, and the Settings tab sends `interfaces reload` to an
+  attached game. A request that ends with nothing opened now logs why instead of
+  returning silently.
+- **The resize cursor stayed on screen.** The window resizer only received motion
+  events while the pointer was over the root pane, so moving onto a tab or a table
+  left the last diagonal cursor set, and every child without a cursor of its own
+  inherited it. The cursor is now driven from every motion event in the window and
+  set on the frame, so children that declare their own cursor still win. The corner
+  map was wrong too: the bottom-right corner reported north-east. Both the mask and
+  the cursor are now pure functions with tests.
+- **The window icon had no background.** The taskbar icon was built from the
+  title-bar artwork, whose black background is keyed to transparency for use on the
+  window chrome. Window icons are now opaque black squares built from the untouched
+  asset; the title-bar mark keeps its transparent background.
+
+### Added
+- `DesktopSettingsTest` (10 tests), `ShellCursorTest` (6), `BrandIconTest` (3).
+  `DesktopSettings` moved to `dev.champions.desktop` so the desktop app and the
+  client share one implementation of the file format instead of two.
+
 ## 0.2.0-beta.12 - 2026-10-26
 
 ### Fixed
