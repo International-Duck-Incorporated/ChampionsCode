@@ -1,8 +1,10 @@
 # Porting `venom4plugin` into ChampionsCode
 
-The old addon is 34 Meteor Client modules over 65 source files, most of which do
-one of two things: send a list of chat commands to whatever server the client is
-connected to, or write a configuration file that an operator deploys to a server
+The old addon is 47 Meteor Client modules over 65 source files -- 48 classes named
+`*Module.java`, of which `PocModule` is the abstract base the other 47 extend, so 47 is the
+number that can be registered and run. Most of them do one of two things: send a
+list of chat commands to whatever server the client is connected to, or write a
+configuration file that an operator deploys to a server
 they control. The second thing is the valuable one. The first is why the port is
 not a copy.
 
@@ -78,6 +80,37 @@ Every module in the archive, and what became of it.
 | `ZAuctionHouseSqliDeployModule` | **merged** — `sql_identifier` | Same seam. |
 | `ArmorStandToolsProtectedGriefingModule`, `BlueSlimeCoreDebugEventModule`, `BungeeCordBungeeGuardTokenLeakModule`, `BuycraftXApiKeyTheftModule`, `ChatGamesConsoleCommandInjectionModule`, `DeluxeMenuBungeeConnectModule`, `UltraCosmeticsSqlInjectionModule`, `UltraCosmeticsConsoleCommandInjectionModule` | **catalogue entries, no mechanism** | Each needs an observation this client cannot make without a live target (a leaked token, a griefed entity, a debug event). Their knowledge is kept; nothing pretends to reproduce them. |
 | `ViaBackwardsSnapshotModule`, `SkriptDeepModule`, `EssentialXDeepModule` | **check tier** | They were report-only in the original; they remain report-only. |
+| `EssentialsXConfigModule` | **merged** — `placeholder_expansion` mechanism | Its artefact is an Essentials config file with `%player%` in a welcome message. The sink is a placeholder expansion reaching a dispatch, which is already reproduced; a server configuration file is not something this client deploys. |
+| `ZAuctionHouseSqlInjectionModule` | **excluded** | Its artefact is a migration config that drops a table on the source database. Destructive by construction, so it is outside the standing rule regardless of authorisation; the SQL seam itself is covered by `sql_identifier`. |
+| `ZAuctionHouseDeserializationRceModule` | **catalogue only** — `zauctionhouse_deser` | A deserialisation gadget chain aimed at a live server's plugin classpath. The seam is `mythicmobs_deser`; a second fixture would model the same thing, and the gadget itself is not shipped. The finding survives as catalogue entry `zauctionhouse_deser`, with no artifact. |
+| `PocModule` | **base class, not a module** | The abstract class every one of the 47 extends. Its `onActivate` sends `getPlayerCommands()` at the server and drops a payload file in the game directory -- the two things this port does not do. Nothing is inherited from it; it is listed here only so the count of 48 `*Module.java` files reconciles with 47 modules. |
+| `WorldEditSchematicDeserializeModule` | **catalogue only** — `worldedit_schematic` | A historical `//schematic` path traversal, marked not exploitable on WorldEdit 7.4.4+. Kept as catalogue entry `worldedit_schematic`; there is nothing to reproduce on a current build. |
+
+Four of the 47 modules had no row in the first version of this table
+(`EssentialsXConfig`, `ZAuctionHouseSqlInjection`, `ZAuctionHouseDeserializationRce`,
+`WorldEditSchematicDeserialize`), and the header said 34 modules when the archive contained
+48 `*Module.java` files, 47 of them modules. Both fixed here.
+
+The old 34 came from the addon's own exit log line -- `34 modules injected` -- not from
+counting. `Venom4Plugin.onInitialize` contains 33 `Modules.get().add(...)` calls. So the
+archive is: 48 classes named `*Module.java`, 47 concrete modules, 33 of them actually
+registered, and 14 that were written but never added to the module list. All 47 have a
+disposition; the `registered` column of `port-manifest.tsv` records which ones ever ran.
+
+The same table is machine-readable at `port-manifest.tsv` in the jar (and in
+`src/main/resources/META-INF/`), one row per class, and `PortManifestTest` fails the build
+if a row is dropped, a disposition is unknown, or a catalogue-only row names an entry that
+`ExploitCatalog` does not contain.
+
+### What the port produced, by tier
+
+| Tier | Count | Where |
+| --- | --- | --- |
+| mechanism | 10 | `core/exploit/mechanism/` |
+| payload | 9 | `core/exploit/payload/` |
+| module in this jar | 21 | `core/module/builtin/` |
+| module in the collection repo | 7 | `championscode-modules/modules/` |
+| catalogue entry | 18 | `core/catalog/ExploitCatalog.java` |
 
 Source files outside `poc/meteor/modules` — the `poc/<plugin>/…` classes, the
 `PocModule` base, `Venom4Plugin`, `ShellPopper`, `VulnerableServerStart` — are

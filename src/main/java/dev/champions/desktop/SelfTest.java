@@ -518,6 +518,30 @@ public final class SelfTest {
 			dev.champions.core.catalog.ExploitCatalog.entries().stream().map(e -> e.id()).distinct().count()
 				== dev.champions.core.catalog.ExploitCatalog.entries().size());
 
+		// The disposition table for the ported addon ships in the jar, one row per
+		// source module, so the completeness claim can be read out of the artifact
+		// instead of taken from a document.
+		int manifestRows = 0;
+		java.util.Set<String> manifestRefs = new java.util.HashSet<>();
+		try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(
+				SelfTest.class.getResourceAsStream("/META-INF/port-manifest.tsv"),
+				java.nio.charset.StandardCharsets.UTF_8))) {
+			String line;
+			while ((line = reader.readLine()) != null) {
+				if (line.isBlank() || line.startsWith("#")) continue;
+				String[] parts = line.split("\\t", -1);
+				if (parts.length < 5) continue;
+				manifestRows++;
+				if (!parts[3].isBlank()) manifestRefs.add(parts[3]);
+			}
+		} catch (Exception e) {
+			manifestRows = -1;
+		}
+		check("port manifest ships with 48 rows", manifestRows == 48);
+		check("port manifest accounts for every catalogued entry",
+			manifestRefs.equals(dev.champions.core.catalog.ExploitCatalog.entries().stream()
+				.map(e -> e.id()).collect(java.util.stream.Collectors.toSet())));
+
 		// Every artifact a catalogued entry offers must pass the payload rules, or the
 		// payload module would be advertising something it can never write.
 		boolean everyArtifactAllowed = dev.champions.core.catalog.ExploitCatalog.withArtifacts().stream()

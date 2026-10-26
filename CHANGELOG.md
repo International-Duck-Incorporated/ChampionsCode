@@ -4,6 +4,39 @@
 
 Nothing yet.
 
+## 0.2.0-beta.12 - 2026-10-26
+
+### Fixed
+- **The licence in the repository was MIT.** The governing licence is IDI's All Rights
+  Reserved text; `LICENSE.md` now carries it verbatim, and the jar's `fabric.mod.json`
+  declares `All Rights Reserved` instead of `MIT`. `PORTING-LICENSE.md` carries the
+  Master Mod Porting License v1.0 under which the port was made.
+- **No attribution for ported material.** `NOTICE.md` now names the original work, states
+  that ownership of the original modules is unchanged, points at the per-module
+  disposition, and records the §11 withdrawal path. The README and
+  `docs/legacy-module-review.md` no longer claim the port is MIT or wholly original.
+- **The port record was wrong.** `docs/porting-venom4plugin.md` said 34 modules. The
+  archive holds 48 classes named `*Module.java`: 47 modules plus the abstract `PocModule`
+  they extend. Four of the 47 had no disposition at all (`EssentialsXConfig`,
+  `ZAuctionHouseSqlInjection`, `ZAuctionHouseDeserializationRce`,
+  `WorldEditSchematicDeserialize`). All four now have rows, with the destructive one
+  excluded on principle rather than ported.
+- **Two dispositions named nothing.** `zauctionhouse_deser` and `worldedit_schematic` are
+  now real catalogue entries, so "catalogue only" points at an entry a reader can open
+  rather than a sentence.
+
+### Added
+- `META-INF/port-manifest.tsv` ships in the jar: one row per source class, with its
+  disposition and the catalogue entry it maps to. `PortManifestTest` (8 tests) and two
+  `--self-test` checks fail the build if a row disappears, a disposition is invented, a
+  reference dangles, or a catalogue entry has no source module behind it.
+
+### Kept deliberately
+- The MIT notice stays, verbatim and scoped, as `LICENSE-MIT-historical.txt`. It covered the upstream project and
+  every release up to `0.2.0-beta.11`; MIT requires the notice to travel with that code,
+  and recipients of those releases keep the rights they were granted. `NOTICE.md` says so
+  explicitly so the two files cannot be mistaken for each other.
+
 ## 0.2.0-beta.11 - 2026-10-26
 
 Reading commit `807795a` against the audit document that described it found six places

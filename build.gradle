@@ -130,7 +130,15 @@ tasks.named('jar') { jarTask ->
 
 def packagedLicenseName = "LICENSE_${project.name}"
 jar {
-	from('LICENSE') { rename { packagedLicenseName } }
+	// The governing licence travels inside the jar, next to the port licence that
+	// authorises the ported material and the attribution notice. The MIT text is kept
+	// as well, because it still covers releases up to 0.2.0-beta.11 and cannot be
+	// withdrawn retroactively; it is named so it cannot be mistaken for the governing
+	// licence.
+	from('LICENSE.md') { rename { packagedLicenseName } }
+	from('PORTING-LICENSE.md') { rename { "PORTING-LICENSE_${project.name}" } }
+	from('NOTICE.md') { rename { "NOTICE_${project.name}" } }
+	from('LICENSE-MIT-historical.txt') { rename { "LICENSE-MIT-historical_${project.name}" } }
 }
 
 publishing {

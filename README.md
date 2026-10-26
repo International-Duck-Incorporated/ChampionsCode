@@ -579,4 +579,11 @@ notes, planned work, and PowerShell publishing steps.
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE).
+All Rights Reserved. See [`LICENSE.md`](LICENSE.md) for the governing licence,
+[`NOTICE.md`](NOTICE.md) for attribution of ported material, and
+[`PORTING-LICENSE.md`](PORTING-LICENSE.md) for the agreement under which the port was
+made.
+
+The `LICENSE-MIT-historical.txt` file is the MIT notice that covered this project's
+earlier releases. It is retained because MIT requires the notice to travel with the code
+it covered, and it does not govern new releases.

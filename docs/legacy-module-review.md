@@ -13,7 +13,7 @@ The public Drive folder was retrieved selectively after the initial recursive do
 - `meteor_addon_java_modules.zip`; and
 - `only_java_final.zip`.
 
-The source archives contained 108 distinct Java class names under module directories across all revisions. The `0.3.0` archive contained 47 module wrappers, of which 34 were registered by its entrypoint. Its build metadata still targeted Minecraft `26.1.2`, Yarn `1.21.11+build.3`, Fabric Loader `0.19.2`, and a Meteor Client snapshot. It was not a normal standalone Champions module set for Minecraft 26.3.
+The source archives contained 108 distinct Java class names under module directories across all revisions. The `0.3.0` archive contained 47 module classes, of which 33 were registered by its entrypoint (the addon's own log line says 34; the entrypoint has 33 `Modules.get().add(...)` calls). Its build metadata still targeted Minecraft `26.1.2`, Yarn `1.21.11+build.3`, Fabric Loader `0.19.2`, and a Meteor Client snapshot. It was not a normal standalone Champions module set for Minecraft 26.3.
 
 The `0.3.0` archive includes a CC0 license and an unchanged Meteor addon template README. The loose Java bundles do not establish equally clear per-file provenance. Champions therefore does not copy source from these files. The compatible behavior below was reimplemented against the Champions API, tests, authorization gate, audit path, and Minecraft 26.3 build.
 
@@ -200,4 +200,4 @@ ZAuctionHouseSqliDeployModule
 
 ## Compatibility and provenance decision
 
-No old binary or source file is part of the Champions JAR. The new implementations are original, dependency-free Java 25 code under the Champions MIT project. They compile with the normal Fabric 26.3 build, use the current option and finding model, remain visible in the sorted list and category-window GUIs, and inherit the console's exact-target authorization and JSONL audit logging.
+No old binary or source file is part of the Champions JAR. The new implementations are dependency-free Java 25 code written for this project and governed by the All Rights Reserved licence in `LICENSE.md`; the knowledge they encode is attributed in `NOTICE.md`. They compile with the normal Fabric 26.3 build, use the current option and finding model, remain visible in the sorted list and category-window GUIs, and inherit the console's exact-target authorization and JSONL audit logging.

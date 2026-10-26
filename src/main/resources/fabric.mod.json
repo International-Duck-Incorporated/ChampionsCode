@@ -10,7 +10,7 @@
     "sources": "https://gitlab.com/international-duck-incorporated/ChampionsCode",
     "issues": "https://gitlab.com/international-duck-incorporated/ChampionsCode/-/issues"
   },
-  "license": "MIT",
+  "license": "All Rights Reserved",
   "icon": "assets/champions/icon.png",
   "environment": "client",
   "entrypoints": {
