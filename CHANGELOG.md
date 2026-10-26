@@ -4,6 +4,23 @@
 
 Nothing yet.
 
+## 0.2.0-beta.2 - 2026-10-26
+
+### Fixed
+- **The Settings page no longer leaves a gap above its footer.** Both cards
+  reported an unbounded maximum height, so the vertical stack handed the
+  interface card every spare pixel: the rows sat at the top and the action
+  footer was pinned to the bottom of a tall empty box. Cards are now held at
+  their content height and the slack collects below them. A headless check in
+  `--self-test` fails the build if a card ever stretches again.
+- **Settings footer spacing and clipped messages.** The action row sat 4 px
+  under the rows; it now has 10 px above and 12 px below. The status note moved
+  under the buttons instead of beside them — the messages after a click were
+  wider than the space left on that line and were cut off mid-sentence.
+- **A saved window size can no longer restore below the minimum.** A geometry
+  remembered from a build with the old 880x540 limit is clamped to the current
+  1040x720 rather than reopening a window the Settings pane does not fit in.
+
 ## 0.2.0-beta.1 - 2026-10-26
 
 ### Added

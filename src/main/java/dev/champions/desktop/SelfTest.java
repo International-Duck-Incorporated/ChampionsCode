@@ -48,6 +48,7 @@ public final class SelfTest {
 			capabilityGate(config.resolve("gated"));
 			dropInCompiler(config.resolve("codespace"));
 			interfacePreference(config.resolve("interfaces"));
+			settingsLayout(config.resolve("layout"));
 			jsonEdgeCases();
 		} finally {
 			deleteTree(config);
@@ -258,6 +259,38 @@ public final class SelfTest {
 		check("drop-in compiler: module is selectable", console.selectModuleFromUi("auxiliary/local/self_test"));
 		StandaloneRuntime.Result unload = runtime.unload("self-test cleanup");
 		check("drop-in compiler: unload removes it", unload.moduleIds().isEmpty());
+	}
+
+	/**
+	 * Guards the Settings pane against the layout bug where the interface card
+	 * reported an unbounded maximum height: inside a vertical BoxLayout it then
+	 * swallowed every spare pixel and the rows hung stranded above a footer
+	 * pinned to the bottom edge. The card must stay as tall as its content at
+	 * any window height, and the whole page must fit the smallest window.
+	 */
+	private static void settingsLayout(Path config) {
+		SettingsPanel panel = new SettingsPanel(null, config);
+		for (int height : new int[] { 600, 1000 }) {
+			panel.setSize(1040, height);
+			layOut(panel);
+			var card = panel.interfaceCard();
+			int slack = card.getHeight() - card.getPreferredSize().height;
+			check("interface card is not stretched at " + height + "px (" + slack + "px slack)",
+				Math.abs(slack) <= 1);
+		}
+		panel.setSize(1040, 600);
+		layOut(panel);
+		int needed = panel.getPreferredSize().height;
+		check("settings page fits the minimum window (" + needed + "px of 634px)",
+			needed <= 634);
+	}
+
+	/** Lays out a component tree that was never realised on screen. */
+	private static void layOut(java.awt.Component component) {
+		component.doLayout();
+		if (component instanceof java.awt.Container container) {
+			for (java.awt.Component child : container.getComponents()) layOut(child);
+		}
 	}
 
 	private static void jsonEdgeCases() {

@@ -35,6 +35,8 @@ public final class SettingsPanel extends JPanel {
 	/** Switch rows: one fixed row per setting, each as wide as the card. */
 	private final JPanel rows = new JPanel();
 	private final JLabel note = new JLabel(" ");
+	/** The interface card, kept for the headless layout check in {@link SelfTest}. */
+	private JPanel interfaceCard;
 
 	public SettingsPanel(ConsolePort port, Path configDirectory) {
 		super(new BorderLayout());
@@ -53,26 +55,34 @@ public final class SettingsPanel extends JPanel {
 
 		note.setFont(Theme.mono(10));
 		note.setForeground(Theme.FAINT);
-		note.setBorder(Theme.padding(4, 12, 10, 16));
 
+		// The note sits under the buttons, not beside them: the messages that
+		// follow a click ("Sent 'interfaces reload' to the game ...") are longer
+		// than the space a WEST/CENTRE split leaves, so they used to be clipped
+		// mid-sentence at the right edge of the card.
 		JPanel footer = new JPanel(new BorderLayout());
 		footer.setOpaque(false);
 		footer.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, Theme.BORDER));
-		footer.add(actions(), BorderLayout.WEST);
-		footer.add(note, BorderLayout.CENTER);
+		footer.add(actions(), BorderLayout.NORTH);
+		JPanel noteRow = new JPanel(new BorderLayout());
+		noteRow.setOpaque(false);
+		noteRow.setBorder(Theme.padding(6, 16, 12, 16));
+		noteRow.add(note, BorderLayout.CENTER);
+		footer.add(noteRow, BorderLayout.CENTER);
 		card.add(footer, BorderLayout.SOUTH);
+		this.interfaceCard = card;
 
 		// Both cards size to their content and stack from the top, so the page
 		// does not turn into one tall box of empty space on a large screen.
+		// They must be height-limited: a BorderLayout card reports an unbounded
+		// maximum height, so BoxLayout would hand it every spare pixel and the
+		// rows would sit stranded above a footer pinned to the bottom edge.
 		JPanel column = new JPanel();
 		column.setLayout(new BoxLayout(column, BoxLayout.Y_AXIS));
 		column.setOpaque(false);
-		card.setAlignmentX(Component.LEFT_ALIGNMENT);
-		column.add(card);
+		column.add(fixedHeight(card));
 		column.add(Box.createVerticalStrut(12));
-		JPanel files = filesCard(configDirectory);
-		files.setAlignmentX(Component.LEFT_ALIGNMENT);
-		column.add(files);
+		column.add(fixedHeight(filesCard(configDirectory)));
 		column.add(Box.createVerticalGlue());
 
 		JPanel stacked = new JPanel(new BorderLayout(0, 12));
@@ -84,6 +94,11 @@ public final class SettingsPanel extends JPanel {
 		refresh();
 	}
 
+	/** Test seam: the card holding the interface rows, footer included. */
+	JPanel interfaceCard() {
+		return interfaceCard;
+	}
+
 	private void refresh() {
 		Properties properties = read();
 		String ui = properties.getProperty("ui", "both").strip().toLowerCase(java.util.Locale.ROOT);
@@ -91,6 +106,7 @@ public final class SettingsPanel extends JPanel {
 		String clickGui = properties.getProperty("clickgui", "clickgui").strip().toLowerCase(java.util.Locale.ROOT);
 
 		rows.removeAll();
+		note.setText(" ");
 		addRow(segmented("Default interface",
 			"Decides what F8, F7 and the clickgui/logs commands open.",
 			UI_MODES, ui, value -> write("ui", value)));
@@ -137,10 +153,27 @@ public final class SettingsPanel extends JPanel {
 		body.add(chat);
 
 		card.add(body, BorderLayout.CENTER);
-		JPanel holder = new JPanel(new BorderLayout());
+		return card;
+	}
+
+	/**
+	 * Holds a card at the height its content asks for.
+	 *
+	 * <p>{@code BorderLayout} reports {@code Integer.MAX_VALUE} as the maximum
+	 * height, so inside a vertical {@code BoxLayout} a card grows until the
+	 * layout runs out of space — which is what pushed the interface rows to the
+	 * top of a tall card. Pinning the maximum to the preferred height leaves the
+	 * slack to the glue at the bottom of the column instead.</p>
+	 */
+	private static JPanel fixedHeight(JPanel card) {
+		JPanel holder = new JPanel(new BorderLayout()) {
+			@Override
+			public Dimension getMaximumSize() {
+				return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+			}
+		};
 		holder.setOpaque(false);
-		holder.setBorder(Theme.padding(0, 0, 0, 0));
-		holder.setMaximumSize(new Dimension(Integer.MAX_VALUE, 230));
+		holder.setAlignmentX(Component.LEFT_ALIGNMENT);
 		holder.add(card, BorderLayout.CENTER);
 		return holder;
 	}
@@ -206,7 +239,7 @@ public final class SettingsPanel extends JPanel {
 	private JPanel actions() {
 		JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
 		row.setOpaque(false);
-		row.setBorder(Theme.padding(0, 16, 4, 16));
+		row.setBorder(Theme.padding(10, 16, 0, 16));
 		row.setAlignmentX(Component.LEFT_ALIGNMENT);
 		row.add(Theme.primary("Apply in game", event -> applyInGame()));
 		row.add(Theme.button("Reload from disk", Theme.DIM, event -> {

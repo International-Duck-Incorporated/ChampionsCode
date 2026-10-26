@@ -178,7 +178,12 @@ public final class DesktopMain {
 			java.awt.Rectangle saved = new java.awt.Rectangle(
 				Integer.parseInt(parts[0].trim()), Integer.parseInt(parts[1].trim()),
 				Integer.parseInt(parts[2].trim()), Integer.parseInt(parts[3].trim()));
-			return screen.intersects(saved) ? saved : computed;
+			if (!screen.intersects(saved)) return computed;
+			// A geometry saved under an older, smaller minimum would otherwise
+			// restore a window the Settings pane does not fit in.
+			saved.width = Math.max(saved.width, 1040);
+			saved.height = Math.max(saved.height, 720);
+			return saved;
 		} catch (NumberFormatException invalid) {
 			return computed;
 		}
