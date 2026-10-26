@@ -1,0 +1,54 @@
+# One row per class named *Module.java in the venom4plugin 0.3.0 archive.
+# Columns: file, kind, disposition, reference, registered, detail.
+# kind: module (registered by Meteor) or base (abstract, never registered).
+# disposition: ported | merged | check | catalogue | excluded | base.
+# reference: the ExploitCatalog entry the disposition names, or empty.
+# registered: yes when Venom4Plugin.onInitialize added it to Meteor, else no.
+ArmorStandToolsProtectedGriefingModule.java	module	catalogue		no	catalogue entries, no mechanism -- Each needs an observation this client cannot make without a live target (a leaked token, a griefed entity, a debug event). Their knowledge is kept; nothing pretends to reproduce them.
+AuthPluginsCmdModule.java	module	catalogue	auth_plugins	yes	catalogue only — `auth_plugins` -- The mechanism is token disclosure, which needs a server-side observation, not a client action.
+BlueMapSsrfModule.java	module	merged	bluemap_ssrf	yes	merged — `outbound_fetch` mechanism + `bluemap_ssrf` entry -- Same seam, told apart by the plugin.
+BlueSlimeCoreDebugEventModule.java	module	catalogue		no	catalogue entries, no mechanism -- Each needs an observation this client cannot make without a live target (a leaked token, a griefed entity, a debug event). Their knowledge is kept; nothing pretends to reproduce them.
+BungeeCordBungeeGuardTokenLeakModule.java	module	catalogue	auth_plugins	no	catalogue entries, no mechanism -- Each needs an observation this client cannot make without a live target (a leaked token, a griefed entity, a debug event). Their knowledge is kept; nothing pretends to reproduce them.
+BuycraftXApiKeyTheftModule.java	module	catalogue	auth_plugins	no	catalogue entries, no mechanism -- Each needs an observation this client cannot make without a live target (a leaked token, a griefed entity, a debug event). Their knowledge is kept; nothing pretends to reproduce them.
+ChatGamesConsoleCommandInjectionModule.java	module	catalogue	chatgames_console	no	catalogue entries, no mechanism -- Each needs an observation this client cannot make without a live target (a leaked token, a griefed entity, a debug event). Their knowledge is kept; nothing pretends to reproduce them.
+ChatPluginsCmdModule.java	module	merged		yes	merged into mechanisms -- Their knowledge is the console/expansion/placeholder families; their command batteries are not.
+ConditionalEventsOpModule.java	module	ported	conditional_events_console	yes	ported as mechanism — `conditional_events_console` -- Same sink, different trigger; shares the payload with Skript.
+CoreProtectDeepRollbackModule.java	module	catalogue	coreprotect_rollback_sql	yes	ported as mechanism — `sql_identifier` + per-plugin catalogue entries -- One seam, three plugins; the payload proves the row-count change and writes nothing.
+CosmeticPluginsCmdModule.java	module	merged		yes	merged into mechanisms -- Their knowledge is the console/expansion/placeholder families; their command batteries are not.
+CosmeticSqliModule.java	module	merged		yes	merged — `sql_identifier` mechanism and the corresponding entries -- SQL-by-concatenation is one class across several plugins.
+DatabaseSqliModule.java	module	merged		yes	merged — `sql_identifier` mechanism and the corresponding entries -- SQL-by-concatenation is one class across several plugins.
+DeluxeMenuBungeeConnectModule.java	module	catalogue		no	catalogue entries, no mechanism -- Each needs an observation this client cannot make without a live target (a leaked token, a griefed entity, a debug event). Their knowledge is kept; nothing pretends to reproduce them.
+DeluxeMenuConsoleRceModule.java	module	ported	deluxemenus_js	yes	ported as mechanism — `deluxemenus_script` -- One mechanism, one payload; the `Java.type` runtime call is documented but not shipped.
+DeluxeMenuJsRceModule.java	module	ported	deluxemenus_js	no	ported as mechanism — `deluxemenus_script` -- One mechanism, one payload; the `Java.type` runtime call is documented but not shipped.
+DeluxeMenuPlaceholderInjectionModule.java	module	merged	placeholder_expansion	no	merged — `placeholder_expansion` mechanism + `placeholder_injection` entry -- Same sink: expanded text reaching a dispatch.
+DiscordSRVSqlInjectionModule.java	module	catalogue	discordsrv_sql	yes	ported as mechanism — `sql_identifier` + per-plugin catalogue entries -- One seam, three plugins; the payload proves the row-count change and writes nothing.
+EconomyPluginsCmdModule.java	module	merged		yes	merged into mechanisms -- Their knowledge is the console/expansion/placeholder families; their command batteries are not.
+EconomySqliModule.java	module	merged		yes	merged — `sql_identifier` mechanism and the corresponding entries -- SQL-by-concatenation is one class across several plugins.
+EssentialModExploitModule.java	module	catalogue	auth_plugins	yes	catalogue only — `auth_plugins` -- Session-state mutation on a live peer; a fixture would model nothing the reader could check.
+EssentialUpnpModule.java	module	catalogue	auth_plugins	yes	catalogue only — `auth_plugins` -- Session-state mutation on a live peer; a fixture would model nothing the reader could check.
+EssentialXDeepModule.java	module	check		yes	check tier -- They were report-only in the original; they remain report-only.
+EssentialsXCmdModule.java	module	ported	essentialsx_alt_commands	yes	ported as mechanism — `essentialsx_alias` -- Its `/essentials:op me` was reaching for an alias permission bypass. The bypass is now reproduced against a permission model, not a server.
+EssentialsXConfigModule.java	module	merged	placeholder_expansion	yes	merged — `placeholder_expansion` mechanism -- Its artefact is an Essentials config file with `%player%` in a welcome message. The sink is a placeholder expansion reaching a dispatch, which is already reproduced; a server configuration file is not something this client deploys.
+GeyserSSRF_Module.java	module	ported	geyser_skin_ssrf	yes	ported as mechanism — `outbound_fetch` -- The URL resolution is reproduced against an internal-host table.
+ItemPluginsDeployModule.java	module	ported	item_plugin_actions	yes	ported as mechanism — `item_plugin_actions` -- Console dispatch with an item as the trigger.
+MythicMobsUnsafeDeserializationModule.java	module	ported	mythicmobs_deser	yes	ported as mechanism — `mythicmobs_deser` -- The fixture uses a real `ObjectInputStream`; only the fixture's own probe object is in the stream.
+NetworkPluginsDeployModule.java	module	merged		yes	merged — `sql_identifier` mechanism and the corresponding entries -- SQL-by-concatenation is one class across several plugins.
+PluginDetectModule.java	module	ported		yes	ported — `auxiliary/scanner/plugin_enumeration` (collection) -- Same job from the advertised tree; no commands sent.
+PocModule.java	base	base		no	base class, not a module -- The abstract class every one of the 47 extends. Its `onActivate` sends `getPlayerCommands()` at the server and drops a payload file in the game directory -- the two things this port does not do. Nothing is inherited from it; it is listed here only so the count of 48 `*Module.java` files reconciles with 47 modules.
+QuickShopDeepModule.java	module	catalogue	quickshop_economy	yes	ported as mechanism — `sql_identifier` + per-plugin catalogue entries -- One seam, three plugins; the payload proves the row-count change and writes nothing.
+SkriptConsoleCmdModule.java	module	ported	skript_console	yes	ported as mechanism — `skript_console` -- The live injection is gone; the sink it exploited is reproduced against `console_dispatch` with harmless `say` commands.
+SkriptConsoleOpModule.java	module	ported	skript_console	yes	ported as mechanism — `skript_console` -- The live injection is gone; the sink it exploited is reproduced against `console_dispatch` with harmless `say` commands.
+SkriptDeepModule.java	module	check		yes	check tier -- They were report-only in the original; they remain report-only.
+SkriptDeployModule.java	module	ported	skript_console	yes	ported twice — artifact `skript_console`, mechanism `skript_console` -- The artifact was the module; the mechanism behind it is console dispatch, now reproducible.
+UltraCosmeticsConsoleCommandInjectionModule.java	module	merged	placeholder_expansion	no	merged — `placeholder_expansion` mechanism + `placeholder_injection` entry -- Same sink: expanded text reaching a dispatch.
+UltraCosmeticsSqlInjectionModule.java	module	catalogue		no	catalogue entries, no mechanism -- Each needs an observation this client cannot make without a live target (a leaked token, a griefed entity, a debug event). Their knowledge is kept; nothing pretends to reproduce them.
+UtilityPluginsCmdModule.java	module	merged		yes	merged into mechanisms -- Their knowledge is the console/expansion/placeholder families; their command batteries are not.
+ViaBackwardsSnapshotModule.java	module	check	viabackwards_snapshot	yes	check tier -- They were report-only in the original; they remain report-only.
+VotePluginsCmdModule.java	module	merged		yes	merged into mechanisms -- Their knowledge is the console/expansion/placeholder families; their command batteries are not.
+WorldEditSchematicDeserializeModule.java	module	catalogue	worldedit_schematic	no	catalogue only — `worldedit_schematic` -- A historical `//schematic` path traversal, marked not exploitable on WorldEdit 7.4.4+. Kept as catalogue entry `worldedit_schematic`; there is nothing to reproduce on a current build.
+WorldGuardYamlDeployModule.java	module	ported	worldguard_yaml	yes	ported as mechanism — `worldguard_yaml` -- The parser resolving a `!!tag` is reproduced; only the fixture's probe classes are nameable.
+WorldGuardYamlDeserialisationModule.java	module	ported	worldguard_yaml	no	ported as mechanism — `worldguard_yaml` -- The parser resolving a `!!tag` is reproduced; only the fixture's probe classes are nameable.
+WorldPluginsCmdModule.java	module	merged		yes	merged into mechanisms -- Their knowledge is the console/expansion/placeholder families; their command batteries are not.
+ZAuctionHouseDeserializationRceModule.java	module	catalogue	zauctionhouse_deser	no	catalogue only — `zauctionhouse_deser` -- A deserialisation gadget chain aimed at a live server's plugin classpath. The seam is `mythicmobs_deser`; a second fixture would model the same thing, and the gadget itself is not shipped. The finding survives as catalogue entry `zauctionhouse_deser`, with no artifact.
+ZAuctionHouseSqlInjectionModule.java	module	excluded		no	excluded -- Its artefact is a migration config that drops a table on the source database. Destructive by construction, so it is outside the standing rule regardless of authorisation; the SQL seam itself is covered by `sql_identifier`.
+ZAuctionHouseSqliDeployModule.java	module	merged		yes	merged — `sql_identifier` -- Same seam.
