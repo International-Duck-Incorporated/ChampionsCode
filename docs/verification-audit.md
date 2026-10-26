@@ -6,6 +6,11 @@ reading the code actually found. Every claim below points at a file and a test.
 Status: **four of the five were real defects**, one was a design gap that the code had
 papered over with a prose note. All five are now enforced in code and covered by tests.
 
+A second pass, in `0.2.0-beta.11`, read commit `807795a` instead of the report above.
+That pass found **six discrepancies between this document and the code**, including two
+this document had overstated. They are recorded in §6, because a document that describes
+intentions rather than code is the thing it was written to prevent.
+
 ---
 
 ## 1. Control validity — does the control traverse the same vulnerable path?
@@ -216,3 +221,107 @@ Verified: 191 JUnit tests (23 new in this pass), 128 self-test checks, clean
 `gradlew build`, and the console flow exercised for all six outcomes (`FIXTURE_VERIFIED`,
 `IMPLEMENTATION_VERIFIED`, `INCONCLUSIVE`, `NOT_REPRODUCED`, `BLOCKED_BY_GATE` for a
 modelled sink asked for tier 2, `BLOCKED_BY_GATE` without `ACK`).
+
+
+---
+
+## 6. Reading the code back: what `807795a` actually did
+
+The first audit was written from the same session that wrote the code, which is exactly
+the wrong position to check it from. Reading the commit afterwards found these.
+
+### 6.1 `discriminative` was derived from the verdict — **fixed in beta.11**
+
+This document said the field "records whether a benign control failed to produce the
+payload's effect". The code was:
+
+```java
+return new VerificationReport(verdict, basis, ..., verdict.verified(), samePath, ...);
+```
+
+`discriminative` was `verdict.verified()`. It could never be false on a verified run, so
+it carried no information the verdict did not already carry, and it was not computed from
+the control comparison at all. It is now computed from the effects, and there is a test
+(`aPayloadCanDiscriminateAndStillBeUncertifiable`) that produces `INCONCLUSIVE` **with**
+`discriminative == true` — a combination that was impossible while the field was a copy of
+the verdict.
+
+### 6.2 Tier 2 read one fidelity, after the run — **fixed in beta.11**
+
+`verifiedState` read `fixture.lastFidelity()` once, after every stage had finished. A run
+where one attempt ran modelled code and another ran real code would have been judged on
+whichever happened last. The fidelity is now recorded per attempt, and
+`evidenceTier(mode, payloadFidelities)` requires **every** observation to have run real
+code. One modelled observation drops the claim to the model.
+
+### 6.3 "Degrades and says so" — it did not say so — **fixed in beta.11**
+
+`docs/verification-audit.md` §4 claimed `outbound_fetch` "degrades to `FIXTURE_VERIFIED`
+… and *says* so". The verdict was downgraded and nothing was said; the downgrade was
+silent. There is now a note whenever a declared reference implementation ran modelled
+code, and a second note when a run asked for tier 2 and could not supply it.
+
+### 6.4 Mechanisms inherited determinism; they did not declare it — **fixed in beta.11**
+
+The document said "every mechanism in this build *declares* `DETERMINISTIC`". They
+inherited the interface default; nothing declared anything. Each mechanism now overrides
+`determinism()` with one line saying why, so the claim is in the class that makes it.
+
+### 6.5 `verify()` re-planned, so the approved material was not the executed material — **fixed in beta.11**
+
+The document said the plan "carries the material objects, so what was shown and approved
+is what executes". True within one `verify()` call — and false across the flow the operator
+actually performs. `run` with `ACTION=PLAN` builds a plan; `run` with `ACTION=VERIFY`
+built a **new** plan and executed that. A provider whose `material()` answered differently
+on a second call produced a different run from the one that was read and acknowledged.
+
+Found by `GateIntegrityTest.aProviderThatChangesItsAnswerDoesNotChangeWhatRuns`, which
+failed with the substituted material in the effects list.
+
+Now: `verify(VerificationPlan, …)` executes a plan; the module keeps the plan it rendered
+and releases that one, and refuses the acknowledgement when the configuration has changed
+since (`ChampionConsoleTest.verificationReleasesThePlanThatWasShownAndNothingElse`).
+Re-planning at execution time is gone from the flow entirely.
+
+### 6.6 The control tests were generic — **fixed in beta.11**
+
+The document's §1 promised control validity "tested per payload". The tests were a
+sweep: same shape, not identical, different marker. Nothing asserted what the trigger
+*is* for each mechanism. `ControlValidityTest` now states it per mechanism — the separator,
+the quote break, the tag name, the class in the stream, the destination host, the alias,
+the dispatch statement, the marker — and asserts that a control which changes anything
+else is refused rather than certified.
+
+Two things that reading the code made clear, and which changed a test rather than the
+engine:
+
+- A control that is "a different benign command" is **not** a bad control for the console
+  sink. The trigger is the separator, not the text, so a different benign command still
+  isolates the second dispatch. The test that expected rejection was wrong; it was
+  replaced with one that gives the control a *second dispatch of its own*, which is a real
+  unrelated behaviour change and is rejected.
+- Effect comparison normalises each side by **its own** value. Comparing with only the
+  payload's value meant that `…'bob' OR '1'='1'` and `…'alice' OR '1'='1'` looked like two
+  behaviours. Found because the same-behaviour test started failing when `discriminative`
+  became independent.
+
+### What did hold up
+
+Worth recording, since the point of the exercise is to find what does not:
+
+- `GateDecision` really is a sealed interface with private implementations, and `permit`
+  really does throw without the gate's token.
+- `attemptOnFixture` really does throw without an allowed decision.
+- Each stage really is re-gated immediately before it runs.
+- The engine really does compute `reached` from the fixture's effect log, and
+  `mechanismClaim` really is recorded separately.
+- `SqlIdentifierMechanism` really reads the statement log, and `OutboundFetchFixture.reset()`
+  really preserves the fidelity now.
+
+### The lesson that generalises
+
+Every defect in §6 was a place where the *report* described a design and the *code*
+implemented a nearby one. The tests that caught them were not the ones asserting the happy
+path — they were the ones asserting that a report cannot say two things at once
+(`discriminative` false with a verified verdict), that a claim survives its weakest sample,
+and that a provider which changes its mind cannot change the run.

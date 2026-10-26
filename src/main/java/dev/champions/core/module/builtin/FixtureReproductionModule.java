@@ -44,6 +44,17 @@ import java.util.concurrent.CompletionStage;
  * claim.</p>
  */
 public final class FixtureReproductionModule implements PayloadModule, ArtifactFolderAware {
+	/**
+	 * The plan the operator was shown, and the configuration it was made for.
+	 *
+	 * <p>Verifying re-plans nothing: the acknowledgement releases <em>that</em> plan.
+	 * A provider whose material answers differently on a second call, or an option
+	 * changed between the two runs, cannot turn the approval into a different run — the
+	 * key no longer matches and the module asks for a new plan.</p>
+	 */
+	private volatile dev.champions.core.exploit.VerificationPlan pendingPlan;
+	private volatile String pendingKey = "";
+
 	private AuditFolder folder = AuditFolder.unavailable();
 
 	@Override public String id() { return "auxiliary/exploits/fixture_reproduction"; }
@@ -116,6 +127,22 @@ public final class FixtureReproductionModule implements PayloadModule, ArtifactF
 		return payload != null && payload.describe().kind() == PayloadKind.BOUNDED_VERIFICATION;
 	}
 
+	/**
+	 * The configuration a plan was made for: everything that changes what would run,
+	 * excluding the options that are about the run itself.
+	 */
+	private static String planKey(String mechanismId, String payloadId,
+			GateRequest.ReproductionMode mode, Map<String, String> options) {
+		StringBuilder key = new StringBuilder(mechanismId).append('|').append(payloadId).append('|').append(mode);
+		java.util.Set<String> operational = java.util.Set.of("ACTION", "ACK", "CONFIRM", "RHOST");
+		options.entrySet().stream()
+			.filter(entry -> !operational.contains(entry.getKey().toUpperCase(java.util.Locale.ROOT)))
+			.sorted(java.util.Map.Entry.comparingByKey())
+			.forEach(entry -> key.append('|').append(entry.getKey()).append('=')
+				.append(entry.getValue().replace('|', '/')));
+		return key.toString();
+	}
+
 	private static boolean isVerify(Map<String, String> options) {
 		return "VERIFY".equalsIgnoreCase(options.getOrDefault("ACTION", "PLAN").strip());
 	}
@@ -148,12 +175,27 @@ public final class FixtureReproductionModule implements PayloadModule, ArtifactF
 		// Activating the module produces a plan. Executing it is a separate decision,
 		// taken by the operator, with its own acknowledgement.
 		if (!isVerify(options)) {
-			return CompletableFuture.completedFuture(
-				planResult(engine.plan(mechanismId, payload, mode, authorized, confirmed, options), mode));
+			dev.champions.core.exploit.VerificationPlan plan =
+				engine.plan(mechanismId, payload, mode, authorized, confirmed, options);
+			pendingPlan = plan;
+			pendingKey = planKey(mechanismId, payloadId, mode, options);
+			return CompletableFuture.completedFuture(planResult(plan, mode));
 		}
 
-		return engine.verify(mechanismId, payload, mode, authorized, confirmed,
-				options.getOrDefault("ACK", "").strip(), options)
+		// Verification executes the plan that was shown and acknowledged, not a fresh one.
+		String key = planKey(mechanismId, payloadId, mode, options);
+		dev.champions.core.exploit.VerificationPlan approved = pendingPlan;
+		if (approved == null || !pendingKey.equals(key)) {
+			return CompletableFuture.completedFuture(new ModuleResult(
+				"No plan to acknowledge: run ACTION PLAN for this configuration first",
+				List.of(new Finding(Finding.Severity.LOW, "Nothing to acknowledge", approved == null
+						? "This module has not produced a plan since it was loaded."
+						: "The configuration changed since the last plan, so the old approval does not apply.",
+					"Set ACTION PLAN, read the plan, then set ACTION VERIFY and ACK.")),
+				List.of(EvidenceNode.observed("Plan", "none", "Planning is what ACK acknowledges."))));
+		}
+
+		return engine.verify(approved, authorized, confirmed, options.getOrDefault("ACK", "").strip(), options)
 			.thenApply(report -> reportResult(report, mechanismId, payloadId));
 	}
 

@@ -4,6 +4,40 @@
 
 Nothing yet.
 
+## 0.2.0-beta.11 - 2026-10-26
+
+Reading commit `807795a` against the audit document that described it found six places
+where the document described the design and the code implemented a nearby one. All six
+are fixed; `docs/verification-audit.md` §6 records each, including the two this document
+had overstated.
+
+### Fixed
+- **`discriminative` was a copy of the verdict.** It is computed from the effects now, and
+  a run can be inconclusive while still having discriminated, which is the case that
+  proves the field is not derived from the outcome.
+- **Tier 2 read one fidelity after the run.** Fidelity is recorded per attempt and
+  `evidenceTier` requires every observation to have run real code; one modelled sample
+  drops the claim to the model.
+- **`verify()` re-planned**, so the material approved at PLAN time was not necessarily the
+  material executed. `verify(VerificationPlan, ...)` executes a plan; the module releases
+  the plan it showed and refuses an acknowledgement whose configuration has changed.
+- **A downgrade was silent.** A declared reference implementation that ran modelled code
+  now says so, and so does a run that asked for tier 2 and could not supply it.
+- **Mechanisms inherited determinism rather than declaring it.** Each one now overrides it
+  with a reason.
+- **Effect comparison normalised with one value.** Each side is normalised by its own, so
+  "returned 2 rows for …bob" and "…alice" compare as the same behaviour.
+
+### Added
+- **`docs/threat-model.md`**: what the gate guarantees, what it cannot do (reflection,
+  provider purity during planning, a modified build), and the test behind each claim.
+- **`GateIntegrityTest`** (16 tests): forged-approval attempts, the private token, material
+  immutability, providers that change their answer, switch kind, throw, return null or
+  mutate the options map, and every mode combination that must not reach a live sink.
+- **`ControlValidityTest`** (14 tests): the trigger stated per mechanism, and controls that
+  change something else rejected rather than certified.
+- `ReproductionEngine.evidenceTier(...)`: the boundary rule as a pure, testable function.
+
 ## 0.2.0-beta.10 - 2026-10-26
 
 Verification, audited against the five questions a verdict has to survive. Four of the

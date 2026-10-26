@@ -158,6 +158,46 @@ class ChampionConsoleTest {
 		assertTrue(console.lines().stream().anyMatch(line -> line.text().contains("selected module changed")));
 	}
 
+	@Test void verificationReleasesThePlanThatWasShownAndNothingElse() {
+		// Every run of an exploit module goes through the legal-risk prompt first.
+		ExploitWarningPrompt prompt = request -> request.confirm().run();
+		ChampionConsole console = new ChampionConsole(temp, ChampionConsoleTest::context,
+			ActiveModuleRuntime.disabled(), command -> {}, () -> {}, () -> {}, prompt);
+		console.submit("use auxiliary/exploits/fixture_reproduction");
+		console.submit("set MECHANISM skript_console");
+		console.submit("set PAYLOAD console_injection");
+		console.submit("set CONFIRM I_HAVE_AUTHORIZATION");
+
+		// Verifying without planning has nothing to acknowledge, so nothing runs.
+		console.submit("set ACTION VERIFY");
+		console.submit("set ACK I_ACKNOWLEDGE_FIXTURE_EXECUTION");
+		console.submit("run");
+		assertTrue(console.lines().stream().anyMatch(line -> line.text().contains("No plan to acknowledge")),
+			"an acknowledgement of nothing was accepted");
+
+		// Plan, then verify: the run releases that plan. The confirmation phrase is
+		// armed for one run and consumed by it, so it is re-set before each one.
+		console.submit("set ACTION PLAN");
+		console.submit("set CONFIRM I_HAVE_AUTHORIZATION");
+		console.submit("run");
+		assertTrue(console.lines().stream().anyMatch(line -> line.text().contains("Plan ready")),
+			"no plan was produced");
+
+		console.submit("set ACTION VERIFY");
+		console.submit("set ACK I_ACKNOWLEDGE_FIXTURE_EXECUTION");
+		console.submit("set CONFIRM I_HAVE_AUTHORIZATION");
+		console.submit("run");
+		assertTrue(console.lines().stream().anyMatch(line -> line.text().contains("Reproduced against a model")),
+			"the acknowledged plan did not run");
+
+		// Changing what would run invalidates the approval.
+		console.submit("set MECHANISM conditional_events_console");
+		console.submit("set CONFIRM I_HAVE_AUTHORIZATION");
+		console.submit("run");
+		assertTrue(console.lines().stream().anyMatch(line -> line.text().contains("No plan to acknowledge")),
+			"a changed configuration inherited the previous approval");
+	}
+
 	@Test void minecraft263UsesOneBasedPrimaryAndSecondaryPointerButtons() {
 		assertEquals(1, dev.champions.core.ui.MinecraftPointerButtons.PRIMARY);
 		assertEquals(2, dev.champions.core.ui.MinecraftPointerButtons.SECONDARY);

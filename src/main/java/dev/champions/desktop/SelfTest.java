@@ -739,6 +739,30 @@ public final class SelfTest {
 		check("the deserialiser fixture does",
 			dev.champions.core.exploit.MechanismRegistry.get("mythicmobs_deser").referenceImplementationAvailable());
 
+		// 4b. The tier boundary: one modelled observation is enough to drop the claim.
+		check("tier 2 needs every observation to have run real code",
+			dev.champions.core.exploit.ReproductionEngine.evidenceTier(
+				dev.champions.core.exploit.GateRequest.ReproductionMode.FIXTURE,
+				java.util.List.of(dev.champions.core.exploit.fixture.VulnerableFixture.Fidelity.REFERENCE_IMPLEMENTATION,
+					dev.champions.core.exploit.fixture.VulnerableFixture.Fidelity.MODELLED))
+				== dev.champions.core.exploit.ReproductionState.FIXTURE_VERIFIED);
+		check("tier 2 is available when every observation ran real code",
+			dev.champions.core.exploit.ReproductionEngine.evidenceTier(
+				dev.champions.core.exploit.GateRequest.ReproductionMode.FIXTURE,
+				java.util.List.of(dev.champions.core.exploit.fixture.VulnerableFixture.Fidelity.REFERENCE_IMPLEMENTATION))
+				== dev.champions.core.exploit.ReproductionState.IMPLEMENTATION_VERIFIED);
+		check("no evidence is not strong evidence",
+			dev.champions.core.exploit.ReproductionEngine.evidenceTier(
+				dev.champions.core.exploit.GateRequest.ReproductionMode.FIXTURE, java.util.List.of())
+				== dev.champions.core.exploit.ReproductionState.FIXTURE_VERIFIED);
+
+		// 4c. Every mechanism declares its determinism rather than inheriting it.
+		boolean declared = dev.champions.core.exploit.MechanismRegistry.all().stream()
+			.allMatch(mechanism -> mechanism.getClass().getDeclaredMethods().length > 0
+				&& java.util.Arrays.stream(mechanism.getClass().getDeclaredMethods())
+					.anyMatch(method -> method.getName().equals("determinism")));
+		check("every mechanism declares its own determinism", declared);
+
 		// 5. An approval is a capability, not a boolean anyone can build.
 		boolean refused = false;
 		try {
