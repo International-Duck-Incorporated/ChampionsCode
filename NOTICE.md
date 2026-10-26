@@ -14,7 +14,7 @@ this repository transfers that ownership to IDI.
 
 | Original work | What was taken | Where it lives now | What was changed |
 | --- | --- | --- | --- |
-| `venom4plugin` (Meteor Client addon, 48 module classes) | the table of which plugin exposes which mechanism, and the reproduction each one needs | `core/catalog/ExploitCatalog.java`, `core/exploit/mechanism/` (10 mechanisms), `core/exploit/payload/` (9 payloads), and the `auxiliary/*` modules in this jar and in the modules collection | re-implemented as Java 25 research instruments: no chat command batteries, no config deployment, no live injection. The per-module disposition is recorded in [`docs/porting-venom4plugin.md`](docs/porting-venom4plugin.md). |
+| `venom4plugin` (Meteor Client addon: 47 modules, plus the abstract `PocModule` they extend) | the table of which plugin exposes which mechanism, and the reproduction each one needs | `core/catalog/ExploitCatalog.java`, `core/exploit/mechanism/` (10 mechanisms), `core/exploit/payload/` (9 payloads), and the `auxiliary/*` modules in this jar and in the modules collection | re-implemented as Java 25 research instruments: no chat command batteries, no config deployment, no live injection. The per-module disposition is recorded in [`docs/porting-venom4plugin.md`](docs/porting-venom4plugin.md). |
 | other archives named in Schedule A | reference only — no code copied | — | — |
 
 The port is a rewrite, not a copy: no source file, class, identifier or comment from the
