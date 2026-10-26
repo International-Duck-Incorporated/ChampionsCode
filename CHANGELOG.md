@@ -4,6 +4,26 @@
 
 Nothing yet.
 
+## 0.2.0-beta.14 - 2026-10-26
+
+### Fixed
+- **A plug-and-play payload module had nowhere to write.** The console handed the
+  audit folder to modules registered before it was constructed, but not to
+  modules registered afterwards -- which is how every drop-in, runtime-compiled and
+  example module arrives. `registerModule` and `replaceExternalModules` now inject
+  it, so a payload module in the payload folder can write the artifact it
+  declares instead of reporting "this front end has no artifact folder".
+- **The payload template did not implement the payload contract.** `ExamplePayloadModule`
+  -- the file the docs tell you to copy -- implemented only `ResearchModule`, so a
+  module built from it declared no effect, was not checked by `PayloadSafety`, and
+  showed no payload banner. It now implements `PayloadModule` and
+  `ArtifactFolderAware`, declares `example_plan.txt`, writes it, and sends nothing.
+
+### Added
+- Three console tests: a drop-in payload module receives the audit folder and
+  writes its artifact, a runtime-replaced module receives it too, and a drop-in
+  module whose declared effect names a path is refused before its body runs.
+
 ## 0.2.0-beta.13 - 2026-10-26
 
 ### Fixed

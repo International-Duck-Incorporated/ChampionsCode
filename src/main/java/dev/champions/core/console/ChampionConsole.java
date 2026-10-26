@@ -67,6 +67,7 @@ public final class ChampionConsole {
 	private volatile java.util.function.Supplier<ClientCapabilities> capabilitiesSupplier = () -> null;
 	private volatile InterfacePreferences interfaces = InterfacePreferences.unavailable();
 	private final Path configDirectory;
+	private final dev.champions.core.catalog.AuditFolder artifactFolder;
 	/** Module repository state: config file, cached index, install target. */
 	private volatile RepoConfig repoConfig;
 	private volatile ModuleSourceInstaller moduleInstaller = ModuleSourceInstaller.disabled();
@@ -143,11 +144,8 @@ public final class ChampionConsole {
 		this.closeUi = closeUi == null ? () -> {} : closeUi;
 		this.configDirectory = configDirectory;
 		// A module that writes an artifact gets the one folder it may write into.
-		dev.champions.core.catalog.AuditFolder artifactFolder =
-			dev.champions.core.catalog.AuditFolder.under(configDirectory);
-		for (ResearchModule module : registry.all()) {
-			if (module instanceof dev.champions.core.catalog.ArtifactFolderAware aware) aware.useAuditFolder(artifactFolder);
-		}
+		this.artifactFolder = dev.champions.core.catalog.AuditFolder.under(configDirectory);
+		for (ResearchModule module : registry.all()) injectArtifactFolder(module);
 		this.authorization = new AuthorizationPolicy(configDirectory);
 		this.audit = new AuditLog(configDirectory);
 		banner();
@@ -192,7 +190,16 @@ public final class ChampionConsole {
 
 	public synchronized void registerModule(ResearchModule module) {
 		registry.register(module);
+		// Drop-in modules are constructed outside the console, so the folder has to
+		// be handed over here as well. Without it a plug-and-play payload module
+		// that writes an artifact had nowhere to write and silently degraded to
+		// "this front end has no artifact folder".
+		injectArtifactFolder(module);
 		Log.info("drop-in module registered: {}", module.id());
+	}
+
+	private void injectArtifactFolder(ResearchModule module) {
+		if (module instanceof dev.champions.core.catalog.ArtifactFolderAware aware) aware.useAuditFolder(artifactFolder);
 	}
 
 	/** Atomically swaps the external runtime-module group without disturbing builtins. */
@@ -206,6 +213,7 @@ public final class ChampionConsole {
 			throw new IllegalStateException("Cannot replace runtime modules while one of them is running: " + runningModuleId);
 		}
 		registry.replace(removed, replacements);
+		for (ResearchModule replacement : replacements) injectArtifactFolder(replacement);
 		if (activeId != null && removed.contains(activeId)) {
 			activeModule = null;
 			activeOptions.clear();

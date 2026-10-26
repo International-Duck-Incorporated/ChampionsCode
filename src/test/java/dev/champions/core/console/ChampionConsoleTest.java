@@ -198,6 +198,57 @@ class ChampionConsoleTest {
 			"a changed configuration inherited the previous approval");
 	}
 
+	@Test void aDropInPayloadModuleIsGivenTheAuditFolderWhenRegistered() {
+		AtomicInteger runs = new AtomicInteger();
+		ExploitWarningPrompt prompt = request -> request.confirm().run();
+		ChampionConsole console = new ChampionConsole(temp, ChampionConsoleTest::context,
+			ActiveModuleRuntime.disabled(), command -> {}, () -> {}, () -> {}, prompt);
+		TestPayloadModule module = new TestPayloadModule("auxiliary/payloads/test_dropin", "test_dropin.txt", runs);
+		console.registerModule(module); // after construction: this is the drop-in path
+
+		console.submit("use auxiliary/payloads/test_dropin");
+		console.submit("set CONFIRM I_HAVE_AUTHORIZATION");
+		console.submit("run");
+
+		assertEquals(1, runs.get(), "the module never ran");
+		assertTrue(java.nio.file.Files.exists(temp.resolve("artifacts").resolve("test_dropin.txt")),
+			"the drop-in payload module was not given the audit folder");
+		assertTrue(console.lines().stream().anyMatch(line -> line.text().contains("Declared effect:")));
+	}
+
+	@Test void aDropInPayloadWithAnUnsafeEffectIsRefusedBeforeRunning() {
+		AtomicInteger runs = new AtomicInteger();
+		ExploitWarningPrompt prompt = request -> request.confirm().run();
+		ChampionConsole console = new ChampionConsole(temp, ChampionConsoleTest::context,
+			ActiveModuleRuntime.disabled(), command -> {}, () -> {}, () -> {}, prompt);
+		console.registerModule(new TestPayloadModule("auxiliary/payloads/escape", "../escape.txt", runs));
+
+		console.submit("use auxiliary/payloads/escape");
+		console.submit("set CONFIRM I_HAVE_AUTHORIZATION");
+		console.submit("run");
+
+		assertEquals(0, runs.get(), "an unsafe declared effect reached the module body");
+		assertTrue(console.lines().stream().anyMatch(line -> line.text().contains("Payload refused before running")));
+		assertFalse(java.nio.file.Files.exists(temp.resolve("escape.txt")));
+	}
+
+	@Test void runtimeModuleReplacementAlsoHandsOverTheFolder() {
+		AtomicInteger runs = new AtomicInteger();
+		ExploitWarningPrompt prompt = request -> request.confirm().run();
+		ChampionConsole console = new ChampionConsole(temp, ChampionConsoleTest::context,
+			ActiveModuleRuntime.disabled(), command -> {}, () -> {}, () -> {}, prompt);
+		TestPayloadModule module = new TestPayloadModule("auxiliary/payloads/test_runtime", "test_runtime.txt", runs);
+		console.replaceExternalModules(List.of(), List.of(module));
+
+		console.submit("use auxiliary/payloads/test_runtime");
+		console.submit("set CONFIRM I_HAVE_AUTHORIZATION");
+		console.submit("run");
+
+		assertEquals(1, runs.get());
+		assertTrue(java.nio.file.Files.exists(temp.resolve("artifacts").resolve("test_runtime.txt")),
+			"a runtime-replaced module did not receive the audit folder");
+	}
+
 	@Test void minecraft263UsesOneBasedPrimaryAndSecondaryPointerButtons() {
 		assertEquals(1, dev.champions.core.ui.MinecraftPointerButtons.PRIMARY);
 		assertEquals(2, dev.champions.core.ui.MinecraftPointerButtons.SECONDARY);
@@ -225,6 +276,46 @@ class ChampionConsoleTest {
 	private static ModuleContext context() {
 		return new ModuleContext(true, true, true, true, "singleplayer", "vanilla", "26.3", 1, 0, 1,
 			"enabled", "Tester", "0, 0, 0", "minecraft:overworld", 60, 1, 1, List.of());
+	}
+
+	/**
+	 * A payload module registered after construction, the way a drop-in module
+	 * arrives. It needs the audit folder the console hands to ArtifactFolderAware,
+	 * and it must be checked by PayloadSafety before it runs.
+	 */
+	private static final class TestPayloadModule implements dev.champions.core.module.payload.PayloadModule,
+			dev.champions.core.catalog.ArtifactFolderAware {
+		private final String id;
+		private final String fileName;
+		private final AtomicInteger runs;
+		private dev.champions.core.catalog.AuditFolder folder = dev.champions.core.catalog.AuditFolder.unavailable();
+
+		private TestPayloadModule(String id, String fileName, AtomicInteger runs) {
+			this.id = id; this.fileName = fileName; this.runs = runs;
+		}
+
+		@Override public String id() { return id; }
+		@Override public String name() { return "Test drop-in payload"; }
+		@Override public String description() { return "Test only."; }
+		@Override public void useAuditFolder(dev.champions.core.catalog.AuditFolder folder) {
+			this.folder = folder == null ? dev.champions.core.catalog.AuditFolder.unavailable() : folder;
+		}
+		@Override public List<ModuleOption> options() {
+			return List.of(new ModuleOption("RHOST", "CURRENT", true, false, "current target"),
+				new ModuleOption("CONFIRM", "", true, true, "one-run phrase"));
+		}
+		@Override public dev.champions.core.module.payload.PayloadEffect effect() {
+			return dev.champions.core.module.payload.PayloadEffect.auditArtifact(fileName);
+		}
+		@Override public String revertPlan() { return "delete " + fileName; }
+		@Override public boolean performsActiveAction(Map<String, String> options) { return false; }
+		@Override public java.util.concurrent.CompletionStage<ModuleResult> runActive(ModuleContext context,
+				Map<String, String> options, ActiveModuleRuntime runtime) {
+			runs.incrementAndGet();
+			dev.champions.core.catalog.AuditFolder.Written written = folder.write(fileName, "test artifact");
+			return java.util.concurrent.CompletableFuture.completedFuture(new ModuleResult(
+				written.ok() ? "Artifact written" : "Artifact refused: " + written.message(), List.of()));
+		}
 	}
 
 	private static class TestModule implements ResearchModule {
