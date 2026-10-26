@@ -49,6 +49,7 @@ public final class SelfTest {
 			dropInCompiler(config.resolve("codespace"));
 			interfacePreference(config.resolve("interfaces"));
 			settingsLayout(config.resolve("layout"));
+			moduleRepository(config.resolve("repo"));
 			jsonEdgeCases();
 		} finally {
 			deleteTree(config);
@@ -291,6 +292,65 @@ public final class SelfTest {
 		if (component instanceof java.awt.Container container) {
 			for (java.awt.Component child : container.getComponents()) layOut(child);
 		}
+	}
+
+	/**
+	 * The module repository contract, without the network: the index parses,
+	 * search filters the way the console promises, and a file is only accepted
+	 * when it hashes to what the index pinned.
+	 */
+	private static void moduleRepository(Path config) {
+		String index = """
+			{
+			  "schema": 1,
+			  "name": "Test collection",
+			  "updated": "2026-10-26",
+			  "modules": [
+			    {"id": "auxiliary/audit/alpha", "name": "Alpha audit", "version": "1.0.0",
+			     "category": "audit", "api": 1, "tags": ["audit", "chat"],
+			     "description": "Reviews chat exposure.",
+			     "file": "modules/Alpha.java", "sha256": "%s"},
+			    {"id": "scanner/beta", "name": "Beta scanner", "category": "scanner",
+			     "tags": ["performance"], "description": "Measures capacity.",
+			     "file": "modules/Beta.java", "sha256": "00"},
+			    {"name": "no id, must be dropped", "file": "modules/Nope.java"}
+			  ]
+			}
+			""".formatted(dev.champions.core.repo.ModuleRepositoryClient.sha256("class Alpha {}"));
+
+		dev.champions.core.repo.ModuleIndex parsed = dev.champions.core.repo.ModuleIndex.parse(index);
+		check("repo index parses and drops entries without an id", parsed.entries().size() == 2);
+		check("repo search matches tags", parsed.search(java.util.List.of("chat")).size() == 1
+				&& parsed.search(java.util.List.of("chat")).getFirst().id().equals("auxiliary/audit/alpha"));
+		check("repo search requires every word", parsed.search(java.util.List.of("audit", "chat")).size() == 1
+				&& parsed.search(java.util.List.of("audit", "performance")).isEmpty());
+		check("repo search is case-insensitive", parsed.search(java.util.List.of("BETA")).size() == 1);
+
+		dev.champions.core.repo.RepoEntry entry = parsed.find("auxiliary/audit/alpha").orElseThrow();
+		check("repo accepts a matching file",
+				dev.champions.core.repo.ModuleRepositoryClient.verify(entry, "class Alpha {}"));
+		check("repo rejects a changed file",
+				!dev.champions.core.repo.ModuleRepositoryClient.verify(entry, "class Alpha { }"));
+		check("repo rejects a file when the index pins no hash",
+				!dev.champions.core.repo.ModuleRepositoryClient.verify(
+						parsed.find("scanner/beta").orElseThrow(), "class Beta {}"));
+
+		boolean rejected = false;
+		try {
+			dev.champions.core.repo.ModuleIndex.parse("<html>404</html>");
+		} catch (IllegalArgumentException expected) {
+			rejected = true;
+		}
+		check("repo rejects a non-index document instead of reading it as empty", rejected);
+
+		dev.champions.core.repo.RepoConfig repoConfig = new dev.champions.core.repo.RepoConfig(config);
+		repoConfig.url("https://gitlab.com/group/sub/project.git");
+		check("repo derives the project path from a URL",
+				repoConfig.projectPath().equals("group/sub/project"));
+		check("repo derives the API origin", repoConfig.origin().equals("https://gitlab.com"));
+		repoConfig.token("glpat-abcdefghijklmnop");
+		check("repo masks the token in console output",
+				repoConfig.maskedToken().equals("glpa...mnop"));
 	}
 
 	private static void jsonEdgeCases() {

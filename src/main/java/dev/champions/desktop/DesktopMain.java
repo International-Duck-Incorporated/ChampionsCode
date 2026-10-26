@@ -2,6 +2,8 @@ package dev.champions.desktop;
 
 import dev.champions.api.java.RuntimeJavaCommands;
 import dev.champions.core.console.ChampionConsole;
+import dev.champions.core.repo.ModuleSourceInstaller;
+import dev.champions.core.repo.RepoConfig;
 import dev.champions.core.console.ExploitWarningPrompt;
 import dev.champions.core.module.ModuleContext;
 import dev.champions.core.module.active.ActiveModuleRuntime;
@@ -282,6 +284,27 @@ public final class DesktopMain {
 			() -> raiseWindow("modules"), () -> raiseWindow("modules"), () -> raiseWindow("terminal"),
 			prompt, UpdateService.disabled(), () -> System.exit(0));
 		console.setInterfacePreferences(new FileInterfacePreferences(configDirectory, () -> { }));
+		// `repo install` writes the verified source into the drop-in folder and
+		// lets the same loader that handles hand-dropped files compile it, so a
+		// pulled module and a copied one take exactly the same path.
+		console.setModuleRepository(new RepoConfig(configDirectory), (id, fileName, source) -> {
+			try {
+				Path folder = moduleFolder();
+				Files.createDirectories(folder);
+				Path target = folder.resolve(fileName);
+				Files.writeString(target, source, java.nio.charset.StandardCharsets.UTF_8);
+				StandaloneRuntime.Result result = runtime().reload();
+				if (result.success()) {
+					return ModuleSourceInstaller.Outcome.ok("Installed " + fileName
+							+ (result.moduleIds().isEmpty() ? " into " + folder
+							: "; loaded " + String.join(", ", result.moduleIds())));
+				}
+				return ModuleSourceInstaller.Outcome.failed("Wrote " + fileName + " but it did not load: "
+						+ result.message());
+			} catch (IOException | RuntimeException error) {
+				return ModuleSourceInstaller.Outcome.failed("Could not install " + fileName + ": " + error.getMessage());
+			}
+		});
 		return console;
 	}
 

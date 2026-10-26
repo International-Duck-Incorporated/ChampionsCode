@@ -4,6 +4,23 @@
 
 Nothing yet.
 
+## 0.2.0-beta.3 - 2026-10-26
+
+### Added
+- **`repo` — pull modules from a private collection.** `repo list`,
+  `repo search <words>`, `repo install <id>`, `repo refresh` and
+  `repo config <url>|token|clear`. The client reads `index.json` over the GitLab
+  API with a read-only token, downloads one `.java`, refuses it unless it hashes
+  to the value the index pinned, writes it into the normal drop-in folder and
+  lets the existing loader compile it. Works the same in the desktop app and
+  in the in-game console; only the install target differs. Configuration lives
+  in `repo.properties` (owner-only) and can be overridden by
+  `CHAMPIONS_REPO_URL` / `CHAMPIONS_REPO_REF` / `CHAMPIONS_REPO_TOKEN`.
+- **The collection itself** lives in the private repository
+  `archive-department/championscode-modules`: five modules, `index.json` with
+  pinned hashes, and `tools/build_index.py` to regenerate it from the header
+  block at the top of each module file.
+
 ## 0.2.0-beta.2 - 2026-10-26
 
 ### Fixed

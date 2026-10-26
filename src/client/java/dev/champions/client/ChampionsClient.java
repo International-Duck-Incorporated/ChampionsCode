@@ -18,6 +18,10 @@ import dev.champions.core.console.ExploitWarningPrompt;
 import dev.champions.core.module.net.PlayerIdentityEvents;
 import dev.champions.core.update.UpdateService;
 import net.fabricmc.api.ClientModInitializer;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
@@ -109,6 +113,22 @@ public final class ChampionsClient implements ClientModInitializer {
 		console.registerModule(new ExamplePayloadModule());
 		javaRuntime = new JavaRuntimeManager(configDirectory, contextSupplier, console);
 		javaRuntimeReference.set(javaRuntime);
+		// `repo install` drops the verified source into the same plug-and-play
+		// folder a hand-copied module goes in, then asks the runtime to reload.
+		console.setModuleRepository(new dev.champions.core.repo.RepoConfig(configDirectory),
+			(id, fileName, source) -> {
+				try {
+					Path folder = javaRuntime.moduleFolder();
+					Files.createDirectories(folder);
+					Files.writeString(folder.resolve(fileName), source, StandardCharsets.UTF_8);
+					javaRuntime.submit("modules reload");
+					return dev.champions.core.repo.ModuleSourceInstaller.Outcome.ok(
+						"Installed " + fileName + " into " + folder + "; reloading the module folder.");
+				} catch (IOException | RuntimeException error) {
+					return dev.champions.core.repo.ModuleSourceInstaller.Outcome.failed(
+						"Could not install " + fileName + ": " + error.getMessage());
+				}
+			});
 		String modVersion = FabricLoader.getInstance().getModContainer(MOD_ID)
 			.map(container -> container.getMetadata().getVersion().getFriendlyString())
 			.orElse("unknown");

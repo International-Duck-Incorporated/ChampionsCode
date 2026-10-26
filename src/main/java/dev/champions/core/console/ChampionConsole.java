@@ -14,6 +14,11 @@ import dev.champions.core.module.ModuleRegistry;
 import dev.champions.core.module.ModuleResult;
 import dev.champions.core.module.ResearchModule;
 import dev.champions.core.module.active.ActiveModuleRuntime;
+import dev.champions.core.repo.ModuleIndex;
+import dev.champions.core.repo.ModuleRepositoryClient;
+import dev.champions.core.repo.ModuleSourceInstaller;
+import dev.champions.core.repo.RepoConfig;
+import dev.champions.core.repo.RepoEntry;
 import dev.champions.core.module.active.ActiveResearchModule;
 import dev.champions.core.security.AuditLog;
 import dev.champions.core.security.AuthorizationPolicy;
@@ -58,6 +63,11 @@ public final class ChampionConsole {
 	private long lineSequence;
 	private volatile java.util.function.Supplier<ClientCapabilities> capabilitiesSupplier = () -> null;
 	private volatile InterfacePreferences interfaces = InterfacePreferences.unavailable();
+	private final Path configDirectory;
+	/** Module repository state: config file, cached index, install target. */
+	private volatile RepoConfig repoConfig;
+	private volatile ModuleSourceInstaller moduleInstaller = ModuleSourceInstaller.disabled();
+	private volatile ModuleIndex repoIndex;
 	private ResearchModule activeModule;
 	private String runningModuleId;
 	private String approvedExploitRunModuleId;
@@ -128,6 +138,7 @@ public final class ChampionConsole {
 		this.exploitWarningPrompt = exploitWarningPrompt == null ? ExploitWarningPrompt.unavailable() : exploitWarningPrompt;
 		this.updateService = updateService == null ? UpdateService.disabled() : updateService;
 		this.closeUi = closeUi == null ? () -> {} : closeUi;
+		this.configDirectory = configDirectory;
 		this.authorization = new AuthorizationPolicy(configDirectory);
 		this.audit = new AuditLog(configDirectory);
 		banner();
@@ -152,6 +163,16 @@ public final class ChampionConsole {
 	}
 
 	/** Host bridge for the {@code interfaces} command (in-game window vs external app). */
+	/** Points the console at a module repository and the front end that installs into it. */
+	public void setModuleRepository(RepoConfig config, ModuleSourceInstaller installer) {
+		this.repoConfig = config;
+		if (installer != null) this.moduleInstaller = installer;
+	}
+
+	public void setModuleSourceInstaller(ModuleSourceInstaller installer) {
+		if (installer != null) this.moduleInstaller = installer;
+	}
+
 	public void setInterfacePreferences(InterfacePreferences preferences) {
 		this.interfaces = preferences == null ? InterfacePreferences.unavailable() : preferences;
 	}
@@ -212,6 +233,7 @@ public final class ChampionConsole {
 				case "categorygui", "windowgui", "panelgui" -> openCategoryGui.run();
 				case "logs", "log", "logviewer", "logview" -> openLogViewer.run();
 				case "interfaces", "interface", "ui" -> interfaces(args);
+				case "repo", "registry" -> repo(args);
 				case "banner" -> banner();
 				case "clear" -> lines.clear();
 				case "show" -> show(args);
@@ -411,6 +433,7 @@ public final class ChampionConsole {
 				add(ConsoleLine.info("  clickgui | categorygui | logs | show modules|exploits | search <text> | use <module> | info | back"));
 				add(ConsoleLine.info("  show options | set <name> <value> | unset <name> | run"));
 				add(ConsoleLine.info("  interfaces | interfaces both|external|in-game | interfaces reload"));
+				add(ConsoleLine.info("  repo status | list | search <words> | install <module> | config <url>"));
 				add(ConsoleLine.info("  authorize current | deauthorize current | show targets"));
 				add(ConsoleLine.info("  update check | update download <version>"));
 				add(ConsoleLine.info("  status | reload | clear | banner | exit"));
@@ -431,6 +454,7 @@ public final class ChampionConsole {
 				add(ConsoleLine.info("  logs - open the live game log window with search"));
 				add(ConsoleLine.info("  authorize current - authorize the connected server in game"));
 				add(ConsoleLine.info("  help console - command reference | help java - runtime Java reference"));
+				add(ConsoleLine.info("  repo search <words> - pull a module from your private repository"));
 				add(ConsoleLine.muted("  Modules remain authorization-gated and audited."));
 			}
 		}
@@ -570,6 +594,186 @@ public final class ChampionConsole {
 	 * {@code interfaces ingame on|off}, {@code interfaces spawn on|off},
 	 * {@code interfaces reload}.
 	 */
+	// ---- module repository -------------------------------------------------
+
+	/**
+	 * {@code repo} — search a private module repository and pull module sources
+	 * out of it.
+	 *
+	 * <p>Fetching is read-only and every installed file must hash to the value
+	 * the index pinned, so a swapped file is refused before it can be compiled.
+	 * Installation is never automatic: {@code repo install} is the only path, and
+	 * the warning it prints is the truth — the fetched code is compiled and
+	 * loaded into this client, and the authorization gate covers running a
+	 * module against a server, not loading it.</p>
+	 */
+	private void repo(List<String> args) {
+		RepoConfig config = repoConfig();
+		if (config == null) {
+			add(ConsoleLine.error("Module repository is unavailable in this front end."));
+			return;
+		}
+		String action = args.size() > 1 ? args.get(1).toLowerCase(Locale.ROOT) : "status";
+		try {
+			switch (action) {
+				case "status" -> repoStatus(config);
+				case "config" -> repoConfig(args, config);
+				case "refresh" -> {
+					repoIndex = null;
+					ModuleIndex index = new ModuleRepositoryClient(config).index();
+					repoIndex = index;
+					add(ConsoleLine.success("Repository index refreshed: " + index.entries().size()
+							+ " module(s) from " + config.projectPath() + "@" + config.ref()));
+				}
+				case "list", "all" -> repoList(config, List.of());
+				case "search", "find" -> {
+					List<String> words = args.subList(Math.min(2, args.size()), args.size());
+					repoList(config, words);
+				}
+				case "install", "add", "pull" -> repoInstall(config, args);
+				case "help" -> repoHelp();
+				default -> add(ConsoleLine.error("Unknown repo command '" + args.get(1)
+						+ "'. Try: repo status | list | search <words> | install <id> | config"));
+			}
+		} catch (IOException error) {
+			add(ConsoleLine.error("Repository: " + safeMessage(error)));
+		}
+	}
+
+	private RepoConfig repoConfig() {
+		RepoConfig config = repoConfig;
+		if (config != null) return config;
+		Path directory = configDirectory;
+		if (directory == null) return null;
+		config = new RepoConfig(directory);
+		repoConfig = config;
+		return config;
+	}
+
+	private void repoHelp() {
+		add(ConsoleLine.accent("Module repository"));
+		add(ConsoleLine.info("  repo status                    where the repository is and how many modules it has"));
+		add(ConsoleLine.info("  repo list                      every module in the index"));
+		add(ConsoleLine.info("  repo search <words>            filter by id, name, description or tag"));
+		add(ConsoleLine.info("  repo install <id>              download, verify and load one module"));
+		add(ConsoleLine.info("  repo refresh                   drop the cached index and re-read it"));
+		add(ConsoleLine.info("  repo config <url> [ref]        point at a GitLab project (private)"));
+		add(ConsoleLine.info("  repo config token <token>      store a read-only token for it"));
+		add(ConsoleLine.info("  repo config clear              forget the repository and token"));
+		add(ConsoleLine.warning("Installed modules are compiled and loaded as plain Java. The authorization"
+				+ " gate covers running one against a server, not loading it."));
+		add(ConsoleLine.muted("  Token can also come from CHAMPIONS_REPO_TOKEN; it is written owner-only."));
+	}
+
+	private void repoStatus(RepoConfig config) {
+		add(ConsoleLine.accent("Module repository"));
+		add(ConsoleLine.info("  location   " + (config.isConfigured() ? config.url() : "not configured")));
+		add(ConsoleLine.info("  project    " + (config.isConfigured() ? config.describe() : "-")));
+		add(ConsoleLine.info("  settings   " + config.file()));
+		if (!config.isConfigured()) {
+			add(ConsoleLine.muted("  Point it at a private repository with: repo config https://gitlab.com/group/project"));
+			return;
+		}
+		ModuleIndex index = repoIndex;
+		add(ConsoleLine.info("  index      " + (index == null
+				? "not fetched yet (repo list fetches it)"
+				: index.entries().size() + " module(s)"
+					+ (index.updated().isBlank() ? "" : ", updated " + index.updated()))));
+	}
+
+	private void repoConfig(List<String> args, RepoConfig config) throws IOException {
+		if (args.size() < 3) {
+			add(ConsoleLine.info("  repo config <url> [ref]   |   repo config token <token>   |   repo config clear"));
+			return;
+		}
+		String subject = args.get(2);
+		if (subject.equalsIgnoreCase("clear")) {
+			config.url("");
+			config.token("");
+			config.ref("main");
+			config.save();
+			repoIndex = null;
+			add(ConsoleLine.success("Module repository cleared."));
+			return;
+		}
+		if (subject.equalsIgnoreCase("token")) {
+			if (args.size() < 4) {
+				add(ConsoleLine.error("Usage: repo config token <token>"));
+				return;
+			}
+			config.token(args.get(3));
+			config.save();
+			add(ConsoleLine.success("Token stored (" + config.maskedToken() + ") in " + config.file() + "."));
+			return;
+		}
+		config.url(subject);
+		if (args.size() > 3) config.ref(args.get(3));
+		config.save();
+		repoIndex = null;
+		add(ConsoleLine.success("Module repository set to " + config.describe() + "."));
+		add(ConsoleLine.muted("  Fetch it with: repo list"));
+	}
+
+	private void repoList(RepoConfig config, List<String> words) throws IOException {
+		ModuleIndex index = repoIndex;
+		if (index == null) {
+			index = new ModuleRepositoryClient(config).index();
+			repoIndex = index;
+		}
+		List<RepoEntry> matches = index.search(words);
+		add(ConsoleLine.accent(words.isEmpty() ? "Repository modules" : "Repository search: " + String.join(" ", words)));
+		if (matches.isEmpty()) {
+			add(ConsoleLine.muted("  No module matches." + (index.entries().isEmpty() ? " The index is empty." : "")));
+			return;
+		}
+		for (RepoEntry entry : matches) {
+			add(ConsoleLine.info("  " + entry.id() + "  " + entry.name()
+					+ (entry.version().isBlank() ? "" : "  v" + entry.version())));
+			if (!entry.description().isBlank()) add(ConsoleLine.muted("      " + entry.description()));
+		}
+		add(ConsoleLine.muted("  " + matches.size() + " of " + index.entries().size()
+				+ " module(s). Install with: repo install <id>"));
+	}
+
+	private void repoInstall(RepoConfig config, List<String> args) throws IOException {
+		if (args.size() < 3) {
+			add(ConsoleLine.error("Usage: repo install <module-id>. List them with repo list."));
+			return;
+		}
+		String wanted = args.get(2);
+		ModuleIndex index = repoIndex;
+		ModuleRepositoryClient client = new ModuleRepositoryClient(config);
+		if (index == null) {
+			index = client.index();
+			repoIndex = index;
+		}
+		RepoEntry entry = index.find(wanted).orElse(null);
+		if (entry == null) {
+			add(ConsoleLine.error("No module '" + wanted + "' in the repository. Try: repo search " + wanted));
+			return;
+		}
+		if (entry.sha256().isBlank()) {
+			add(ConsoleLine.error("'" + entry.id() + "' has no sha256 in the index; refusing to install unverifiable code."));
+			return;
+		}
+		String source = client.source(entry);
+		if (!ModuleRepositoryClient.verify(entry, source)) {
+			add(ConsoleLine.error("Checksum mismatch for " + entry.id() + " — the file does not match the index."));
+			add(ConsoleLine.muted("  expected " + entry.sha256()));
+			add(ConsoleLine.muted("  actual   " + ModuleRepositoryClient.sha256(source)));
+			return;
+		}
+		add(ConsoleLine.info("Verified " + entry.id() + " (sha256 " + entry.sha256().substring(0, 12) + "…)"));
+		String fileName = entry.file().substring(entry.file().lastIndexOf('/') + 1);
+		ModuleSourceInstaller.Outcome outcome = moduleInstaller.install(entry.id(), fileName, source);
+		if (outcome.ok()) {
+			add(ConsoleLine.success(outcome.message()));
+			add(ConsoleLine.muted("  Run it with: use " + entry.id() + ", then authorize and set CONFIRM."));
+		} else {
+			add(ConsoleLine.error(outcome.message()));
+		}
+	}
+
 	private void interfaces(List<String> args) {
 		InterfacePreferences preferences = interfaces;
 		if (args.size() == 1) {
