@@ -4,6 +4,40 @@
 
 Nothing yet.
 
+## 0.2.0-beta.15 - 2026-10-26
+
+### Added
+Four modules that turn the command surface into an inventory, and eight more plugin
+families in the review table. All four read the tree the server already sent this
+account and send nothing.
+
+- `auxiliary/scanner/plugin_fingerprint` — names the plugin families the advertised
+  roots point at, lists which of them the exploit catalogue has entries for, and
+  hashes the sorted roots so two scans of one server compare equal and a changed
+  surface does not. That makes "what changed since the last audit" a diff of two
+  fingerprints instead of a memory test.
+- `auxiliary/audit/admin_command_exposure` — classifies the tree into authority, code,
+  moderation, world, player and disclosure capabilities, and reports which this
+  account was offered. A root in the tree is usually a root the server believes the
+  account may run; the ones that should not be there are either a permission mistake
+  or a plugin that never filtered its tree, and both matter.
+- `auxiliary/audit/alias_shadowing` — reports bare names claimed by more than one
+  provider, vanilla names a plugin now answers, and duplicate subcommand literals.
+  Registration order is a server-side fact, so it reports that a contest exists
+  rather than guessing the winner.
+- `auxiliary/audit/client_trust_posture` — offline mode, platform brand, protocol
+  self-description and resource-pack policy, each with what it does and does not
+  establish. Offline mode is the one that changes what every other finding means.
+
+`PluginRiskReviewModule` gained LuckPerms, PlaceholderAPI, Plan, Dynmap, LiteBans,
+Simple Voice Chat, AuthMe and CMI profiles (16 to 24 families), and its profile table
+is now shared with the fingerprint module so the two name a family the same way.
+
+### Kept honest
+Every one of these reports absence as absence of evidence, not evidence of absence:
+the tree is filtered by permission for the account that asked for it, and each module
+says so in the finding that would otherwise read as a clean bill of health.
+
 ## 0.2.0-beta.14 - 2026-10-26
 
 ### Fixed

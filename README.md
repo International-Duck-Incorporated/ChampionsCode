@@ -117,7 +117,7 @@ Included modules:
 | `auxiliary/lookup/player_identity` | Resolves one username or UUID via Mojang's public profile API (current name, dashed UUID, skin/cape textures). Contacts only Mojang endpoints, never the connected server. |
 | `auxiliary/audit/connection_posture` | Reviews passive session and transport indicators. |
 | `auxiliary/audit/plugin_surface` | Inventories command roots advertised to the current player. It does not execute them or claim conclusive plugin detection. |
-| `auxiliary/audit/plugin_risk_review` | Maps advertised roots to non-conclusive defensive review profiles without sending commands. |
+| `auxiliary/audit/plugin_risk_review` | Maps advertised roots to non-conclusive defensive review profiles without sending commands. 24 plugin families, including LuckPerms, PlaceholderAPI, Plan, Dynmap, LiteBans, Simple Voice Chat, AuthMe and CMI. |
 | `auxiliary/audit/dependency_posture` | Reviews a bounded administrator-supplied `name@version` inventory for missing pins, conflicts, and moving builds. |
 | `auxiliary/audit/chat_normalization` | Canonicalizes one local sample for defensive filter testing without generating bypass variants or sending chat. |
 | `auxiliary/audit/chat_game_fairness` | Classifies one supplied game prompt and reports automation exposure without solving or answering it. |
@@ -130,7 +130,11 @@ Included modules:
 | `auxiliary/audit/client_resilience` | Warns about packet-rate bursts, custom-payload concentration, connection errors, and timeline pressure. |
 | `auxiliary/observe/motion_evidence` | Passively summarizes broad remote-player motion evidence without verdicts, reporting, or punishment. |
 | `auxiliary/exploits/example_preflight` | Drop-in example for the exploit folder: passively reviews the session snapshot and sends nothing. |
-| `auxiliary/payloads/example_plan` | Drop-in example for the payload folder: builds bounded payload variants in memory and reports the plan without dispatching. |
+| `auxiliary/payloads/example_plan` | Drop-in example for the payload folder: a payload-tier module that declares one audit artifact, writes the plan into the audit folder, and sends nothing. |
+| `auxiliary/scanner/plugin_fingerprint` | Names the plugin families the advertised command surface points at, matches them against the review profiles and the exploit catalogue, and hashes the surface so two scans can be compared. |
+| `auxiliary/audit/admin_command_exposure` | Classifies the command tree the server offered this account into capability groups (authority, code, moderation, world, player, disclosure) and names which were in it. Sends nothing. |
+| `auxiliary/audit/alias_shadowing` | Reports bare command names claimed by more than one provider, vanilla names a plugin now answers, and duplicate subcommand literals. It cannot see registration order, and says so. |
+| `auxiliary/audit/client_trust_posture` | Summarises authentication, platform, protocol and resource-pack facts the server already shared, and what each does and does not establish. |
 
 ### Game log viewer
 

@@ -18,7 +18,7 @@ import java.util.Set;
  * A root match is only a lead: aliases can be shared, hidden, or reassigned.
  */
 public final class PluginRiskReviewModule implements ResearchModule {
-	private static final List<Profile> PROFILES = List.of(
+	static final List<Profile> PROFILES = List.of(
 		new Profile("BlueMap", Set.of("bluemap"),
 			"Verify the build against upstream releases, restrict web-map administration, and review outbound network and database settings."),
 		new Profile("BungeeGuard or proxy authentication", Set.of("bungeeguard", "authme"),
@@ -37,6 +37,22 @@ public final class PluginRiskReviewModule implements ResearchModule {
 			"Check the exact release against upstream advisories and constrain unnecessary outbound URL access at the host or network layer."),
 		new Profile("MythicMobs", Set.of("mythicmobs", "mythic", "mobs", "mm"),
 			"Use a current trusted build and review imported packs, serialization boundaries, and administrator-only loading paths."),
+		new Profile("LiteBans", Set.of("litebans", "bans", "hist"),
+			"Keep the database account to least privilege, protect the web front end, and review who may run history lookups."),
+		new Profile("LuckPerms", Set.of("lp", "luckperms", "permissions", "perms"),
+			"Protect the web editor and its session links, restrict who may change nodes, and review default group inheritance regularly."),
+		new Profile("PlaceholderAPI", Set.of("papi", "placeholderapi", "ecloud"),
+			"Treat expansion installation as code deployment: only install reviewed expansions, and never let an untrusted group run ecloud commands."),
+		new Profile("Plan (player analytics)", Set.of("plan", "planbungee", "planvelocity"),
+			"Keep the web panel off the public internet, update it with the server, and review which roles may query player data."),
+		new Profile("Dynmap", Set.of("dynmap", "dmap"),
+			"Restrict the web port, disable the internal web server if a proxy serves it, and update with the server."),
+		new Profile("Simple Voice Chat", Set.of("voicechat", "svc"),
+			"Confirm the UDP port is reachable only where intended and keep the plugin version aligned with the client voice mod."),
+		new Profile("AuthMe", Set.of("authme", "auth", "login", "register"),
+			"Use a current build, review the registration and login SQL paths, and never expose the plugin's database account beyond its schema."),
+		new Profile("CMI", Set.of("cmi"),
+			"Review custom command aliases, the economy database account, and which groups may create or edit aliases."),
 		new Profile("ProtocolLib", Set.of("protocollib", "plib"),
 			"Keep it aligned with the server version and audit dependent plugins that parse or create protocol data."),
 		new Profile("QuickShop", Set.of("quickshop", "qs"),
@@ -52,6 +68,9 @@ public final class PluginRiskReviewModule implements ResearchModule {
 		new Profile("WorldGuard", Set.of("worldguard", "wg"),
 			"Use a current build, protect region configuration from untrusted edits, and review reload permissions and parser dependencies.")
 	);
+
+	/** The profile table, so the fingerprint module names families the same way. */
+	static List<Profile> profiles() { return PROFILES; }
 
 	@Override public String id() { return "auxiliary/audit/plugin_risk_review"; }
 	@Override public String name() { return "Plugin risk review"; }
@@ -146,6 +165,6 @@ public final class PluginRiskReviewModule implements ResearchModule {
 		return cleaned.length() <= max ? cleaned : cleaned.substring(0, max);
 	}
 
-	private record Profile(String name, Set<String> roots, String recommendation) {}
+	record Profile(String name, Set<String> roots, String recommendation) {}
 	private record ProfileMatch(Profile profile, List<String> roots) {}
 }

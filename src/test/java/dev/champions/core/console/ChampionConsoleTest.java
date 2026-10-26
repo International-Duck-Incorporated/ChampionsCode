@@ -48,12 +48,17 @@ class ChampionConsoleTest {
 		console.submit("categorygui");
 		assertTrue(openedList.get());
 		assertTrue(openedCategories.get());
-		assertEquals(21, console.moduleViews().size());
+		assertEquals(25, console.moduleViews().size());
 		List<String> ids = console.moduleViews().stream().map(ChampionConsole.ModuleView::id).toList();
 		assertTrue(ids.contains("auxiliary/payloads/chat_reach_proof"));
 		// Ported from the old exploit addon: a check tier and a payload tier.
 		assertTrue(ids.contains("auxiliary/audit/plugin_exploit_surface"));
 		assertTrue(ids.contains("auxiliary/payloads/poc_artifact"));
+		// Discovery tier: what is installed, who may run it, and which names collide.
+		assertTrue(ids.contains("auxiliary/scanner/plugin_fingerprint"));
+		assertTrue(ids.contains("auxiliary/audit/admin_command_exposure"));
+		assertTrue(ids.contains("auxiliary/audit/alias_shadowing"));
+		assertTrue(ids.contains("auxiliary/audit/client_trust_posture"));
 		assertEquals(ids.stream().sorted().toList(), ids);
 		assertTrue(console.selectModuleFromUi("auxiliary/scanner/chat_plugin_enumerator"));
 		assertNotNull(console.activeModuleView());
@@ -119,11 +124,11 @@ class ChampionConsoleTest {
 
 	@Test void runtimeModulesAreAtomicallyAddedReplacedAndRemoved() {
 		ChampionConsole console = new ChampionConsole(temp, ChampionConsoleTest::context);
-		assertEquals(21, console.moduleViews().size());
+		assertEquals(25, console.moduleViews().size());
 
 		String id = "auxiliary/custom/dynamic_example";
 		console.replaceExternalModules(List.of(), List.of(new TestModule(id)));
-		assertEquals(22, console.moduleViews().size());
+		assertEquals(26, console.moduleViews().size());
 		assertTrue(console.selectModuleFromUi(id));
 		assertNotNull(console.activeModuleView());
 
@@ -137,7 +142,7 @@ class ChampionConsoleTest {
 		assertNull(console.activeModuleView());
 		assertTrue(console.moduleViews().stream().anyMatch(module -> module.id().equals(id)));
 		console.replaceExternalModules(List.of(id), List.of());
-		assertEquals(21, console.moduleViews().size());
+		assertEquals(25, console.moduleViews().size());
 	}
 
 	@Test void staleExploitWarningCannotRunAHotReloadedModuleWithTheSameId() {

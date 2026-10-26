@@ -183,6 +183,12 @@ public final class SelfTest {
 			dev.champions.core.console.ExploitWarningPrompt.unavailable(), UpdateService.disabled(), () -> {});
 		console.submit("show modules");
 		check("console lists builtins", contains(console, "auxiliary/audit/plugin_surface"));
+		check("discovery modules ship in the jar",
+			java.util.Set.of("auxiliary/scanner/plugin_fingerprint",
+					"auxiliary/audit/admin_command_exposure",
+					"auxiliary/audit/alias_shadowing",
+					"auxiliary/audit/client_trust_posture").stream()
+				.allMatch(id -> console.moduleViews().stream().anyMatch(view -> view.id().equals(id))));
 		console.submit("use auxiliary/audit/plugin_surface");
 		console.submit("set CONFIRM I_HAVE_AUTHORIZATION");
 		console.submit("run");

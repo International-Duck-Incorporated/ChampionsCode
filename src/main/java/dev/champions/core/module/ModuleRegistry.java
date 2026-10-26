@@ -63,6 +63,13 @@ public final class ModuleRegistry {
 		register(new MotionEvidenceModule());
 		register(new ServerPingModule());
 		register(new PlayerIdentityModule());
+		// Discovery and exposure, all read from the command surface the server
+		// already sent: what is installed, who can run what, and which names are
+		// claimed by more than one provider.
+		register(new dev.champions.core.module.builtin.PluginFingerprintModule());
+		register(new dev.champions.core.module.builtin.AdminCommandExposureModule());
+		register(new dev.champions.core.module.builtin.AliasShadowingModule());
+		register(new dev.champions.core.module.builtin.ClientTrustPostureModule());
 	}
 
 	public synchronized void register(ResearchModule module) {
