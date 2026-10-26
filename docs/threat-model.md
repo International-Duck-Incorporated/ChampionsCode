@@ -25,7 +25,7 @@ actively trying to defeat it, and it does not make a hostile payload safe.
 | fixtures | yes, for what they model | they are this build's code; their fidelity is declared and reported |
 | payload providers (`PortedPayloads`) | **partly** | first-party, but *trusted to be pure*: see "planned, not solved" below |
 | mechanisms | **partly** | they run inside the fixture boundary; their success claims are cross-checked, not believed |
-| third-party Java modules (`mods/`) | no | they are user code; the gate stands between them and every effect |
+| third-party Java modules (`mods/`) | no | user code compiled and loaded into the game process; it is **not** sandboxed and the gate is **not** between it and an effect: a drop-in module can call the filesystem, the network or the game API directly. The gate governs the modules this build ships, not code you drop in. Only load files you wrote or reviewed, and review them again after every change |
 | a modified jar | no | see "what the gate cannot do" |
 | the JVM / reflection | no | out of scope by construction |
 

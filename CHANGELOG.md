@@ -4,6 +4,38 @@
 
 Nothing yet.
 
+## 0.2.0-beta.17 - 2026-10-26
+
+### Added
+- **Every catalogued plugin now carries a version verdict.** `CatalogApplicability`
+  answers, for each of the 18 entries, what it applies to, which version fixed it,
+  the newest upstream release seen, the date of the check and what the check rests
+  on. The table is printed by `show exploits`, attached to each finding from
+  `auxiliary/audit/plugin_exploit_surface`, and prepended to every artifact
+  `auxiliary/payloads/poc_artifact` writes, so a file read months later still says
+  which builds it describes.
+- 15 tests and 4 self-test checks. `CatalogApplicabilityTest` asserts the verdict
+  table covers exactly the catalogue, that every verdict is dated, and that a fixed
+  or obsolete entry names the version that ended it. `PocArtifactApplicabilityTest`
+  writes real files into a temporary audit folder and reads them back: the header
+  is there, the catalogued body is unchanged, revert removes the file, and no entry
+  that is fixed upstream can still write an artifact at all.
+
+### Changed
+- **Geyser's player-head URL fetch is marked FIXED, not open.** It affects
+  `<= 2.9.2` and is patched in `2.9.3` (CVE-2026-42188 / GHSA-xcfg-fcr5-gw9r).
+  The entry stays in the catalogue as knowledge; a server at or above 2.9.3 will
+  not reproduce it, and the finding says so instead of implying a live bug.
+- **WorldEdit's schematic entry is marked OBSOLETE** (`< 7.4.4`, fixed `7.4.4`,
+  7.4.5 current). It has no artifact and is kept so the name is recognised rather
+  than silently dropped.
+- MythicMobs stays `UNVERIFIED` with the newest release seen (5.13.0): no advisory
+  was confirmed for the deserialisation path, and the entry says "not confirmed"
+  rather than borrowing the confidence of the checked ones.
+- `docs/threat-model.md` now states the actual boundary for drop-in Java modules:
+  they are unrestricted user code inside the game process, and the gate governs
+  the modules this build ships, not code you drop in.
+
 ## 0.2.0-beta.16 - 2026-10-26
 
 ### Added

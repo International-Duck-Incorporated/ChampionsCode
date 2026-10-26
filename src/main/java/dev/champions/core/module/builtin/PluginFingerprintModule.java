@@ -107,10 +107,19 @@ public final class PluginFingerprintModule implements ResearchModule {
 		}
 
 		for (Map.Entry<String, List<String>> entry : catalogued.entrySet()) {
-			findings.add(new Finding(Finding.Severity.INFO, "Catalogued plugins detected: " + entry.getKey(),
-				"Entries: " + String.join(", ", entry.getValue()) + ".",
-				"Run 'use auxiliary/audit/plugin_exploit_surface' with this surface to read what each entry says "
-					+ "about the bug class, and reproduce nothing until you are authorized to."));
+			List<String> stale = entry.getValue().stream()
+				.filter(id -> dev.champions.core.catalog.CatalogApplicability.forEntry(id)
+					.map(dev.champions.core.catalog.CatalogApplicability.Applicability::patchedInCurrentBuilds)
+					.orElse(false))
+				.toList();
+			findings.add(new Finding(stale.isEmpty() ? Finding.Severity.INFO : Finding.Severity.LOW,
+				"Catalogued plugins detected: " + entry.getKey(),
+				"Entries: " + String.join(", ", entry.getValue()) + "."
+					+ (stale.isEmpty() ? "" : " Of these, " + String.join(", ", stale)
+						+ " no longer reproduce on a current build; the catalogue still knows them by name."),
+				stale.isEmpty()
+					? "Run 'use auxiliary/audit/plugin_exploit_surface' for the mechanism behind each entry."
+					: "Read the version verdict before treating a match as a finding."));
 		}
 
 		if (families.isEmpty() && catalogued.isEmpty()) {

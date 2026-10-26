@@ -553,6 +553,20 @@ public final class SelfTest {
 			dev.champions.core.catalog.ExploitCatalog.match(java.util.List.of("bukkit:plugins")).isEmpty());
 		check("catalog stays quiet on a vanilla surface",
 			dev.champions.core.catalog.ExploitCatalog.match(java.util.List.of("help", "list", "me")).isEmpty());
+		check("every catalogued entry has a version verdict",
+			dev.champions.core.catalog.CatalogApplicability.all().keySet().equals(
+				dev.champions.core.catalog.ExploitCatalog.entries().stream().map(e -> e.id())
+					.collect(java.util.stream.Collectors.toSet())));
+		check("every version verdict is dated",
+			dev.champions.core.catalog.CatalogApplicability.all().values().stream()
+				.allMatch(a -> a.checkedOn().matches("\\d{4}-\\d{2}-\\d{2}")));
+		check("fixed entries name the version that fixed them",
+			dev.champions.core.catalog.CatalogApplicability.all().values().stream()
+				.filter(a -> a.status() == dev.champions.core.catalog.CatalogApplicability.Status.FIXED
+					|| a.status() == dev.champions.core.catalog.CatalogApplicability.Status.OBSOLETE)
+				.allMatch(a -> !a.fixedIn().isBlank()));
+		check("the catalogue reports what no longer reproduces",
+			!dev.champions.core.catalog.CatalogApplicability.notReproducibleOnCurrentBuilds().isEmpty());
 		check("catalog has no duplicate ids",
 			dev.champions.core.catalog.ExploitCatalog.entries().stream().map(e -> e.id()).distinct().count()
 				== dev.champions.core.catalog.ExploitCatalog.entries().size());

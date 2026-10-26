@@ -1,5 +1,7 @@
 package dev.champions.core.console;
 
+import dev.champions.core.catalog.CatalogApplicability;
+import dev.champions.core.catalog.ExploitCatalog;
 import dev.champions.core.log.Log;
 import dev.champions.core.mc.ClientCapabilities;
 import dev.champions.core.mc.VersionGated;
@@ -496,6 +498,22 @@ public final class ChampionConsole {
 				registry.all().stream().filter(ExploitResearchModule.class::isInstance)
 					.forEach(module -> add(ConsoleLine.warning("  " + module.id() + " - " + module.name())));
 				add(ConsoleLine.muted("Opening the workspace and every module run require separate legal-risk acknowledgement."));
+				add(ConsoleLine.accent("  Catalogue: " + ExploitCatalog.entries().size() + " mechanisms"));
+				List<String> stale = CatalogApplicability.notReproducibleOnCurrentBuilds();
+				if (stale.isEmpty()) {
+					add(ConsoleLine.muted("  No entry is known to be fixed upstream yet."));
+				} else {
+					// The point of the verdict table: the catalogue contains entries that
+					// describe the past, and a run that finds nothing on a current build is
+					// not evidence of a secure server.
+					add(ConsoleLine.warning("  No longer reproducible on current builds: " + String.join(", ", stale)));
+					for (String id : stale) {
+						CatalogApplicability.Applicability verdict = CatalogApplicability.forEntry(id).orElseThrow();
+						add(ConsoleLine.muted("    " + id + " - " + verdict.affected()
+							+ (verdict.fixedIn().isBlank() ? "" : " fixed in " + verdict.fixedIn())
+							+ " (checked " + verdict.checkedOn() + ")"));
+					}
+				}
 			}
 			case "options" -> showOptions();
 			case "targets" -> {

@@ -2,6 +2,7 @@ package dev.champions.core.module.builtin;
 
 import dev.champions.core.catalog.ArtifactFolderAware;
 import dev.champions.core.catalog.AuditFolder;
+import dev.champions.core.catalog.CatalogApplicability;
 import dev.champions.core.catalog.ExploitCatalog;
 import dev.champions.core.module.EvidenceNode;
 import dev.champions.core.module.Finding;
@@ -104,7 +105,15 @@ public final class PocArtifactModule implements PayloadModule, ArtifactFolderAwa
 					"Existing files are left alone unless you say otherwise."))));
 		}
 
-		AuditFolder.Written written = folder.write(fileName, entry.artifact());
+		// The artifact carries its own shelf life. An operator who reads a file out of
+		// the audit folder months later needs to know whether the bug it describes is
+		// still there on the build they are testing, and this build's own answer to
+		// that question travels with the file.
+		CatalogApplicability.Applicability applicability =
+			CatalogApplicability.forEntry(entry.id()).orElse(null);
+		String body = applicability == null ? entry.artifact()
+			: header(applicability, entry) + entry.artifact();
+		AuditFolder.Written written = folder.write(fileName, body);
 		if (!written.ok()) return failed(written.message());
 
 		List<Finding> findings = List.of(
@@ -114,6 +123,16 @@ public final class PocArtifactModule implements PayloadModule, ArtifactFolderAwa
 			new Finding(Finding.Severity.INFO, "What this artifact is for",
 				"Reproducing " + entry.plugin() + " on a server you are authorized to test.",
 				entry.caveats()),
+			new Finding(applicability != null && applicability.patchedInCurrentBuilds()
+					? Finding.Severity.MEDIUM : Finding.Severity.INFO,
+				applicability == null ? "Version applicability unknown" : "Applies to: " + applicability.status(),
+				applicability == null ? "This entry has no version verdict in this build."
+					: applicability.describe(),
+				applicability != null && applicability.patchedInCurrentBuilds()
+					? "Do not run this against a server at or above " + applicability.fixedIn()
+						+ ". The artifact is written, because the history is worth keeping; the finding is that it "
+						+ "no longer reproduces on a current build."
+					: "Check the target's version before treating a null result as a failed test."),
 			new Finding(Finding.Severity.INFO, "How to undo this run",
 				"Set REVERT true and run again, or delete the file.",
 				"Nothing outside the audit folder was touched."));
@@ -122,7 +141,7 @@ public final class PocArtifactModule implements PayloadModule, ArtifactFolderAwa
 			EvidenceNode.group("Artifact", List.of(
 				EvidenceNode.observed("File", fileName, "Bare name inside the audit folder only."),
 				EvidenceNode.observed("Location", folder.describe(), "Fixed when the console was built."),
-				EvidenceNode.observed("Bytes", Integer.toString(entry.artifact().getBytes(java.nio.charset.StandardCharsets.UTF_8).length),
+				EvidenceNode.observed("Bytes", Integer.toString(body.getBytes(java.nio.charset.StandardCharsets.UTF_8).length),
 					"Ceiling is " + PayloadSafety.maximumArtifactBytes() + " bytes."),
 				EvidenceNode.observed("Catalogued entry", entry.id() + " (" + entry.plugin() + ")",
 					"Mechanism and caveats come from the catalogue, not from this run."))),
@@ -133,6 +152,27 @@ public final class PocArtifactModule implements PayloadModule, ArtifactFolderAwa
 
 		return CompletableFuture.completedFuture(
 			new ModuleResult("Wrote " + fileName + " for " + entry.plugin(), findings, evidence));
+	}
+
+	/**
+	 * The lines prepended to every artifact: what it applies to, what fixed it, and
+	 * when that was checked. Plain text on purpose -- the artifact is read by a
+	 * person, and a comment syntax would only work for some of the file types.
+	 */
+	private static String header(CatalogApplicability.Applicability applicability, ExploitCatalog.Entry entry) {
+		String rule = "-".repeat(70);
+		return rule + "\n"
+			+ "ChampionsCode applicability: " + entry.plugin() + " / " + entry.id() + "\n"
+			+ "Status: " + applicability.status() + "\n"
+			+ applicability.describe() + "\n"
+			+ "Affected: " + applicability.affected()
+			+ (applicability.fixedIn().isBlank() ? "" : " | Fixed in: " + applicability.fixedIn())
+			+ " | Latest seen: " + applicability.latestSeen() + "\n"
+			+ "Checked: " + applicability.checkedOn()
+			+ (applicability.evidence().isBlank() ? "" : " | Basis: " + applicability.evidence())
+			+ "\n"
+			+ "This is a statement about versions, not about the server in front of you.\n"
+			+ rule + "\n\n";
 	}
 
 	private CompletionStage<ModuleResult> revertRun(ExploitCatalog.Entry entry, String fileName) {
