@@ -12,6 +12,7 @@ import dev.champions.core.module.builtin.DependencyPostureModule;
 import dev.champions.core.module.builtin.ExploitResearchWorkspaceModule;
 import dev.champions.core.module.builtin.MotionEvidenceModule;
 import dev.champions.core.module.builtin.PlayerIdentityModule;
+import dev.champions.core.module.builtin.FixtureReproductionModule;
 import dev.champions.core.module.builtin.PluginExploitSurfaceModule;
 import dev.champions.core.module.builtin.PluginRiskReviewModule;
 import dev.champions.core.module.builtin.PocArtifactModule;
@@ -47,6 +48,8 @@ public final class ModuleRegistry {
 		// Ported from the old exploit addon: the knowledge, without the delivery.
 		register(new PluginExploitSurfaceModule());
 		register(new PocArtifactModule());
+		// Mechanism / payload separation: reproductions against controlled fixtures.
+		register(new FixtureReproductionModule());
 		register(new DependencyPostureModule());
 		register(new ChatNormalizationAuditModule());
 		register(new ChatGameFairnessModule());

@@ -20,6 +20,14 @@ copying its `onActivate`.
 | **check** | Reads the `ModuleContext` snapshot and reports what it suggests. Sends nothing. | core or collection |
 | **verify** | Sends one bounded request and records the response. | core |
 | **payload** | Writes or performs one declared reproduction. | core |
+| **mechanism** | Reproduces the vulnerability against a controlled fixture, with any compatible payload. | `core.exploit` |
+
+The mechanism tier is the second pass over this port, and it changed the verdicts
+below. A module whose effect was "send this at the server" was not refused for its
+knowledge — it was refused for its delivery. That knowledge now has somewhere to
+live that can actually demonstrate it: `docs/exploit-separation.md` describes the
+mechanism / payload / gate split, and every module that previously read "refused"
+now names the mechanism it became.
 
 ## The knowledge survived; the delivery did not
 
@@ -48,32 +56,28 @@ sends it anywhere, and the module says so in its own findings.
 
 Every module in the archive, and what became of it.
 
-| Source module | Port | Why |
+| Source module | Disposition | Why |
 | --- | --- | --- |
-| `PluginDetectModule` | **ported** — `auxiliary/scanner/plugin_enumeration` (collection) | Same job from the advertised tree, no commands sent. |
-| `SkriptDeployModule` | **ported** — `poc_artifact`, entry `skript_console` | The artifact is the module; the deploy path was always documentation. |
-| `ConditionalEventsOpModule` | **ported** — `poc_artifact`, entry `conditional_events_console` | Artifact kept; the console-dispatches-op effect is on the server, not in our client. |
-| `DeluxeMenuConsoleRceModule`, `DeluxeMenuJsRceModule` | **ported** — `poc_artifact`, entry `deluxemenus_js` | One entry for the class; two source modules were one mechanism. |
-| `DeluxeMenuPlaceholderInjectionModule`, `UltraCosmeticsConsoleCommandInjectionModule` | **merged** — `poc_artifact`, entry `placeholder_injection` | Same sink: expanded text reaching a console dispatch. |
-| `WorldGuardYamlDeployModule`, `WorldGuardYamlDeserialisationModule` | **ported** — `poc_artifact`, entry `worldguard_yaml` | Artifact describes the class rather than carrying a live type tag. |
-| `NetworkPluginsDeployModule` | **merged** — entries `discordsrv_sql`, `placeholder_expansion` | It was two configs for two different classes of bug. |
-| `DatabaseSqliModule`, `EconomySqliModule`, `CosmeticSqliModule` | **merged** — `poc_artifact`, entry `quickshop_economy` and companions | SQL-by-concatenation is one class across several plugins. |
-| `ItemPluginsDeployModule` | **merged** — `poc_artifact`, entry `item_plugin_actions` | Item actions are ConditionalEvents with a different trigger. |
-| `BlueMapSsrfModule` | **ported** — `poc_artifact`, entry `bluemap_ssrf` | Artifact is a checklist, which is what it always was. |
-| `EssentialUpnpModule` | **merged** — entry `auth_plugins` | An exploit guide, not code; it belongs in prose, not in a payload. |
-| `CoreProtectDeepRollbackModule` | **ported** — check tier, entry `coreprotect_rollback_sql` | Report-only: the original's only action was sending `/co`. |
-| `DiscordSRVSqlInjectionModule` | **ported** — check tier, entry `discordsrv_sql` | Report-only. |
-| `EssentialXDeepModule` | **ported** — check tier, entry `essentialsx_alt_commands` | Report-only. |
-| `QuickShopDeepModule` | **ported** — check tier, entry `quickshop_economy` | Report-only. |
-| `SkriptDeepModule` | **ported** — check tier, entry `skript_console` | Report-only. |
-| `ViaBackwardsSnapshotModule` | **ported** — check tier, entry `viabackwards_snapshot` | Report-only; it was always a build-version note. |
-| `GeyserSSRF_Module` | **ported** — check tier, entry `geyser_skin_ssrf` | Report-only, with the CVE cited. |
-| `MythicMobsUnsafeDeserializationModule` | **ported** — check tier, entry `mythicmobs_deser` | Report-only: the original sent `/mythicmobs` and nothing else. |
-| `EssentialsXCmdModule` | **refused** | Its action is `/op me`, `/give me diamond 64`, `/nuke me` against the target. Standing policy: no module whose effect is gaining operator access or items. |
-| `SkriptConsoleOpModule`, `SkriptConsoleCmdModule` | **refused** | Live console injection against the connected server. The class is documented by the `skript_console` entry instead. |
-| `ChatPluginsCmdModule`, `VotePluginsCmdModule`, `WorldPluginsCmdModule`, `EconomyPluginsCmdModule`, `CosmeticPluginsCmdModule`, `UtilityPluginsCmdModule`, `AuthPluginsCmdModule` | **refused** | Command batteries (`/op me`, injection strings) fired at the target. Their knowledge is in the catalogue. |
-| `EssentialModExploitModule` | **refused** | Sends `/essential` commands that mutate session state on the target. |
-| `ZAuctionHouseSqliDeployModule`, `SkriptDeployModule` (command form) | **merged** | Covered by their families above. |
+| `PluginDetectModule` | **ported** — `auxiliary/scanner/plugin_enumeration` (collection) | Same job from the advertised tree; no commands sent. |
+| `SkriptDeployModule` | **ported twice** — artifact `skript_console`, mechanism `skript_console` | The artifact was the module; the mechanism behind it is console dispatch, now reproducible. |
+| `SkriptConsoleOpModule`, `SkriptConsoleCmdModule` | **ported as mechanism** — `skript_console` | The live injection is gone; the sink it exploited is reproduced against `console_dispatch` with harmless `say` commands. |
+| `ConditionalEventsOpModule` | **ported as mechanism** — `conditional_events_console` | Same sink, different trigger; shares the payload with Skript. |
+| `ChatPluginsCmdModule`, `VotePluginsCmdModule`, `WorldPluginsCmdModule`, `EconomyPluginsCmdModule`, `CosmeticPluginsCmdModule`, `UtilityPluginsCmdModule` | **merged into mechanisms** | Their knowledge is the console/expansion/placeholder families; their command batteries are not. |
+| `AuthPluginsCmdModule` | **catalogue only** — `auth_plugins` | The mechanism is token disclosure, which needs a server-side observation, not a client action. |
+| `EssentialsXCmdModule` | **ported as mechanism** — `essentialsx_alias` | Its `/essentials:op me` was reaching for an alias permission bypass. The bypass is now reproduced against a permission model, not a server. |
+| `DeluxeMenuConsoleRceModule`, `DeluxeMenuJsRceModule` | **ported as mechanism** — `deluxemenus_script` | One mechanism, one payload; the `Java.type` runtime call is documented but not shipped. |
+| `DeluxeMenuPlaceholderInjectionModule`, `UltraCosmeticsConsoleCommandInjectionModule` | **merged** — `placeholder_expansion` mechanism + `placeholder_injection` entry | Same sink: expanded text reaching a dispatch. |
+| `WorldGuardYamlDeployModule`, `WorldGuardYamlDeserialisationModule` | **ported as mechanism** — `worldguard_yaml` | The parser resolving a `!!tag` is reproduced; only the fixture's probe classes are nameable. |
+| `MythicMobsUnsafeDeserializationModule` | **ported as mechanism** — `mythicmobs_deser` | The fixture uses a real `ObjectInputStream`; only the fixture's own probe object is in the stream. |
+| `DiscordSRVSqlInjectionModule`, `CoreProtectDeepRollbackModule`, `QuickShopDeepModule` | **ported as mechanism** — `sql_identifier` + per-plugin catalogue entries | One seam, three plugins; the payload proves the row-count change and writes nothing. |
+| `GeyserSSRF_Module` | **ported as mechanism** — `outbound_fetch` | The URL resolution is reproduced against an internal-host table. |
+| `BlueMapSsrfModule` | **merged** — `outbound_fetch` mechanism + `bluemap_ssrf` entry | Same seam, told apart by the plugin. |
+| `EssentialModExploitModule`, `EssentialUpnpModule` | **catalogue only** — `auth_plugins` | Session-state mutation on a live peer; a fixture would model nothing the reader could check. |
+| `ItemPluginsDeployModule` | **ported as mechanism** — `item_plugin_actions` | Console dispatch with an item as the trigger. |
+| `NetworkPluginsDeployModule`, `DatabaseSqliModule`, `EconomySqliModule`, `CosmeticSqliModule` | **merged** — `sql_identifier` mechanism and the corresponding entries | SQL-by-concatenation is one class across several plugins. |
+| `ZAuctionHouseSqliDeployModule` | **merged** — `sql_identifier` | Same seam. |
+| `ArmorStandToolsProtectedGriefingModule`, `BlueSlimeCoreDebugEventModule`, `BungeeCordBungeeGuardTokenLeakModule`, `BuycraftXApiKeyTheftModule`, `ChatGamesConsoleCommandInjectionModule`, `DeluxeMenuBungeeConnectModule`, `UltraCosmeticsSqlInjectionModule`, `UltraCosmeticsConsoleCommandInjectionModule` | **catalogue entries, no mechanism** | Each needs an observation this client cannot make without a live target (a leaked token, a griefed entity, a debug event). Their knowledge is kept; nothing pretends to reproduce them. |
+| `ViaBackwardsSnapshotModule`, `SkriptDeepModule`, `EssentialXDeepModule` | **check tier** | They were report-only in the original; they remain report-only. |
 
 Source files outside `poc/meteor/modules` — the `poc/<plugin>/…` classes, the
 `PocModule` base, `Venom4Plugin`, `ShellPopper`, `VulnerableServerStart` — are
@@ -104,4 +108,19 @@ case, and `VChatGames.java` is a separate plugin's source.
 
 `ChatFilterBypassAll.java` and `ChatGamesAutoAnswer.java` were not ported: filter
 evasion and automated gameplay are outside the collection regardless of what a
-licence permits.
+licence permits. Neither has a vulnerability mechanism behind it that a fixture
+could reproduce — they are features for winning arguments with a filter and for
+playing a game without playing it, which is a different project.
+
+## Second pass: what changed and why
+
+The first port kept the knowledge and dropped the delivery, and stopped there. The
+second pass built the part that makes the knowledge demonstrable: a mechanism tier
+that reproduces the actual sink against a controlled fixture, with the payload as a
+separate, swappable piece.
+
+Nothing was relaxed to achieve it. The execution-capable payloads are refused by the
+gate against a live target *even when the operator has authorised it*, which is
+stricter than the original code was — the original fired those commands at whatever
+server the client was connected to. The difference is that the demonstration now
+happens against something that records it instead of something that suffers it.

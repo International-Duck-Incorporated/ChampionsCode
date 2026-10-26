@@ -4,6 +4,29 @@
 
 Nothing yet.
 
+## 0.2.0-beta.8 - 2026-10-26
+
+### Added
+- **Mechanism / payload / gate separation** (`core.exploit`). A vulnerability is now
+  a `ExploitMechanism` that reproduces its sink against a `VulnerableFixture`, a
+  `PayloadProvider` that declares and supplies only data, and an `ExecutionGate`
+  that authorises every effectful operation. 10 mechanisms, 9 payloads, 7 fixtures.
+- **`auxiliary/exploits/fixture_reproduction`**: pick a mechanism and a payload, and
+  the engine reports one of `VERIFIED`, `NOT_REPRODUCED`, `BLOCKED_BY_GATE`,
+  `ARTIFACT_ONLY`, `NOT_TESTED` or `ERROR`, with the basis (`FIXTURE`, `LIVE`,
+  `ARTIFACT`) recorded separately from the verdict.
+- **28 tests** across the new package: separation (one payload serving several
+  mechanisms, one mechanism accepting several payloads), the gate (including
+  refusals that survive operator authorisation), behaviour against fixtures, and
+  cleanup.
+
+### Changed
+- The porting report is a second pass: every module that was previously refused now
+  names the mechanism it became, and the ones that stayed catalogue-only say why.
+- Payload compatibility checks apply to execution-capable payloads only. A document
+  and a chat marker never touch the vulnerable sink, so they are universal; the
+  shape rule exists to stop a payload reaching a sink it was never written for.
+
 ## 0.2.0-beta.7 - 2026-10-26
 
 ### Added

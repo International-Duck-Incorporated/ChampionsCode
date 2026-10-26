@@ -53,6 +53,7 @@ public final class SelfTest {
 			moduleRepository(config.resolve("repo"));
 			payloadSafety();
 			portedCatalog();
+			exploitSeparation();
 			jsonEdgeCases();
 		} finally {
 			deleteTree(config);
@@ -548,6 +549,69 @@ public final class SelfTest {
 		} catch (java.io.IOException error) {
 			check("artifact folder writes and deletes inside itself", false);
 		}
+	}
+
+	/**
+	 * The separation, as properties: a payload that serves several mechanisms, a gate
+	 * that will not be talked round, and a reproduction whose verdict comes from what
+	 * the fixture recorded.
+	 */
+	private static void exploitSeparation() {
+		var mechanisms = dev.champions.core.exploit.MechanismRegistry.all();
+		check("mechanisms are registered", mechanisms.size() >= 10);
+		check("every mechanism names a fixture this build ships",
+			mechanisms.stream().allMatch(m -> dev.champions.core.exploit.fixture.FixtureRegistry
+				.byId(m.fixtureId()) != null));
+		check("every mechanism has a catalogue entry", mechanisms.stream().allMatch(m -> m.entry() != null));
+
+		var payloads = dev.champions.core.exploit.ReproductionEngine.payloads();
+		check("payloads are registered", payloads.size() >= 9);
+		check("payload ids are unique",
+			payloads.stream().map(dev.champions.core.exploit.PayloadProvider::id).distinct().count() == payloads.size());
+		check("every payload declares a cleanup",
+			payloads.stream().allMatch(p -> !p.describe().cleanup().isBlank()));
+
+		// One payload, several mechanisms, unchanged.
+		var injection = new dev.champions.core.exploit.payload.ConsoleInjectionPayload();
+		var fixture = (dev.champions.core.exploit.fixture.ConsoleDispatchFixture)
+			dev.champions.core.exploit.fixture.FixtureRegistry.byId("console_dispatch");
+		boolean allThree = true;
+		for (String id : java.util.List.of("skript_console", "conditional_events_console", "item_plugin_actions")) {
+			var mechanism = dev.champions.core.exploit.MechanismRegistry.get(id);
+			fixture.reset();
+			var outcome = ((dev.champions.core.exploit.ExploitMechanism<dev.champions.core.exploit.fixture.ConsoleDispatchFixture>)
+				mechanism).reproduce(fixture, injection.material(java.util.Map.of()),
+					java.util.Map.of("MARKER", "selftest"));
+			allThree &= outcome.reachedSink();
+			fixture.reset();
+		}
+		check("one payload reproduces three mechanisms", allThree);
+
+		// The gate's central rule, checked without a fixture.
+		var descriptor = new dev.champions.core.exploit.PayloadDescriptor("probe", "Probe", "1.0.0",
+			dev.champions.core.exploit.PayloadKind.EXECUTION_CAPABLE, dev.champions.core.exploit.PayloadShape.CONSOLE_TEXT,
+			java.util.Set.of("skript_console"), "", "", "", "", java.util.List.of(), java.util.List.of(), "");
+		var material = new dev.champions.core.exploit.PayloadMaterial.InjectedText(
+			dev.champions.core.exploit.PayloadShape.CONSOLE_TEXT, "x; say y", "x");
+		var liveRequest = new dev.champions.core.exploit.GateRequest("skript_console", descriptor, material,
+			dev.champions.core.exploit.GateRequest.ReproductionMode.LIVE, true, true, "", java.util.Map.of());
+		check("gate refuses an execution-capable payload on a live target",
+			!dev.champions.core.exploit.ExecutionGate.decide(liveRequest).allowed());
+		var fixtureRequest = new dev.champions.core.exploit.GateRequest("skript_console", descriptor, material,
+			dev.champions.core.exploit.GateRequest.ReproductionMode.FIXTURE, false, false, "", java.util.Map.of());
+		check("gate allows the same payload against a fixture",
+			dev.champions.core.exploit.ExecutionGate.decide(fixtureRequest).allowed());
+
+		// A payload cannot declare one thing and produce another.
+		var lying = new dev.champions.core.exploit.PayloadDescriptor("liar", "Liar", "1.0.0",
+			dev.champions.core.exploit.PayloadKind.INERT_ARTIFACT, dev.champions.core.exploit.PayloadShape.ARTIFACT_TEXT,
+			java.util.Set.of(), "", "", "", "", java.util.List.of(), java.util.List.of(), "");
+		var lieRequest = new dev.champions.core.exploit.GateRequest("skript_console", lying, material,
+			dev.champions.core.exploit.GateRequest.ReproductionMode.FIXTURE, true, true, "notes.txt", java.util.Map.of());
+		check("gate refuses a payload that changes what it is at run time",
+			!dev.champions.core.exploit.ExecutionGate.decide(lieRequest).allowed());
+
+		check("fixtures are clean after a run", fixture.recorded().isEmpty());
 	}
 
 	private static void check(String label, boolean passed) {
