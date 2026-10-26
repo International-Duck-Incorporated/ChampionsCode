@@ -4,6 +4,21 @@
 
 Nothing yet.
 
+## 0.2.0-beta.6 - 2026-10-26
+
+### Added
+- **`ChatCommandRequest.proof(root, timeoutTicks, maxMessages)`**, a proof for a
+  command that takes no arguments. The literal factory requires at least one
+  node, so a payload could not express `/seed` or `/list` without reaching past
+  it for the canonical constructor. **Module API level 2**; a client older than
+  this build refuses an `api: 2` entry with an update message rather than
+  failing to compile it.
+
+### Fixed
+- The payload banner called every payload "reversible", including a read-only
+  query. Only an effect that creates state is reverted now; the rest are
+  described as state-neutral.
+
 ## 0.2.0-beta.5 - 2026-10-26
 
 ### Added

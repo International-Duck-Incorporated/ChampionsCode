@@ -74,6 +74,15 @@ public interface ActiveModuleRuntime {
 			return new ChatCommandRequest(root, ProbeVariant.PATH, literals, timeoutTicks, maxMessages, Origin.PROOF);
 		}
 
+		/**
+		 * A proof for a command that takes no arguments, such as {@code /seed} or
+		 * {@code /list}. The literal form above cannot express one, since a PATH
+		 * variant requires at least one node.
+		 */
+		public static ChatCommandRequest proof(String root, int timeoutTicks, int maxMessages) {
+			return new ChatCommandRequest(root, ProbeVariant.BLANK, List.of(), timeoutTicks, maxMessages, Origin.PROOF);
+		}
+
 		public static ChatCommandRequest path(String root, List<String> literals, int timeoutTicks, int maxMessages) {
 			return new ChatCommandRequest(root, ProbeVariant.PATH, literals, timeoutTicks, maxMessages);
 		}

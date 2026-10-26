@@ -978,9 +978,7 @@ public final class ChampionConsole {
 			if (module instanceof ActiveResearchModule active) {
 				runningModuleId = module.id();
 				if (activeAction) {
-					add(ConsoleLine.warning(module instanceof PayloadModule
-						? "[>] PAYLOAD authorized for this run; one bounded, reversible action will be sent."
-						: "[>] AGGRESSIVE action authorized; probes are sequential, filtered, and rate-limited…"));
+					add(ConsoleLine.warning(payloadBanner(module)));
 					String startedDetail = module instanceof PayloadModule payload
 						? "Payload started: " + payload.effect().describe()
 						: "Bounded active command probes started";
@@ -996,6 +994,21 @@ public final class ChampionConsole {
 		} catch (RuntimeException e) {
 			finishRun(module, decision.normalizedTarget(), started, null, e, activeJob);
 		}
+	}
+
+	/**
+	 * What the user is about to see, in their words. A payload that creates state
+	 * is the only kind that can be reverted, so only that kind is called
+	 * reversible — a {@code /seed} query is neither reversible nor irreversible,
+	 * it simply leaves nothing behind.
+	 */
+	private static String payloadBanner(ResearchModule module) {
+		if (!(module instanceof PayloadModule payload)) {
+			return "[>] AGGRESSIVE action authorized; probes are sequential, filtered, and rate-limited…";
+		}
+		return payload.effect().createsState()
+			? "[>] PAYLOAD authorized for this run; one bounded action will be sent, then reverted."
+			: "[>] PAYLOAD authorized for this run; one bounded, state-neutral action will be sent.";
 	}
 
 	private void requestExploitRunWarning(ExploitResearchModule module) {

@@ -17,8 +17,17 @@ import java.util.Optional;
  * rather than failing the whole fetch.</p>
  */
 public record ModuleIndex(int schema, String name, String updated, List<RepoEntry> entries) {
-	/** The module API level this build understands; entries above it are refused. */
-	public static final int SUPPORTED_API = 1;
+	/**
+	 * The module API level this build understands; entries above it are refused.
+	 *
+	 * <p>Level 2 added {@code ChatCommandRequest.proof(root, timeoutTicks,
+	 * maxMessages)} so a payload can declare a command that takes no arguments
+	 * — {@code /seed}, {@code /list} — which level 1 could only express by
+	 * reaching past the factory. A module that needs it declares {@code api: 2}
+	 * and an older client refuses it with an update message instead of failing
+	 * to compile it.</p>
+	 */
+	public static final int SUPPORTED_API = 2;
 
 	public ModuleIndex {
 		entries = List.copyOf(entries);

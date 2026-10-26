@@ -459,6 +459,28 @@ public final class SelfTest {
 		}
 		check("runtime refuses a state-changing proof", proofRefusedStateChange);
 
+		// A command with no arguments (a payload's /seed, /list) takes the
+		// bare-command factory, which the literal form cannot express.
+		String bareWire = "";
+		boolean bareAccepted = true;
+		try {
+			bareWire = dev.champions.core.module.active.ActiveModuleRuntime.ChatCommandRequest
+				.proof("seed", 60, 4).wireCommand();
+		} catch (IllegalArgumentException refused) {
+			bareAccepted = false;
+		}
+		check("runtime accepts a bare-command proof", bareAccepted);
+		check("bare-command proof sends exactly the command", bareWire.equals("seed"));
+		boolean bareRefused = false;
+		try {
+			dev.champions.core.module.active.ActiveModuleRuntime.ChatCommandRequest.proof("op", 60, 4);
+		} catch (IllegalArgumentException refused) {
+			bareRefused = true;
+		}
+		check("runtime refuses a bare-command proof that changes state", bareRefused);
+		check("module API level covers the bare-command proof",
+			dev.champions.core.repo.ModuleIndex.SUPPORTED_API >= 2);
+
 		check("payload accepts a small marker file",
 				dev.champions.core.module.payload.PayloadSafety.acceptableFileSize(512));
 		check("payload refuses an oversized marker file",

@@ -70,6 +70,13 @@ run at all — it never assumes success.
 
 ## Writing one
 
+A command that takes no arguments uses the short form — `/seed`, `/list` and
+`/help` have no literals to pass:
+
+```java
+ChatCommandRequest request = ChatCommandRequest.proof("seed", 60, 4);
+```
+
 ```java
 public final class MyProofModule implements PayloadModule {
     @Override public String id() { return "auxiliary/payloads/my_proof"; }
@@ -87,7 +94,8 @@ public final class MyProofModule implements PayloadModule {
 }
 ```
 
-Payload modules live in-tree (`core/module/builtin/`), not in the drop-in
-collection: the collection forbids `java.net` and `java.io` on purpose, and a
-payload needs the runtime. That is the structural reason a "heavy" module is a
+Payload modules live in-tree (`core/module/builtin/`), or in the drop-in
+collection's `payloads/` folder, which `tools/build_index.py` keeps honest: a
+module filed there must implement this interface, and one that implements it must
+be filed there. That is the structural reason a "heavy" module is a
 built-in.
