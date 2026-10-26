@@ -18,6 +18,7 @@ import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Image;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
@@ -78,6 +79,8 @@ public final class Shell extends JFrame {
 		root.add(contentHost, BorderLayout.CENTER);
 
 		root.add(statusBar(), BorderLayout.SOUTH);
+		java.util.List<Image> windowIcons = Brand.windowIcons();
+		if (!windowIcons.isEmpty()) setIconImages(windowIcons);
 		new WindowResizer(this, DRAG_BORDER).install();
 	}
 
@@ -88,19 +91,35 @@ public final class Shell extends JFrame {
 		bar.setBackground(Theme.TITLE);
 		bar.setBorder(BorderFactory.createCompoundBorder(
 			BorderFactory.createMatteBorder(0, 0, 1, 0, Theme.BORDER),
-			BorderFactory.createEmptyBorder(8, 14, 8, 8)));
+			BorderFactory.createEmptyBorder(10, 14, 10, 8)));
 
 		JPanel brand = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
 		brand.setOpaque(false);
-		brand.add(new JComponent() {
-			@Override protected void paintComponent(Graphics graphics) {
-				Icons.paint((Graphics2D) graphics.create(), Icons.Glyph.BRAND, 2, 1, 20, Theme.ACCENT);
-			}
+		java.awt.image.BufferedImage mark = Brand.logo(40);
+		if (mark != null) {
+			JLabel logo = new JLabel(new javax.swing.ImageIcon(mark));
+			logo.setToolTipText("ChampionsCode");
+			brand.add(logo);
+		} else {
+			// The asset is missing from this build (a stripped jar): fall back to
+			// the vector approximation rather than an empty title bar.
+			brand.add(new JComponent() {
+				@Override protected void paintComponent(Graphics graphics) {
+					Graphics2D g = (Graphics2D) graphics.create();
+					try {
+						g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+							RenderingHints.VALUE_ANTIALIAS_ON);
+						Icons.paint(g, Icons.Glyph.BRAND, 2, 1, 20, Theme.ACCENT);
+					} finally {
+						g.dispose();
+					}
+				}
 
-			@Override public Dimension getPreferredSize() { return new Dimension(24, 22); }
-		});
+				@Override public Dimension getPreferredSize() { return new Dimension(24, 22); }
+			});
+		}
 		JLabel wordmark = new JLabel("ChampionsCode");
-		wordmark.setFont(Theme.sans(13, true));
+		wordmark.setFont(Theme.sans(14, true));
 		wordmark.setForeground(Theme.TEXT);
 		brand.add(wordmark);
 		JLabel tag = new JLabel("SECURITY RESEARCH CONSOLE");
