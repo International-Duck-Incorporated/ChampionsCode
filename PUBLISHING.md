@@ -44,6 +44,35 @@ Tags are immutable: if `v<version>` already points at a different commit, the
 release job stops and the version must be bumped first. Pushes to `main` and
 merge requests only build and test; they never publish.
 
+## Publishing by hand
+
+CI is the normal path, but it needs compute minutes and a runner. When neither is
+available -- a free plan with zero minutes fails the pipeline within a second and
+publishes nothing -- the same two steps can be done against the API with a token
+that can write the package registry and create releases. This is what every
+release up to 0.2.0-beta.17 used.
+
+Upload with `PUT` (`--upload-file`), not a multipart `POST`. The multipart form
+still returns `{"error":"404 Not Found"}`, which reads like a missing project or a
+bad token and is neither:
+
+```bash
+for f in champions-mod-<version>.jar champions-mod-<version>-sources.jar SHA256SUMS.txt; do
+  curl --fail-with-body --header "PRIVATE-TOKEN: ${TOKEN}" \
+    --upload-file "build/libs/${f}" \
+    "https://gitlab.com/api/v4/projects/86855171/packages/generic/champions-mod/<version>/${f}"
+done
+```
+
+Then create the release with those three URLs as assets (`POST /projects/:id/releases`,
+`link_type: package` for the JARs, `other` for the checksum file), and finish by
+downloading the published JAR again and comparing its `sha256sum` with the local
+build. If they differ, the wrong file was uploaded.
+
+Push tags with `-o ci.skip` while CI has no minutes; otherwise the tag collects a
+failed pipeline that published nothing and cannot be deleted without Pipeline
+permissions.
+
 ## Local verification
 
 With Java 25 active:
