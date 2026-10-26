@@ -12,7 +12,9 @@ import dev.champions.core.module.builtin.DependencyPostureModule;
 import dev.champions.core.module.builtin.ExploitResearchWorkspaceModule;
 import dev.champions.core.module.builtin.MotionEvidenceModule;
 import dev.champions.core.module.builtin.PlayerIdentityModule;
+import dev.champions.core.module.builtin.PluginExploitSurfaceModule;
 import dev.champions.core.module.builtin.PluginRiskReviewModule;
+import dev.champions.core.module.builtin.PocArtifactModule;
 import dev.champions.core.module.builtin.PluginSurfaceModule;
 import dev.champions.core.module.builtin.ServerFingerprintModule;
 import dev.champions.core.module.builtin.ServerPingModule;
@@ -42,6 +44,9 @@ public final class ModuleRegistry {
 		register(new ConnectionPostureModule());
 		register(new PluginSurfaceModule());
 		register(new PluginRiskReviewModule());
+		// Ported from the old exploit addon: the knowledge, without the delivery.
+		register(new PluginExploitSurfaceModule());
+		register(new PocArtifactModule());
 		register(new DependencyPostureModule());
 		register(new ChatNormalizationAuditModule());
 		register(new ChatGameFairnessModule());

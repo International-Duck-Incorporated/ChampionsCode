@@ -4,6 +4,40 @@
 
 Nothing yet.
 
+## 0.2.0-beta.7 - 2026-10-26
+
+### Added
+- **The ported catalogue.** `ExploitCatalog` carries what the old exploit addon
+  actually knew: 15 plugin families, each with the surface that reveals it, the
+  mechanism that makes it exploitable, the impact, a severity, and a portable
+  reproduction where one exists. The knowledge survived the port; the delivery
+  did not.
+- **`auxiliary/audit/plugin_exploit_surface`** (check tier): joins the catalogue
+  against the command tree the server already advertised and reports the
+  mechanism for every match. Sends nothing — the module it was ported from
+  tab-completed its way across the tree and slept between commands.
+- **`auxiliary/payloads/poc_artifact`** (payload tier): writes one declared
+  reproduction into the audit folder. `PayloadEffect.Kind.AUDIT_ARTIFACT` is held
+  to a bare name, an inert extension (`.yml .yaml .sk .txt .md .json`) and an 8 KB
+  ceiling, and the module's revert plan is a deletion it performs.
+- **`AuditFolder`**: the one folder a payload may write into, fixed when the
+  console is built, with the traversal check done twice. An artifact is a
+  document — nothing in this client applies, deploys or sends one.
+- `docs/porting-venom4plugin.md`: the mapping for every module in the archive,
+  including what was refused and why.
+- A collection module, `auxiliary/scanner/plugin_enumeration`, ported from the
+  old `plugin-detect`: the same plugin list, read from the advertised tree.
+
+### Changed
+- **`PayloadModule.effect(Map)`**: the declared effect is now computed from the
+  options that are about to run. It used to be read from a constant, which meant
+  a module that selected its target at run time declared `no side effect` and
+  then wrote a file — the declaration has to describe *this* run or it is theatre.
+- The payload banner describes the actual kind: an artifact is "written to the
+  audit folder", never "sent".
+- Console line truncation uses an ASCII ellipsis; the renderer does not carry the
+  Unicode one, and it was printing as `?`.
+
 ## 0.2.0-beta.6 - 2026-10-26
 
 ### Added

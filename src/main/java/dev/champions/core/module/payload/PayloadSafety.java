@@ -34,7 +34,15 @@ public final class PayloadSafety {
 	private static final Set<String> FORBIDDEN_SUBSTRINGS = Set.of(
 			"\n", "\r", "\u0000", "{\"", "${", "$(", "`");
 
+	/**
+	 * Extensions an artifact may use. All three are inert text that a person reads:
+	 * none is executable, none is loaded by this client, and the client never sends
+	 * one anywhere.
+	 */
+	private static final Set<String> ALLOWED_ARTIFACT_EXTENSIONS = Set.of("yml", "yaml", "sk", "txt", "md", "json");
+
 	private static final int MAX_COMMAND_LENGTH = 240;
+	private static final int MAX_ARTIFACT_BYTES = 8192;
 	private static final int MAX_FILENAME_LENGTH = 64;
 	private static final long MAX_FILE_BYTES = 1024;
 
@@ -57,6 +65,7 @@ public final class PayloadSafety {
 			case NONE -> Verdict.allow("No side effect declared.");
 			case CHAT_COMMAND -> checkCommand(effect.value());
 			case LOCAL_FILE -> checkFile(effect.value());
+			case AUDIT_ARTIFACT -> checkArtifactFile(effect.value());
 		};
 	}
 
@@ -107,6 +116,35 @@ public final class PayloadSafety {
 			return Verdict.refuse("Marker file name may only use letters, digits, dot, dash and underscore.");
 		}
 		return Verdict.allow("One marker file inside the audit folder, at most " + MAX_FILE_BYTES + " bytes.");
+	}
+
+	/**
+	 * An artifact is a named text file with an inert extension. It is held to the
+	 * same containment rule as a marker — a bare name, inside the audit folder —
+	 * because an artifact that could pick its own path could overwrite anything the
+	 * client can write.
+	 */
+	private static Verdict checkArtifactFile(String fileName) {
+		Verdict containment = checkFile(fileName);
+		if (!containment.allowed()) return containment;
+		int dot = fileName.lastIndexOf('.');
+		if (dot < 0) return Verdict.refuse("Audit artifact needs an extension so it is obvious what it is.");
+		String extension = fileName.substring(dot + 1).toLowerCase(Locale.ROOT);
+		if (!ALLOWED_ARTIFACT_EXTENSIONS.contains(extension)) {
+			return Verdict.refuse("'" + extension + "' is not an inert text extension ("
+				+ String.join(", ", ALLOWED_ARTIFACT_EXTENSIONS.stream().sorted().toList()) + ").");
+		}
+		if (dot == 0) return Verdict.refuse("Audit artifact needs a name before its extension.");
+		return Verdict.allow("One text artifact inside the audit folder, at most " + MAX_ARTIFACT_BYTES + " bytes.");
+	}
+
+	/** True when the artifact a module wrote is inside the artifact size ceiling. */
+	public static boolean acceptableArtifactSize(long bytes) {
+		return bytes >= 0 && bytes <= MAX_ARTIFACT_BYTES;
+	}
+
+	public static long maximumArtifactBytes() {
+		return MAX_ARTIFACT_BYTES;
 	}
 
 	/** True when the marker file a module wrote is small enough to be a marker. */

@@ -19,6 +19,8 @@ public record PayloadEffect(Kind kind, String value, boolean createsState) {
 		CHAT_COMMAND,
 		/** One small marker file inside the audit folder, never outside it. */
 		LOCAL_FILE,
+		/** One text artifact inside the audit folder: a reproduction, never a transmission. */
+		AUDIT_ARTIFACT,
 		/** No side effect at all: the proof is in what came back. */
 		NONE
 	}
@@ -41,12 +43,22 @@ public record PayloadEffect(Kind kind, String value, boolean createsState) {
 		return new PayloadEffect(Kind.LOCAL_FILE, fileName, true);
 	}
 
+	/**
+	 * One written reproduction inside the audit folder. Unlike a chat command this
+	 * leaves something behind, so it is state-creating and the revert plan has to
+	 * say how it is removed.
+	 */
+	public static PayloadEffect auditArtifact(String fileName) {
+		return new PayloadEffect(Kind.AUDIT_ARTIFACT, fileName, true);
+	}
+
 	/** One line for the console, the audit log and the module editor. */
 	public String describe() {
 		return switch (kind) {
 			case NONE -> "no side effect; the proof is the response";
 			case CHAT_COMMAND -> "sends one chat command: " + value;
 			case LOCAL_FILE -> "writes one marker file: " + value;
+			case AUDIT_ARTIFACT -> "writes one audit artifact into the audit folder: " + value;
 		};
 	}
 }

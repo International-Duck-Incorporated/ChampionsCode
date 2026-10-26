@@ -14,6 +14,7 @@ import dev.champions.core.module.ModuleRegistry;
 import dev.champions.core.module.ModuleResult;
 import dev.champions.core.module.ResearchModule;
 import dev.champions.core.module.active.ActiveModuleRuntime;
+import dev.champions.core.module.payload.PayloadEffect;
 import dev.champions.core.module.payload.PayloadModule;
 import dev.champions.core.module.payload.PayloadSafety;
 import dev.champions.core.repo.ModuleIndex;
@@ -141,6 +142,12 @@ public final class ChampionConsole {
 		this.updateService = updateService == null ? UpdateService.disabled() : updateService;
 		this.closeUi = closeUi == null ? () -> {} : closeUi;
 		this.configDirectory = configDirectory;
+		// A module that writes an artifact gets the one folder it may write into.
+		dev.champions.core.catalog.AuditFolder artifactFolder =
+			dev.champions.core.catalog.AuditFolder.under(configDirectory);
+		for (ResearchModule module : registry.all()) {
+			if (module instanceof dev.champions.core.catalog.ArtifactFolderAware aware) aware.useAuditFolder(artifactFolder);
+		}
 		this.authorization = new AuthorizationPolicy(configDirectory);
 		this.audit = new AuditLog(configDirectory);
 		banner();
@@ -932,14 +939,17 @@ public final class ChampionConsole {
 
 		ResearchModule module = activeModule;
 		if (module instanceof PayloadModule payload) {
-			PayloadSafety.Verdict verdict = PayloadSafety.check(payload.effect());
+			// Declared from the options that are about to run, not from whatever the
+			// module happens to hold: the declaration has to describe this run.
+			Map<String, String> declared = Map.copyOf(activeOptions);
+			PayloadSafety.Verdict verdict = PayloadSafety.check(payload.effect(declared));
 			if (!verdict.allowed()) {
 				add(ConsoleLine.error("Payload refused before running: " + verdict.reason()));
 				audit.record("payload", AuthorizationPolicy.normalizeHost(contextSupplier.get().serverAddress()),
 					module.id(), "refused", verdict.reason());
 				return;
 			}
-			add(ConsoleLine.info("[*] Declared effect: " + payload.effect().describe()));
+			add(ConsoleLine.info("[*] Declared effect: " + payload.effect(declared).describe()));
 			add(ConsoleLine.muted("    Revert: " + payload.revertPlan()));
 		}
 		if (module instanceof ExploitResearchModule exploit && !module.id().equals(approvedExploitRunModuleId)) {
@@ -978,7 +988,7 @@ public final class ChampionConsole {
 			if (module instanceof ActiveResearchModule active) {
 				runningModuleId = module.id();
 				if (activeAction) {
-					add(ConsoleLine.warning(payloadBanner(module)));
+					add(ConsoleLine.warning(payloadBanner(module, options)));
 					String startedDetail = module instanceof PayloadModule payload
 						? "Payload started: " + payload.effect().describe()
 						: "Bounded active command probes started";
@@ -1002,13 +1012,18 @@ public final class ChampionConsole {
 	 * reversible — a {@code /seed} query is neither reversible nor irreversible,
 	 * it simply leaves nothing behind.
 	 */
-	private static String payloadBanner(ResearchModule module) {
+	private static String payloadBanner(ResearchModule module, Map<String, String> options) {
 		if (!(module instanceof PayloadModule payload)) {
-			return "[>] AGGRESSIVE action authorized; probes are sequential, filtered, and rate-limited…";
+			return "[>] AGGRESSIVE action authorized; probes are sequential, filtered, and rate-limited...";
 		}
-		return payload.effect().createsState()
-			? "[>] PAYLOAD authorized for this run; one bounded action will be sent, then reverted."
-			: "[>] PAYLOAD authorized for this run; one bounded, state-neutral action will be sent.";
+		PayloadEffect effect = payload.effect(options);
+		return switch (effect.kind()) {
+			// An artifact never leaves the client, so it is never "sent".
+			case AUDIT_ARTIFACT -> "[>] PAYLOAD authorized for this run; one artifact will be written to the audit folder.";
+			case LOCAL_FILE -> "[>] PAYLOAD authorized for this run; one marker file will be written, then removed.";
+			case CHAT_COMMAND -> "[>] PAYLOAD authorized for this run; one state-neutral command will be sent.";
+			case NONE -> "[>] PAYLOAD authorized for this run; it declares no side effect.";
+		};
 	}
 
 	private void requestExploitRunWarning(ExploitResearchModule module) {
@@ -1203,7 +1218,7 @@ public final class ChampionConsole {
 		return space < 0 ? "" : input.substring(space + 1).strip();
 	}
 
-	private static String limit(String value, int max) { return value.length() <= max ? value : value.substring(0, max) + "…"; }
+	private static String limit(String value, int max) { return value.length() <= max ? value : value.substring(0, max) + "..."; }
 	private static String safeMessage(Throwable error) {
 		String text = error.getMessage();
 		return text == null || text.isBlank() ? error.getClass().getSimpleName() : limit(text.replace('\n', ' '), 240);

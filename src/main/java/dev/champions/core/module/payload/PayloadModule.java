@@ -26,11 +26,24 @@ import dev.champions.core.module.active.ActiveResearchModule;
 public interface PayloadModule extends ActiveResearchModule, ExploitResearchModule {
 
 	/**
-	 * What this payload will do, declared before anything runs. Must be a constant
-	 * — a module that decides its effect from user input is refused, because the
-	 * point of the declaration is that it can be checked before execution.
+	 * What this payload will do, declared before anything runs.
+	 *
+	 * <p>It must be a function of the module's options and nothing else. The console
+	 * calls it before the authorization gate and again in the warning the user
+	 * acknowledges, so an effect that depended on run-time state would be a
+	 * different effect by the time it executed — which is exactly the dishonesty
+	 * the declaration exists to prevent. A module that selects among several
+	 * artifacts overrides {@link #effect(Map)} rather than storing the choice.</p>
 	 */
 	PayloadEffect effect();
+
+	/**
+	 * The declared effect for a specific set of options. Default: the constant
+	 * form, for modules whose effect never varies.
+	 */
+	default PayloadEffect effect(java.util.Map<String, String> options) {
+		return effect();
+	}
 
 	/**
 	 * How the run leaves things as it found them, for effects that create state.

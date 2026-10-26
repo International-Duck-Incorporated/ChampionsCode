@@ -48,9 +48,12 @@ class ChampionConsoleTest {
 		console.submit("categorygui");
 		assertTrue(openedList.get());
 		assertTrue(openedCategories.get());
-		assertEquals(18, console.moduleViews().size());
+		assertEquals(20, console.moduleViews().size());
 		List<String> ids = console.moduleViews().stream().map(ChampionConsole.ModuleView::id).toList();
 		assertTrue(ids.contains("auxiliary/payloads/chat_reach_proof"));
+		// Ported from the old exploit addon: a check tier and a payload tier.
+		assertTrue(ids.contains("auxiliary/audit/plugin_exploit_surface"));
+		assertTrue(ids.contains("auxiliary/payloads/poc_artifact"));
 		assertEquals(ids.stream().sorted().toList(), ids);
 		assertTrue(console.selectModuleFromUi("auxiliary/scanner/chat_plugin_enumerator"));
 		assertNotNull(console.activeModuleView());
@@ -94,7 +97,7 @@ class ChampionConsoleTest {
 			ActiveModuleRuntime.disabled(), command -> {}, () -> {}, () -> {}, prompt);
 		// The reference payload is an ExploitResearchModule as well, so the
 		// exploits view holds the workspace plus that payload.
-		assertEquals(2, console.exploitModuleViews().size());
+		assertEquals(3, console.exploitModuleViews().size());
 		assertTrue(console.exploitModuleViews().stream()
 			.anyMatch(view -> view.id().equals("auxiliary/payloads/chat_reach_proof")));
 		assertTrue(console.selectModuleFromUi("auxiliary/exploits/research_workspace"));
@@ -116,11 +119,11 @@ class ChampionConsoleTest {
 
 	@Test void runtimeModulesAreAtomicallyAddedReplacedAndRemoved() {
 		ChampionConsole console = new ChampionConsole(temp, ChampionConsoleTest::context);
-		assertEquals(18, console.moduleViews().size());
+		assertEquals(20, console.moduleViews().size());
 
 		String id = "auxiliary/custom/dynamic_example";
 		console.replaceExternalModules(List.of(), List.of(new TestModule(id)));
-		assertEquals(19, console.moduleViews().size());
+		assertEquals(21, console.moduleViews().size());
 		assertTrue(console.selectModuleFromUi(id));
 		assertNotNull(console.activeModuleView());
 
@@ -134,7 +137,7 @@ class ChampionConsoleTest {
 		assertNull(console.activeModuleView());
 		assertTrue(console.moduleViews().stream().anyMatch(module -> module.id().equals(id)));
 		console.replaceExternalModules(List.of(id), List.of());
-		assertEquals(18, console.moduleViews().size());
+		assertEquals(20, console.moduleViews().size());
 	}
 
 	@Test void staleExploitWarningCannotRunAHotReloadedModuleWithTheSameId() {

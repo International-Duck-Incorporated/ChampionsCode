@@ -52,6 +52,7 @@ public final class SelfTest {
 			settingsLayout(config.resolve("layout"));
 			moduleRepository(config.resolve("repo"));
 			payloadSafety();
+			portedCatalog();
 			jsonEdgeCases();
 		} finally {
 			deleteTree(config);
@@ -499,6 +500,54 @@ public final class SelfTest {
 	private static boolean contains(ChampionConsole console, String needle) {
 		for (ConsoleLine line : console.lines()) if (line.text().contains(needle)) return true;
 		return false;
+	}
+
+	/** The ported catalog and the artifact folder: the rules, checked without a server. */
+	private static void portedCatalog() {
+		check("catalog knows Skript from its command",
+			dev.champions.core.catalog.ExploitCatalog.match(java.util.List.of("skript", "sk")).stream()
+				.anyMatch(entry -> entry.id().equals("skript_console")));
+		check("catalog resolves a namespaced command",
+			dev.champions.core.catalog.ExploitCatalog.match(java.util.List.of("bukkit:plugins")).isEmpty());
+		check("catalog stays quiet on a vanilla surface",
+			dev.champions.core.catalog.ExploitCatalog.match(java.util.List.of("help", "list", "me")).isEmpty());
+		check("catalog has no duplicate ids",
+			dev.champions.core.catalog.ExploitCatalog.entries().stream().map(e -> e.id()).distinct().count()
+				== dev.champions.core.catalog.ExploitCatalog.entries().size());
+
+		// Every artifact a catalogued entry offers must pass the payload rules, or the
+		// payload module would be advertising something it can never write.
+		boolean everyArtifactAllowed = dev.champions.core.catalog.ExploitCatalog.withArtifacts().stream()
+			.allMatch(entry -> dev.champions.core.module.payload.PayloadSafety
+				.check(dev.champions.core.module.payload.PayloadEffect.auditArtifact(entry.artifactFile())).allowed());
+		check("every catalogued artifact passes the payload rules", everyArtifactAllowed);
+		check("every catalogued artifact fits the size ceiling",
+			dev.champions.core.catalog.ExploitCatalog.withArtifacts().stream()
+				.allMatch(entry -> dev.champions.core.module.payload.PayloadSafety
+					.acceptableArtifactSize(entry.artifact().getBytes(java.nio.charset.StandardCharsets.UTF_8).length)));
+		check("artifact with a path is refused",
+			!dev.champions.core.module.payload.PayloadSafety
+				.check(dev.champions.core.module.payload.PayloadEffect.auditArtifact("../escape.yml")).allowed());
+		check("artifact with an executable extension is refused",
+			!dev.champions.core.module.payload.PayloadSafety
+				.check(dev.champions.core.module.payload.PayloadEffect.auditArtifact("payload.jar")).allowed());
+		check("artifact with an inert extension is allowed",
+			dev.champions.core.module.payload.PayloadSafety
+				.check(dev.champions.core.module.payload.PayloadEffect.auditArtifact("notes.yml")).allowed());
+
+		// The folder itself refuses to be talked out of its directory.
+		try {
+			java.nio.file.Path dir = java.nio.file.Files.createTempDirectory("selftest-artifacts");
+			var folder = dev.champions.core.catalog.AuditFolder.under(dir);
+			boolean wrote = folder.write("ok.txt", "hello").ok();
+			boolean escaped = folder.write("../escape.txt", "no").ok();
+			boolean deleted = folder.delete("ok.txt");
+			check("artifact folder writes and deletes inside itself", wrote && deleted);
+			check("artifact folder refuses a traversal name", !escaped);
+			check("artifact folder holds nothing after revert", folder.list().isEmpty());
+		} catch (java.io.IOException error) {
+			check("artifact folder writes and deletes inside itself", false);
+		}
 	}
 
 	private static void check(String label, boolean passed) {
