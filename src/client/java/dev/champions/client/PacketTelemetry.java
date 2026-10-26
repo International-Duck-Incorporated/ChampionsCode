@@ -5,9 +5,12 @@ import dev.champions.core.module.PacketFlowSnapshot;
 import net.minecraft.network.protocol.Packet;
 
 import java.util.ArrayDeque;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** Thread-safe, metadata-only packet counter used by the Wire Lens modules. */
 public final class PacketTelemetry {
@@ -19,6 +22,9 @@ public final class PacketTelemetry {
 	private static long totalOutbound;
 	private static long connectionErrors;
 	private static long evictions;
+	/** Channel identifiers seen on the wire. Metadata only: never a payload body. */
+	private static final Set<String> CHANNELS = new LinkedHashSet<>();
+	private static final int MAX_CHANNELS = 64;
 
 	private PacketTelemetry() {}
 
@@ -46,7 +52,42 @@ public final class PacketTelemetry {
 			Map.copyOf(INBOUND), Map.copyOf(OUTBOUND), recent);
 	}
 
+	/**
+	 * Channel identifiers this connection has carried, in {@code namespace:path}
+	 * form.
+	 *
+	 * <p>A custom payload's <em>identifier</em> says a mod on the other end is
+	 * registered on that channel; the body says nothing this tool keeps. Only the
+	 * identifier is recorded, it is bounded, and it is never written to the audit
+	 * log.</p>
+	 */
+	public static synchronized Set<String> channels() {
+		return Collections.unmodifiableSet(new LinkedHashSet<>(CHANNELS));
+	}
+
+	private static void recordChannel(Packet<?> packet) {
+		if (packet == null) return;
+		if (CHANNELS.size() >= MAX_CHANNELS) return;
+		String id = channelId(packet);
+		if (id == null || id.isBlank()) return;
+		CHANNELS.add(sanitizeType(id));
+	}
+
+	private static String channelId(Packet<?> packet) {
+		try {
+			if (packet instanceof net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket inbound) {
+				var payload = inbound.payload();
+				if (payload == null || payload.type() == null || payload.type().id() == null) return null;
+				return payload.type().id().toString();
+			}
+		} catch (RuntimeException | LinkageError unsupported) {
+			return null;
+		}
+		return null;
+	}
+
 	private static void record(PacketEvent.Direction direction, Packet<?> packet) {
+		recordChannel(packet);
 		String type = packet == null ? "unknown" : sanitizeType(packet.getClass().getSimpleName());
 		(direction == PacketEvent.Direction.INBOUND ? INBOUND : OUTBOUND).merge(type, 1L, Long::sum);
 		if (EVENTS.size() >= MAX_TIMELINE_EVENTS) {

@@ -183,6 +183,13 @@ public final class SelfTest {
 			dev.champions.core.console.ExploitWarningPrompt.unavailable(), UpdateService.disabled(), () -> {});
 		console.submit("show modules");
 		check("console lists builtins", contains(console, "auxiliary/audit/plugin_surface"));
+		check("mod catalogue loads", dev.champions.core.mod.ModCatalog.knownIds().contains("cobblemon")
+			&& dev.champions.core.mod.ModCatalog.forMod("cobblemon-fabric").isPresent());
+		check("mod inventory analysis runs without a game",
+			dev.champions.core.mod.ModPosture.analyse(
+				java.util.List.of(new dev.champions.core.mod.ModPosture.InstalledMod("cobblemon", "Cobblemon", "1.8.0", "mod")),
+				java.util.Set.of("cobblemon:main"), "fabric").findings().stream()
+				.anyMatch(finding -> finding.title().startsWith("The server is talking")));
 		check("discovery modules ship in the jar",
 			java.util.Set.of("auxiliary/scanner/plugin_fingerprint",
 					"auxiliary/audit/admin_command_exposure",

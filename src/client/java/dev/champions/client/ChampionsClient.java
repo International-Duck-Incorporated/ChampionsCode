@@ -2,6 +2,7 @@ package dev.champions.client;
 
 import com.internationalduck.championscode.module.exploit.ExampleExploitModule;
 import com.internationalduck.championscode.module.payload.ExamplePayloadModule;
+import com.internationalduck.championscode.module.audit.InstalledModsModule;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.champions.client.desktop.DesktopRuntime;
 import dev.champions.client.java.JavaRuntimeManager;
@@ -111,6 +112,8 @@ public final class ChampionsClient implements ClientModInitializer {
 		// exploit or payload folder.
 		console.registerModule(new ExampleExploitModule());
 		console.registerModule(new ExamplePayloadModule());
+		// Mod-side inventory. Reads the loader and the channel telemetry; sends nothing.
+		console.registerModule(new InstalledModsModule());
 		javaRuntime = new JavaRuntimeManager(configDirectory, contextSupplier, console);
 		javaRuntimeReference.set(javaRuntime);
 		// `repo install` drops the verified source into the same plug-and-play

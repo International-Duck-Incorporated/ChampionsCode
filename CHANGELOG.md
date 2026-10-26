@@ -4,6 +4,29 @@
 
 Nothing yet.
 
+## 0.2.0-beta.16 - 2026-10-26
+
+### Added
+- **`auxiliary/audit/mod_posture`** — the mod-side counterpart to the plugin
+  inventory. It lists the mods this client loaded, names the ones that change what
+  a server accepts (Cobblemon, LuckPerms, Create, Lithium, ViaVersion) and the ones
+  that open a service beside the game port (Simple Voice Chat, Geyser, spark's
+  viewer, the LuckPerms web editor), flags working-tree builds and duplicate mod
+  jars, and lists the mods it does not recognise as unreviewed rather than unsafe.
+- **Channel identifiers on the wire.** `PacketTelemetry` now records the
+  identifier of each custom payload it sees -- `cobblemon:main`, not the bytes.
+  It is bounded to 64, never written to the audit log, and it is the only evidence
+  a client can have about which mods the other end is running.
+- `ModCatalog` (24 mod families) and `ModPosture` (pure analysis) live in
+  `core`, so the whole report is testable without a game; the client module only
+  fills in the loader and telemetry.
+
+### Kept honest
+The inventory is this client's, and the report says so in a finding of its own: a
+client cannot see a server's mod list, and a channel identifier is only nameable
+when this client has the mod that decodes it. Both limits are stated in the module
+output, not in a footnote.
+
 ## 0.2.0-beta.15 - 2026-10-26
 
 ### Added
