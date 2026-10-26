@@ -75,7 +75,8 @@ public final class FixtureReproductionModule implements PayloadModule, ArtifactF
 			new ModuleOption("PAYLOAD", "console_injection", true, false,
 				"Payload provider to demonstrate it with", payloadIds()),
 			new ModuleOption("MODE", "FIXTURE", false, false,
-				"Where to run: FIXTURE is a controlled target, LIVE is the connected server", List.of("FIXTURE", "LIVE")),
+				"FIXTURE is a modelled target, IMPLEMENTATION demands real code that implements the pattern, "
+					+ "LIVE is the connected server", List.of("FIXTURE", "IMPLEMENTATION", "LIVE")),
 			new ModuleOption("ACTION", "PLAN", true, false,
 				"PLAN describes what a verification would do and runs nothing; VERIFY executes it after ACK",
 				List.of("PLAN", "VERIFY")),
@@ -124,9 +125,12 @@ public final class FixtureReproductionModule implements PayloadModule, ArtifactF
 			Map<String, String> options, ActiveModuleRuntime runtime) {
 		String mechanismId = options.getOrDefault("MECHANISM", "").strip();
 		String payloadId = options.getOrDefault("PAYLOAD", "").strip();
-		GateRequest.ReproductionMode mode = "LIVE".equalsIgnoreCase(options.getOrDefault("MODE", "FIXTURE").strip())
-			? GateRequest.ReproductionMode.LIVE
-			: GateRequest.ReproductionMode.FIXTURE;
+		GateRequest.ReproductionMode mode = switch (options.getOrDefault("MODE", "FIXTURE").strip()
+			.toUpperCase(java.util.Locale.ROOT)) {
+			case "LIVE" -> GateRequest.ReproductionMode.LIVE;
+			case "IMPLEMENTATION" -> GateRequest.ReproductionMode.IMPLEMENTATION;
+			default -> GateRequest.ReproductionMode.FIXTURE;
+		};
 		if (!context.connected() && mode == GateRequest.ReproductionMode.LIVE) {
 			return CompletableFuture.completedFuture(new ModuleResult(
 				"No connection: a live verification needs a session",
@@ -165,21 +169,29 @@ public final class FixtureReproductionModule implements PayloadModule, ArtifactF
 		List<Finding> findings = new ArrayList<>();
 		findings.add(new Finding(Finding.Severity.INFO,
 			"Verification plan for " + plan.mechanismName() + " with " + plan.payloadId(),
-			"Nothing has run. " + plan.stages().size() + " stage(s) would run against "
-				+ (mode == GateRequest.ReproductionMode.LIVE ? "the connected server" : "the controlled fixture") + ".",
+			"Nothing has run. " + plan.stages().size() + " stage(s) would run against " + target(mode)
+				+ ": a control, then " + plan.samples() + " payload observation(s) because the mechanism is "
+				+ "declared " + plan.determinism().name().toLowerCase(java.util.Locale.ROOT) + ".",
 			plan.executable()
 				? "Set ACTION VERIFY and ACK " + plan.acknowledgementPhrase() + " to execute this plan."
 				: "The plan cannot execute as written; read the stage refusals below."));
 		for (VerificationPlan.Stage stage : plan.stages()) {
 			findings.add(new Finding(Finding.Severity.INFO,
-				stage.stage() + ": " + stage.material() + (stage.allowed() ? " (would be allowed)" : " (would be refused)"),
+				stage.stage() + ": " + stage.description() + (stage.allowed() ? " (would be allowed)" : " (would be refused)"),
 				stage.expectation(),
 				stage.allowed() ? "" : "Gate: " + stage.gateReason()));
 		}
 		findings.add(new Finding(Finding.Severity.INFO, "Why a control stage exists",
-			"The control carries the same shape with a benign value. If the control also reaches the sink, the "
-				+ "mechanism is not discriminating and the run will report INCONCLUSIVE rather than VERIFIED.",
-			"This is what stops a permissive fixture, or a patched build, from being reported as vulnerable."));
+			"The control carries the same shape as the payload with a benign value and must enter the same sink "
+				+ "operation. An effect is credited to the payload only when the control did not produce it and it "
+				+ "names the payload's own data; otherwise the run reports INCONCLUSIVE.",
+			"This is what stops a permissive sink, or a patched build, from being reported as vulnerable."));
+		findings.add(new Finding(Finding.Severity.INFO, "What could be verified here",
+			plan.referenceImplementation()
+				? "A real implementation of this pattern is in the build, so this run can reach IMPLEMENTATION_VERIFIED."
+				: "This mechanism has a modelled sink only, so the strongest verdict available is FIXTURE_VERIFIED. "
+					+ "MODE IMPLEMENTATION will be refused rather than granted and then over-claimed.",
+			plan.referenceImplementation() ? "" : "That is a property of the build, not a setting."));
 		findings.add(new Finding(Finding.Severity.INFO, "Cleanup", plan.cleanup(), "Declared by the payload."));
 
 		List<EvidenceNode> evidence = List.of(EvidenceNode.group("Plan", List.of(
@@ -187,10 +199,17 @@ public final class FixtureReproductionModule implements PayloadModule, ArtifactF
 			EvidenceNode.observed("Payload", plan.payloadId(), "Declares its own kind, shape and cleanup."),
 			EvidenceNode.observed("Kind", plan.payloadKind().name(), "What the gate will authorise."),
 			EvidenceNode.observed("Stages", Integer.toString(plan.stages().size()),
-				"CONTROL, PAYLOAD and REPEAT; every stage is gated separately."),
+				"A control plus " + plan.samples() + " payload observation(s); every stage is gated separately."),
+			EvidenceNode.observed("Determinism", plan.determinism().name(),
+				"How many observations this mechanism needs before one success means anything."),
+			EvidenceNode.observed("Reference implementation", Boolean.toString(plan.referenceImplementation()),
+				"Whether real code implementing the pattern exists, as opposed to a model of it."),
 			EvidenceNode.observed("Executed", "nothing", "Planning performs no write, send or invocation."))));
 
-		return new ModuleResult("Plan ready: " + plan.stages().size() + " stage(s), nothing executed", findings, evidence);
+		return new ModuleResult(plan.executable()
+			? "Plan ready: " + plan.stages().size() + " stage(s), nothing executed"
+			: "Plan cannot run: " + plan.stages().stream().filter(stage -> !stage.allowed()).count()
+				+ " stage(s) would be refused, nothing executed", findings, evidence);
 	}
 
 	/** The report, with the verdict and the reasoning that produced it. */
@@ -205,9 +224,9 @@ public final class FixtureReproductionModule implements PayloadModule, ArtifactF
 				stage.allowed() ? stage.observed() : stage.gateReason(),
 				stage.allowed() ? "Expected: " + stage.expected() : ""));
 		}
-		if (!report.claimCeiling().isBlank()) {
+		if (!report.claims().isBlank()) {
 			findings.add(new Finding(Finding.Severity.INFO, "What this verdict may be used to claim",
-				report.claimCeiling(), "Anything stronger needs a server-side observation."));
+				report.claims(), "Anything stronger needs a server-side observation."));
 		}
 		for (String note : report.notes()) {
 			findings.add(new Finding(Finding.Severity.INFO, "Note", clip(note, 300), ""));
@@ -218,9 +237,13 @@ public final class FixtureReproductionModule implements PayloadModule, ArtifactF
 		evidence.add(EvidenceNode.group("Verification", List.of(
 			EvidenceNode.observed("Verdict", report.verdict().name(), "Decided by the stages, not by the module."),
 			EvidenceNode.observed("Basis", report.basis().name(),
-				"FIXTURE is a controlled target; LIVE is the connected server."),
+				"FIXTURE is a model of the seam, IMPLEMENTATION is real code that implements it, LIVE is the server."),
 			EvidenceNode.observed("Discriminative", Boolean.toString(report.discriminative()),
-				"The control did not reach the sink and the payload did."),
+				"The control did not produce the effect the payload produced."),
+			EvidenceNode.observed("Same sink path", Boolean.toString(report.samePath()),
+				"Whether the control entered the same sink operation as the payload."),
+			EvidenceNode.observed("Attributed", report.attributed() + " of " + report.requiredSamples(),
+				"Observations that landed on the payload's own data, out of the number required."),
 			EvidenceNode.observed("Mechanism", report.mechanismId(), "From the mechanism registry."),
 			EvidenceNode.observed("Payload", report.payloadId().isBlank() ? "none" : report.payloadId(),
 				"Supplied the control and the payload, independently of the mechanism."))));
@@ -273,9 +296,20 @@ public final class FixtureReproductionModule implements PayloadModule, ArtifactF
 		return new ModuleResult(summary, findings, evidence);
 	}
 
+	private static String target(GateRequest.ReproductionMode mode) {
+		return switch (mode) {
+			case LIVE -> "the connected server";
+			case IMPLEMENTATION -> "a real implementation of the pattern";
+			case FIXTURE -> "the controlled fixture";
+			case NONE -> "nothing";
+		};
+	}
+
 	private static String stateLabel(ReproductionState state) {
 		return switch (state) {
-			case VERIFIED -> "Reproduced";
+			case FIXTURE_VERIFIED -> "Reproduced against a model";
+			case IMPLEMENTATION_VERIFIED -> "Reproduced against a real implementation";
+			case TARGET_VERIFIED -> "Reproduced against the target";
 			case POTENTIALLY_VULNERABLE -> "Potentially vulnerable";
 			case NOT_REPRODUCED -> "Not reproduced";
 			case NOT_TESTED -> "Not tested";
@@ -288,7 +322,7 @@ public final class FixtureReproductionModule implements PayloadModule, ArtifactF
 
 	private static Finding.Severity severity(ReproductionState state) {
 		return switch (state) {
-			case VERIFIED -> Finding.Severity.HIGH;
+			case FIXTURE_VERIFIED, IMPLEMENTATION_VERIFIED, TARGET_VERIFIED -> Finding.Severity.HIGH;
 			case POTENTIALLY_VULNERABLE -> Finding.Severity.MEDIUM;
 			case NOT_REPRODUCED, NOT_TESTED, ARTIFACT_ONLY -> Finding.Severity.INFO;
 			case INCONCLUSIVE -> Finding.Severity.MEDIUM;
@@ -299,10 +333,13 @@ public final class FixtureReproductionModule implements PayloadModule, ArtifactF
 
 	private static String recommendation(VerificationReport report) {
 		return switch (report.verdict()) {
-			case VERIFIED -> report.basis() == dev.champions.core.exploit.ReproductionBasis.FIXTURE
-				? "The mechanism is real and the payload discriminates. Confirm the target's build and configuration "
-					+ "before reporting it as a live finding; this verdict is about the seam, not the plugin build."
-				: "The target demonstrated the behaviour inside the authorised scope of this run.";
+			case FIXTURE_VERIFIED -> "The mechanism is real and the payload discriminates, against a model. Confirm "
+				+ "the target's build and configuration before reporting it as a live finding: this verdict is about "
+				+ "the seam, not the plugin build.";
+			case IMPLEMENTATION_VERIFIED -> "Real code implementing the pattern did the privileged thing. Establish "
+				+ "that the target runs that code before reporting it: this verdict is about the bug class, not the "
+				+ "build.";
+			case TARGET_VERIFIED -> "The target demonstrated the behaviour inside the authorised scope of this run.";
 			case NOT_REPRODUCED -> "The control was refused and the payload did not reach the sink. Do not report this "
 				+ "as a vulnerability.";
 			case INCONCLUSIVE -> "The run cannot attribute the effect to the payload. Do not report this as a "
@@ -317,16 +354,14 @@ public final class FixtureReproductionModule implements PayloadModule, ArtifactF
 
 	private static String recommendation(ReproductionResult result) {
 		return switch (result.state()) {
-			case VERIFIED -> result.basis() == dev.champions.core.exploit.ReproductionBasis.FIXTURE
-				? "The mechanism is real. Confirm the target's build and configuration before reporting it as a live finding."
-				: "The target demonstrated the behaviour inside the authorised scope.";
+			case FIXTURE_VERIFIED, IMPLEMENTATION_VERIFIED, TARGET_VERIFIED ->
+				"The payload reached the sink. Run ACTION VERIFY for a verdict with a control behind it.";
 			case NOT_REPRODUCED -> "The payload did not reach the sink. Do not report this as a vulnerability.";
 			case BLOCKED_BY_GATE -> "The gate refused; nothing ran. Read the reason before trying another payload.";
 			case ARTIFACT_ONLY -> "A document was written. It is not evidence that the target is vulnerable.";
 			case NOT_TESTED -> "Nothing was attempted.";
 			case POTENTIALLY_VULNERABLE -> "A surface match only; reproduce it before reporting.";
-			case INCONCLUSIVE -> "The run could not attribute the effect to the payload. Do not report this as a "
-				+ "vulnerability; the control stage is there to prevent exactly this.";
+			case INCONCLUSIVE -> "A single attempt cannot attribute the effect to the payload. Run ACTION VERIFY.";
 			case ERROR -> "The attempt failed. Fix the cause before drawing any conclusion.";
 		};
 	}

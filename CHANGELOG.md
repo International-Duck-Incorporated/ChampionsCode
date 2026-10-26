@@ -4,6 +4,48 @@
 
 Nothing yet.
 
+## 0.2.0-beta.10 - 2026-10-26
+
+Verification, audited against the five questions a verdict has to survive. Four of the
+five were real defects; `docs/verification-audit.md` records each one with the file it
+was in and the test that now holds it.
+
+### Changed
+- **`VERIFIED` split into `FIXTURE_VERIFIED`, `IMPLEMENTATION_VERIFIED` and
+  `TARGET_VERIFIED`.** The state names what was established, and `claim()` derives the
+  sentence from the state, so a model of a sink and a real `ObjectInputStream` can no
+  longer produce the same verdict. `claimCeiling` is gone.
+- **`MODE IMPLEMENTATION` demands tier 2 and the gate refuses it when it cannot be
+  honoured.** A modelled sink asked for implementation-grade evidence is refused rather
+  than granted and described in a footnote.
+- `outbound_fetch` runs a real loopback HTTP service for loopback hosts: a socket, a
+  request, an answer observed on the server side. It degrades to `FIXTURE_VERIFIED`, and
+  says so, when it cannot bind.
+
+### Fixed
+- **The engine observed the mechanism's opinion, not the sink.** `attemptOnFixture` read
+  a boolean the mechanism computed (`size() > 1` for the console sinks). It now reads the
+  fixture's effect log, credits an effect only when the control did not produce it and it
+  names the payload's own data, and records the mechanism's claim separately so a
+  disagreement is visible instead of decisive.
+- **Effects are compared with the payload's value normalised away**, so a sink that
+  behaves identically for both values is `INCONCLUSIVE` even though the two effect strings
+  differ by a word.
+- **A control must be the payload minus the trigger**: same shape, same sink operation
+  (`trail()`), and its effects a subset of the payload's. A control identical to the
+  payload is refused before anything runs.
+- **The sample size is declared, not hard-coded.** `Determinism.DETERMINISTIC` needs 2,
+  `INTERMITTENT` needs 5, and a verdict requires every required sample to land.
+- **`GateDecision` is a capability.** Sealed, privately implemented, and only mintable
+  with a token `ExecutionGate` holds privately: `new GateDecision(true, ...)` no longer
+  compiles, and nothing outside the gate can manufacture an approval.
+- **The plan carries its material objects**, so the payload that was shown and approved is
+  the payload that executes.
+- `SqlIdentifierMechanism` read the effect log for evidence and threw when a lookup
+  produced no effect; it reads the statement log.
+- `OutboundFetchFixture.reset()` no longer erases the fidelity of the last attempt, which
+  the engine reads after the reset.
+
 ## 0.2.0-beta.9 - 2026-10-26
 
 ### Added

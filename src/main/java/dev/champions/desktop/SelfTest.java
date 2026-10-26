@@ -55,6 +55,7 @@ public final class SelfTest {
 			portedCatalog();
 			exploitSeparation();
 			verificationFlow();
+			verificationAudit();
 			jsonEdgeCases();
 		} finally {
 			deleteTree(config);
@@ -657,10 +658,17 @@ public final class SelfTest {
 				dev.champions.core.exploit.ReproductionEngine.ACKNOWLEDGEMENT_PHRASE, java.util.Map.of())
 				.toCompletableFuture().join();
 			check("a discriminating reproduction is verified",
-				report.verdict() == dev.champions.core.exploit.ReproductionState.VERIFIED);
+				report.verdict() == dev.champions.core.exploit.ReproductionState.FIXTURE_VERIFIED);
 			check("the verdict records that it discriminated", report.discriminative());
-			check("the control did not reach the sink",
-				!report.stage(dev.champions.core.exploit.VerificationStage.CONTROL).reached());
+			check("the control did not produce the payload's effect",
+				report.stage(dev.champions.core.exploit.VerificationStage.CONTROL).effects().stream()
+					.noneMatch(effect -> effect.contains("-second")));
+			check("the control is the payload minus the trigger",
+				report.stage(dev.champions.core.exploit.VerificationStage.PAYLOAD).effects()
+					.containsAll(report.stage(dev.champions.core.exploit.VerificationStage.CONTROL).effects()));
+			check("the control took the same sink path",
+				report.stage(dev.champions.core.exploit.VerificationStage.CONTROL).sinkPath()
+					.equals(report.stage(dev.champions.core.exploit.VerificationStage.PAYLOAD).sinkPath()));
 			check("the payload reached the sink twice",
 				report.stage(dev.champions.core.exploit.VerificationStage.PAYLOAD).reached()
 					&& report.stage(dev.champions.core.exploit.VerificationStage.REPEAT).reached());
@@ -687,6 +695,59 @@ public final class SelfTest {
 				// best effort: the directory is a temp tree
 			}
 		}
+	}
+
+	/**
+	 * The five things a verified verdict has to survive: the control takes the same
+	 * path, the sink is what is observed, the sample is declared, the verdict names
+	 * what ran, and an approval cannot be manufactured.
+	 */
+	private static void verificationAudit() {
+		// 1. A control must be the payload minus the trigger, and take the same road.
+		var payload = new dev.champions.core.exploit.payload.ConsoleInjectionPayload();
+		check("a control is not the payload",
+			!payload.control(java.util.Map.of()).equals(payload.material(java.util.Map.of())));
+
+		// 2. The sink records effects; the engine reads them, not a mechanism's opinion.
+		var console = (dev.champions.core.exploit.fixture.ConsoleDispatchFixture)
+			dev.champions.core.exploit.fixture.FixtureRegistry.byId("console_dispatch");
+		console.reset();
+		console.runConsoleEffect("audit; say second");
+		check("the fixture records privileged effects", console.recorded().size() == 2);
+		check("the fixture records which operation it entered",
+			console.trail().equals(java.util.List.of("runConsoleEffect")));
+		console.reset();
+
+		// 3. Samples follow the declared determinism, not a constant.
+		check("a deterministic mechanism needs two observations",
+			dev.champions.core.exploit.Determinism.DETERMINISTIC.minimumSamples() == 2);
+		check("an intermittent mechanism needs more than two",
+			dev.champions.core.exploit.Determinism.INTERMITTENT.minimumSamples() > 2);
+
+		// 4. The verdict ladder is ordered and the claims differ.
+		var fixtureVerified = dev.champions.core.exploit.ReproductionState.FIXTURE_VERIFIED;
+		var implementationVerified = dev.champions.core.exploit.ReproductionState.IMPLEMENTATION_VERIFIED;
+		var targetVerified = dev.champions.core.exploit.ReproductionState.TARGET_VERIFIED;
+		check("the verdicts are ordered model < implementation < target",
+			fixtureVerified.tier() < implementationVerified.tier()
+				&& implementationVerified.tier() < targetVerified.tier());
+		check("the three verified states carry different claims",
+			!fixtureVerified.claim().equals(implementationVerified.claim())
+				&& !implementationVerified.claim().equals(targetVerified.claim()));
+		check("a modelled sink has no reference implementation to run",
+			!dev.champions.core.exploit.MechanismRegistry.get("worldguard_yaml").referenceImplementationAvailable());
+		check("the deserialiser fixture does",
+			dev.champions.core.exploit.MechanismRegistry.get("mythicmobs_deser").referenceImplementationAvailable());
+
+		// 5. An approval is a capability, not a boolean anyone can build.
+		boolean refused = false;
+		try {
+			dev.champions.core.exploit.GateDecision.permit(new Object(),
+				dev.champions.core.exploit.PayloadKind.EXECUTION_CAPABLE, "no");
+		} catch (IllegalArgumentException expected) {
+			refused = true;
+		}
+		check("an approval cannot be constructed outside the gate", refused);
 	}
 
 	private static void check(String label, boolean passed) {
