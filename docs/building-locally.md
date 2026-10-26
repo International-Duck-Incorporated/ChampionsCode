@@ -52,8 +52,8 @@ and `build\libs\` contains `champions-mod-<version>.jar` plus the `-sources.jar`
 It runs the *packaged JAR* as an application (no Minecraft on the classpath) and prints:
 
 ```
-Self-testing champions-mod-0.1.0-beta.4.jar
-ChampionsCode desktop self-test 0.2.0-desktop
+Self-testing champions-mod-0.2.0-beta.1.jar
+ChampionsCode desktop self-test 0.2.0-beta.1
   ok   buffer keeps the 1000-line bound
   ...
   ok   drop-in compiler: unload removes it
@@ -67,7 +67,7 @@ verified on your machine.
 You can also run it by hand against the exact file users download:
 
 ```powershell
-java -jar .\build\libs\champions-mod-0.1.0-beta.4.jar --self-test
+java -jar .\build\libs\champions-mod-0.2.0-beta.1.jar --self-test
 ```
 
 ---
@@ -75,7 +75,7 @@ java -jar .\build\libs\champions-mod-0.1.0-beta.4.jar --self-test
 ## 3. Look at the app (no Minecraft needed)
 
 ```powershell
-java -jar .\build\libs\champions-mod-0.1.0-beta.4.jar --demo
+java -jar .\build\libs\champions-mod-0.2.0-beta.1.jar --demo
 ```
 
 Three windows open: **Terminal**, **Modules**, **Code space**, running a scripted session

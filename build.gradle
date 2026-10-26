@@ -159,6 +159,9 @@ tasks.matching { it.name == 'jar' || it.name == 'remapJar' }.configureEach { arc
 	if (archiveTask.hasProperty('manifest')) {
 		archiveTask.manifest {
 			attributes('Main-Class': project.ext.desktopMainClass)
+			// Read back by DesktopMain.resolveVersion() so the app reports the
+			// version of the JAR it was started from, not a compiled-in default.
+			attributes('Implementation-Version': project.version)
 		}
 	}
 }

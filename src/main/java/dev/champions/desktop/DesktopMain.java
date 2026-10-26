@@ -164,8 +164,10 @@ public final class DesktopMain {
 	private static java.awt.Rectangle shellBounds() {
 		java.awt.Rectangle screen = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
 			.getMaximumWindowBounds();
-		int width = Math.min(1460, Math.max(980, Math.round(screen.width * 0.84f)));
-		int height = Math.min(920, Math.max(640, Math.round(screen.height * 0.86f)));
+		// The floors match Shell's minimum size, so a first run never opens
+		// below the size at which the Settings pane still fits.
+		int width = Math.min(1460, Math.max(1040, Math.round(screen.width * 0.84f)));
+		int height = Math.min(920, Math.max(720, Math.round(screen.height * 0.86f)));
 		java.awt.Rectangle computed = new java.awt.Rectangle(
 			screen.x + (screen.width - width) / 2, screen.y + (screen.height - height) / 2, width, height);
 		String value = loadWindowBounds().getProperty("shell");

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+Nothing yet.
+
+## 0.2.0-beta.1 - 2026-10-26
+
 ### Added
 - **`interfaces` console command.** `interfaces` prints the current placement,
   `interfaces both|external|in-game` switches it, `interfaces reload` re-reads
@@ -21,6 +25,11 @@
   the buttons moved into a pinned footer.
 - **Editor scrollbars are themed.** The platform's light 3D scrollbar showed up
   under the code editor and beside the tree; both now use a flat 10 px dark bar.
+- **The title bar and taskbar use the real logo.** The bar drew a vector
+  approximation of the mark; it now renders `assets/champions/logo.png`
+  (black keyed out, dark crimson lifted to the UI accent) at 40 px, and the
+  same artwork feeds the window icons at 16-256 px, so Windows no longer
+  falls back to the generic Java icon.
 
 ### Changed
 - **New desktop look.** One frameless window (`Shell`) with a drawn title bar

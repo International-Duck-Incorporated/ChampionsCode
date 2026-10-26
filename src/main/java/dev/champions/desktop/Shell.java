@@ -56,7 +56,10 @@ public final class Shell extends JFrame {
 		setUndecorated(true);
 		setBackground(Theme.BACKGROUND);
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-		setMinimumSize(new Dimension(880, 540));
+		// Measured against the tallest pane (Settings) at 100% scale: below
+		// this the interface card runs under the status bar and the module
+		// editor loses its action row. The four panes all lay out at this size.
+		setMinimumSize(new Dimension(1040, 720));
 
 		JPanel root = new JPanel(new BorderLayout());
 		root.setBackground(Theme.BACKGROUND);
