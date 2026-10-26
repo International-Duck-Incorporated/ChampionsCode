@@ -80,7 +80,15 @@ final class ChatCommandRuntime implements ActiveModuleRuntime {
 	}
 
 	private static String validateAgainstLiveTree(ClientPacketListener listener, ChatCommandRequest request) {
-		if (!CommandSafetyPolicy.mayProbe(request.root())) return "Command root is blocked by the safety policy.";
+		// A proof is cleared by the payload allowlist, which permits a small set of
+		// visible, state-neutral commands. A probe keeps the stricter rule that it
+		// may only touch non-default roots, so auditing never pokes vanilla commands.
+		if (request.origin() == dev.champions.core.module.active.ActiveModuleRuntime.Origin.PROOF) {
+			var verdict = dev.champions.core.module.payload.PayloadSafety.checkChatCommand(request.wireCommand());
+			if (!verdict.allowed()) return "Payload refused by the safety policy: " + verdict.reason();
+		} else if (!CommandSafetyPolicy.mayProbe(request.root())) {
+			return "Command root is blocked by the safety policy.";
+		}
 		CommandNode<?> root = listener.getCommands().getRoot().getChild(request.root());
 		if (root == null) return "Command root is no longer advertised by the server.";
 		return switch (request.variant()) {

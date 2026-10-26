@@ -19,6 +19,15 @@ public interface ActiveModuleRuntime {
 			request, List.of(), Status.UNSUPPORTED, "Active client runtime is unavailable."));
 	}
 
+	/**
+	 * Why a command is being sent. A {@code PROBE} walks the advertised command
+	 * surface and is restricted to non-default roots, so an audit never pokes at
+	 * vanilla commands. A {@code PROOF} is one allowlisted, state-neutral command
+	 * whose only job is to demonstrate reachability; it is cleared by
+	 * {@link dev.champions.core.module.payload.PayloadSafety} instead.
+	 */
+	enum Origin { PROBE, PROOF }
+
 	enum ProbeVariant {
 		BLANK(""), VERSION("version"), V("v"), PATH("");
 		private final String suffix;
@@ -26,13 +35,28 @@ public interface ActiveModuleRuntime {
 		public String suffix() { return suffix; }
 	}
 
-	record ChatCommandRequest(String root, ProbeVariant variant, List<String> literalPath, int timeoutTicks, int maxMessages) {
+	record ChatCommandRequest(String root, ProbeVariant variant, List<String> literalPath, int timeoutTicks,
+			int maxMessages, Origin origin) {
+
+		public ChatCommandRequest(String root, ProbeVariant variant, List<String> literalPath, int timeoutTicks,
+				int maxMessages) {
+			this(root, variant, literalPath, timeoutTicks, maxMessages, Origin.PROBE);
+		}
 		public ChatCommandRequest {
 			root = CommandSafetyPolicy.normalize(root);
 			Objects.requireNonNull(variant, "variant");
 			literalPath = literalPath == null ? List.of() : literalPath.stream()
 				.map(value -> value == null ? "" : value.strip().toLowerCase(Locale.ROOT)).toList();
-			if (!CommandSafetyPolicy.mayProbe(root)) throw new IllegalArgumentException("Command root is not eligible for probing: " + root);
+			if (origin == Origin.PROOF) {
+				// A proof is allowlisted by the payload rules rather than by the
+				// probe rules: probing deliberately avoids vanilla roots, while a
+				// proof exists to use one of them (/say) as visible evidence.
+				var verdict = dev.champions.core.module.payload.PayloadSafety.checkChatCommand(
+					root + (literalPath.isEmpty() ? "" : " " + String.join(" ", literalPath)));
+				if (!verdict.allowed()) throw new IllegalArgumentException("Payload command refused: " + verdict.reason());
+			} else if (!CommandSafetyPolicy.mayProbe(root)) {
+				throw new IllegalArgumentException("Command root is not eligible for probing: " + root);
+			}
 			if (literalPath.stream().anyMatch(value -> !SAFE_LITERAL.matcher(value).matches()))
 				throw new IllegalArgumentException("Probe path must contain safe literal nodes only");
 			if (variant != ProbeVariant.PATH && !literalPath.isEmpty()) throw new IllegalArgumentException("Only PATH probes accept a literal path");
@@ -43,6 +67,11 @@ public interface ActiveModuleRuntime {
 
 		public ChatCommandRequest(String root, ProbeVariant variant, int timeoutTicks, int maxMessages) {
 			this(root, variant, List.of(), timeoutTicks, maxMessages);
+		}
+
+		/** One state-neutral proof command, cleared by PayloadSafety before it is sent. */
+		public static ChatCommandRequest proof(String root, List<String> literals, int timeoutTicks, int maxMessages) {
+			return new ChatCommandRequest(root, ProbeVariant.PATH, literals, timeoutTicks, maxMessages, Origin.PROOF);
 		}
 
 		public static ChatCommandRequest path(String root, List<String> literals, int timeoutTicks, int maxMessages) {

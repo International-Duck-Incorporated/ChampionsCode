@@ -14,6 +14,8 @@ import dev.champions.core.module.ModuleRegistry;
 import dev.champions.core.module.ModuleResult;
 import dev.champions.core.module.ResearchModule;
 import dev.champions.core.module.active.ActiveModuleRuntime;
+import dev.champions.core.module.payload.PayloadModule;
+import dev.champions.core.module.payload.PayloadSafety;
 import dev.champions.core.repo.ModuleIndex;
 import dev.champions.core.repo.ModuleRepositoryClient;
 import dev.champions.core.repo.ModuleSourceInstaller;
@@ -929,6 +931,17 @@ public final class ChampionConsole {
 		if (runningModuleId != null) { add(ConsoleLine.error("Active module already running: " + runningModuleId)); return; }
 
 		ResearchModule module = activeModule;
+		if (module instanceof PayloadModule payload) {
+			PayloadSafety.Verdict verdict = PayloadSafety.check(payload.effect());
+			if (!verdict.allowed()) {
+				add(ConsoleLine.error("Payload refused before running: " + verdict.reason()));
+				audit.record("payload", AuthorizationPolicy.normalizeHost(contextSupplier.get().serverAddress()),
+					module.id(), "refused", verdict.reason());
+				return;
+			}
+			add(ConsoleLine.info("[*] Declared effect: " + payload.effect().describe()));
+			add(ConsoleLine.muted("    Revert: " + payload.revertPlan()));
+		}
 		if (module instanceof ExploitResearchModule exploit && !module.id().equals(approvedExploitRunModuleId)) {
 			requestExploitRunWarning(exploit);
 			return;
@@ -965,8 +978,13 @@ public final class ChampionConsole {
 			if (module instanceof ActiveResearchModule active) {
 				runningModuleId = module.id();
 				if (activeAction) {
-					add(ConsoleLine.warning("[>] AGGRESSIVE action authorized; probes are sequential, filtered, and rate-limited…"));
-					audit.record("module_run", decision.normalizedTarget(), module.id(), "started", "Bounded active command probes started");
+					add(ConsoleLine.warning(module instanceof PayloadModule
+						? "[>] PAYLOAD authorized for this run; one bounded, reversible action will be sent."
+						: "[>] AGGRESSIVE action authorized; probes are sequential, filtered, and rate-limited…"));
+					String startedDetail = module instanceof PayloadModule payload
+						? "Payload started: " + payload.effect().describe()
+						: "Bounded active command probes started";
+					audit.record("module_run", decision.normalizedTarget(), module.id(), "started", startedDetail);
 				} else {
 					add(ConsoleLine.muted("[*] SILENT mode selected; no command will be sent."));
 				}

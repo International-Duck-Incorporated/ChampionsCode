@@ -51,6 +51,7 @@ public final class SelfTest {
 			interfacePreference(config.resolve("interfaces"));
 			settingsLayout(config.resolve("layout"));
 			moduleRepository(config.resolve("repo"));
+			payloadSafety();
 			jsonEdgeCases();
 		} finally {
 			deleteTree(config);
@@ -393,6 +394,76 @@ public final class SelfTest {
 		} catch (IllegalArgumentException | IOException expected) {
 			return true;
 		}
+	}
+
+	/**
+	 * A payload must declare a benign effect before it can run. These are the
+	 * rules that make "prove the impact" different from "do damage", so they are
+	 * tested as rules rather than trusted as conventions.
+	 */
+	private static void payloadSafety() {
+		check("payload allows a visible chat command",
+				dev.champions.core.module.payload.PayloadSafety.check(
+						dev.champions.core.module.payload.PayloadEffect.chatCommand("say hello from audit")).allowed());
+		check("payload allows the leading slash form",
+				dev.champions.core.module.payload.PayloadSafety.check(
+						dev.champions.core.module.payload.PayloadEffect.chatCommand("/say proof")).allowed());
+		check("payload refuses a state-changing command",
+				!dev.champions.core.module.payload.PayloadSafety.check(
+						dev.champions.core.module.payload.PayloadEffect.chatCommand("give @a diamond 64")).allowed());
+		check("payload refuses op",
+				!dev.champions.core.module.payload.PayloadSafety.check(
+						dev.champions.core.module.payload.PayloadEffect.chatCommand("op Player")).allowed());
+		check("payload refuses command chaining",
+				!dev.champions.core.module.payload.PayloadSafety.check(
+						dev.champions.core.module.payload.PayloadEffect.chatCommand("say hi\nop Player")).allowed());
+		check("payload refuses NBT smuggling",
+				!dev.champions.core.module.payload.PayloadSafety.check(
+						dev.champions.core.module.payload.PayloadEffect.chatCommand("say {\"clickEvent\":{}}")).allowed());
+		check("payload refuses an unknown root",
+				!dev.champions.core.module.payload.PayloadSafety.check(
+						dev.champions.core.module.payload.PayloadEffect.chatCommand("pluginsurface run")).allowed());
+		check("payload allows a bare marker file",
+				dev.champions.core.module.payload.PayloadSafety.check(
+						dev.champions.core.module.payload.PayloadEffect.markerFile("champions-proof.txt")).allowed());
+		check("payload refuses a marker path",
+				!dev.champions.core.module.payload.PayloadSafety.check(
+						dev.champions.core.module.payload.PayloadEffect.markerFile("../../startup.txt")).allowed());
+		check("payload refuses a nested marker path",
+				!dev.champions.core.module.payload.PayloadSafety.check(
+						dev.champions.core.module.payload.PayloadEffect.markerFile("sub/proof.txt")).allowed());
+		// The runtime accepts a vanilla root only for a declared proof, and keeps
+		// refusing it for a surface probe: the two paths must not share a rule.
+		boolean proofAccepted = true;
+		try {
+			dev.champions.core.module.active.ActiveModuleRuntime.ChatCommandRequest.proof(
+					"say", List.of("champions", "proof"), 60, 4);
+		} catch (IllegalArgumentException refused) {
+			proofAccepted = false;
+		}
+		check("runtime accepts a proof on a vanilla root", proofAccepted);
+		boolean probeRefused = false;
+		try {
+			dev.champions.core.module.active.ActiveModuleRuntime.ChatCommandRequest.path(
+					"say", List.of("champions"), 60, 4);
+		} catch (IllegalArgumentException refused) {
+			probeRefused = true;
+		}
+		check("runtime still refuses to probe a vanilla root", probeRefused);
+		boolean proofRefusedStateChange = false;
+		try {
+			dev.champions.core.module.active.ActiveModuleRuntime.ChatCommandRequest.proof(
+					"give", List.of("diamond"), 60, 4);
+		} catch (IllegalArgumentException refused) {
+			proofRefusedStateChange = true;
+		}
+		check("runtime refuses a state-changing proof", proofRefusedStateChange);
+
+		check("payload accepts a small marker file",
+				dev.champions.core.module.payload.PayloadSafety.acceptableFileSize(512));
+		check("payload refuses an oversized marker file",
+				!dev.champions.core.module.payload.PayloadSafety.acceptableFileSize(
+						dev.champions.core.module.payload.PayloadSafety.maximumFileBytes() + 1));
 	}
 
 	private static void jsonEdgeCases() {

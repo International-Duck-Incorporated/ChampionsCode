@@ -4,6 +4,27 @@
 
 Nothing yet.
 
+## 0.2.0-beta.5 - 2026-10-26
+
+### Added
+- **Payloads: the third tier.** A `PayloadModule` proves an impact instead of
+  describing it, with the effect declared before anything runs and checked by
+  `PayloadSafety`: one visible chat command from a short allowlist, or one small
+  marker file inside the audit folder. Grant, give, kill, teleport, kick and
+  world-state commands are refused by name, and a declaration that does not match
+  the vocabulary is refused rather than reinterpreted. Payloads inherit the
+  full ceremony: declared effect printed first, per-run legal-risk
+  acknowledgement, exact-host authorization, one-run `CONFIRM`, audit line naming
+  the effect and revert plan.
+- **`Origin.PROOF` on the runtime.** The client runtime could previously only
+  send *probes*, restricted to non-default command roots, so a `/say` proof was
+  impossible by design. A proof is now cleared by `PayloadSafety` instead, and
+  validated again inside `ChatCommandRuntime` immediately before the send.
+- **`auxiliary/payloads/chat_reach_proof`** as the worked example: one `/say`
+  line, proof is the echo, `HIGH` when confirmed, and an explicit statement of
+  what the run does not prove.
+- `docs/payload-modules.md` describing the check / verify / payload split.
+
 ## 0.2.0-beta.4 - 2026-10-26
 
 ### Added

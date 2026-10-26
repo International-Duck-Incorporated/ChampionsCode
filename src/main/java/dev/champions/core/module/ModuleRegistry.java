@@ -37,6 +37,8 @@ public final class ModuleRegistry {
 
 	public ModuleRegistry() {
 		register(new ServerFingerprintModule());
+		// Reference payload: the smallest observable proof a chat console can offer.
+		register(new dev.champions.core.module.builtin.ChatReachProofModule());
 		register(new ConnectionPostureModule());
 		register(new PluginSurfaceModule());
 		register(new PluginRiskReviewModule());
