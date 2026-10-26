@@ -25,11 +25,11 @@ public final class ModuleRepositoryClient {
 	/** Cap on any single downloaded document; a repository index is kilobytes. */
 	private static final int MAX_BYTES = 512 * 1024;
 
-	private final RepoConfig config;
+	private final RepoConfig.Repo repo;
 	private final HttpClient http;
 
-	public ModuleRepositoryClient(RepoConfig config) {
-		this.config = config;
+	public ModuleRepositoryClient(RepoConfig.Repo repo) {
+		this.repo = repo;
 		this.http = HttpClient.newBuilder()
 				.followRedirects(HttpClient.Redirect.NORMAL)
 				.connectTimeout(Duration.ofSeconds(8))
@@ -37,7 +37,7 @@ public final class ModuleRepositoryClient {
 	}
 
 	public ModuleIndex index() throws IOException {
-		if (!config.isConfigured()) throw new IOException("No module repository configured. Try: repo config <url>");
+		if (!repo.configured()) throw new IOException("Repository '" + repo.name() + "' has no url. Try: repo add <name> <url>");
 		String body = fetch("index.json");
 		try {
 			return ModuleIndex.parse(body);
@@ -68,10 +68,10 @@ public final class ModuleRepositoryClient {
 	}
 
 	private String fetch(String repositoryFile) throws IOException {
-		String project = config.projectPath();
-		String origin = config.origin();
+		String project = repo.projectPath();
+		String origin = repo.origin();
 		if (project.isBlank() || origin.isBlank()) {
-			throw new IOException("Repository URL '" + config.url() + "' is not a GitLab project URL");
+			throw new IOException("Repository URL '" + repo.url() + "' is not a GitLab project URL");
 		}
 		String encodedProject = URLEncoder.encode(project, StandardCharsets.UTF_8);
 		String encodedFile = repositoryFile.split("/").length == 1
@@ -80,13 +80,13 @@ public final class ModuleRepositoryClient {
 						.map(part -> URLEncoder.encode(part, StandardCharsets.UTF_8))
 						.reduce((left, right) -> left + "%2F" + right).orElse("");
 		String uri = origin + "/api/v4/projects/" + encodedProject + "/repository/files/"
-				+ encodedFile + "/raw?ref=" + URLEncoder.encode(config.ref(), StandardCharsets.UTF_8);
+				+ encodedFile + "/raw?ref=" + URLEncoder.encode(repo.ref(), StandardCharsets.UTF_8);
 
 		HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(uri))
 				.timeout(Duration.ofSeconds(20))
 				.header("Accept", "application/json")
 				.header("User-Agent", "ChampionsCode");
-		if (!config.token().isBlank()) request.header("PRIVATE-TOKEN", config.token());
+		if (!repo.token().isBlank()) request.header("PRIVATE-TOKEN", repo.token());
 
 		HttpResponse<String> response;
 		try {
@@ -102,7 +102,7 @@ public final class ModuleRepositoryClient {
 		}
 		if (status == 404) {
 			throw new IOException("Not found (HTTP 404): " + repositoryFile
-					+ " on ref '" + config.ref() + "'. Check the URL, the ref and that the token can read it.");
+					+ " on ref '" + repo.ref() + "'. Check the URL, the ref and that the token can read it.");
 		}
 		if (status != 200) {
 			throw new IOException("Repository returned HTTP " + status + " for " + repositoryFile);

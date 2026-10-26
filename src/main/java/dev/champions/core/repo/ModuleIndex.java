@@ -17,6 +17,8 @@ import java.util.Optional;
  * rather than failing the whole fetch.</p>
  */
 public record ModuleIndex(int schema, String name, String updated, List<RepoEntry> entries) {
+	/** The module API level this build understands; entries above it are refused. */
+	public static final int SUPPORTED_API = 1;
 
 	public ModuleIndex {
 		entries = List.copyOf(entries);

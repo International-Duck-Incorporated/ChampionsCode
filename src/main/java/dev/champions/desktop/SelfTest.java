@@ -7,6 +7,7 @@ import dev.champions.core.module.active.ActiveModuleRuntime;
 import dev.champions.core.update.UpdateService;
 import dev.champions.net.ipc.Json;
 import dev.champions.net.ipc.Protocol;
+import dev.champions.core.repo.RepoConfig;
 import dev.champions.surface.ConsoleBuffer;
 
 import java.io.IOException;
@@ -300,6 +301,14 @@ public final class SelfTest {
 	 * when it hashes to what the index pinned.
 	 */
 	private static void moduleRepository(Path config) {
+		try {
+			moduleRepositoryChecked(config);
+		} catch (IOException error) {
+			check("repo configuration is writable (" + error.getMessage() + ")", false);
+		}
+	}
+
+	private static void moduleRepositoryChecked(Path config) throws IOException {
 		String index = """
 			{
 			  "schema": 1,
@@ -344,13 +353,46 @@ public final class SelfTest {
 		check("repo rejects a non-index document instead of reading it as empty", rejected);
 
 		dev.champions.core.repo.RepoConfig repoConfig = new dev.champions.core.repo.RepoConfig(config);
-		repoConfig.url("https://gitlab.com/group/sub/project.git");
+		repoConfig.setUrl("default", "https://gitlab.com/group/sub/project.git", "main");
+		dev.champions.core.repo.RepoConfig.Repo defaultRepo = repoConfig.primary();
 		check("repo derives the project path from a URL",
-				repoConfig.projectPath().equals("group/sub/project"));
-		check("repo derives the API origin", repoConfig.origin().equals("https://gitlab.com"));
-		repoConfig.token("glpat-abcdefghijklmnop");
+				defaultRepo.projectPath().equals("group/sub/project"));
+		check("repo derives the API origin", defaultRepo.origin().equals("https://gitlab.com"));
+		repoConfig.setToken("default", "glpat-abcdefghijklmnop");
 		check("repo masks the token in console output",
-				repoConfig.maskedToken().equals("glpa...mnop"));
+				repoConfig.primary().maskedToken().equals("glpa...mnop"));
+
+		// Several repositories, in the order they were added.
+		try {
+			repoConfig.add("team", "https://gitlab.com/group/team-modules", "main");
+			repoConfig.add("vendor", "https://gitlab.com/group/vendor-modules", "release");
+		} catch (IOException error) {
+			check("repo accepts additional repositories", false);
+		}
+		check("repo keeps several repositories in order",
+				repoConfig.repos().size() == 3
+						&& repoConfig.repos().get(0).name().equals("default")
+						&& repoConfig.repos().get(2).name().equals("vendor"));
+		check("repo finds a repository by name",
+				repoConfig.find("team").map(dev.champions.core.repo.RepoConfig.Repo::ref).orElse("").equals("main")
+						&& repoConfig.find("vendor").map(RepoConfig.Repo::ref).orElse("").equals("release"));
+		check("repo rejects a duplicate name", duplicateRejected(repoConfig, "team"));
+		check("repo rejects an unusable name", duplicateRejected(repoConfig, "Bad Name"));
+
+		// Everything above survives a reload from disk.
+		dev.champions.core.repo.RepoConfig reread = new dev.champions.core.repo.RepoConfig(config);
+		check("repo configuration round-trips through the file",
+				reread.repos().size() == 3 && reread.find("vendor").isPresent()
+						&& reread.primary().maskedToken().equals("glpa...mnop"));
+	}
+
+	private static boolean duplicateRejected(dev.champions.core.repo.RepoConfig config, String name) {
+		try {
+			config.add(name, "https://gitlab.com/group/dupe", "main");
+			return false;
+		} catch (IllegalArgumentException | IOException expected) {
+			return true;
+		}
 	}
 
 	private static void jsonEdgeCases() {

@@ -4,6 +4,26 @@
 
 Nothing yet.
 
+## 0.2.0-beta.4 - 2026-10-26
+
+### Added
+- **Several module repositories at once.** `repo add <name> <url> [ref]`,
+  `repo remove <name>` and `repo token <name> <token>`; `repo search` and
+  `repo list` query every configured repository, and `repo install <id>` takes
+  the first that publishes it (`repo install <repo>:<id>` pins one). Config is
+  one `repo.<name>.*` block per repository; the single-repository file from
+  beta.3 is read and migrated. An unreachable repository is reported and
+  skipped rather than failing the command.
+- **`api` is enforced.** An entry whose module API is newer than this build
+  refuses to install, instead of compiling source written for another contract.
+
+### Changed
+- **The module collection is restructured.** Its tree now mirrors the ids
+  (`modules/auxiliary/audit/WorldContextModule.java` is
+  `auxiliary/audit/world_context`), `build_index.py` validates the tree and the
+  imports rather than only reading headers, and the repository gained a schema,
+  a changelog, a licence and a CI check. See the collection's own README.
+
 ## 0.2.0-beta.3 - 2026-10-26
 
 ### Added
