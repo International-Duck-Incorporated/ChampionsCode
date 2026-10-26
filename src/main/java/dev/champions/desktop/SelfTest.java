@@ -54,6 +54,7 @@ public final class SelfTest {
 			payloadSafety();
 			portedCatalog();
 			exploitSeparation();
+			verificationFlow();
 			jsonEdgeCases();
 		} finally {
 			deleteTree(config);
@@ -612,6 +613,80 @@ public final class SelfTest {
 			!dev.champions.core.exploit.ExecutionGate.decide(lieRequest).allowed());
 
 		check("fixtures are clean after a run", fixture.recorded().isEmpty());
+	}
+
+	/**
+	 * Verification as a flow: a plan that runs nothing, an acknowledgement that
+	 * releases it, and a control that decides whether the result means anything.
+	 */
+	private static void verificationFlow() {
+		java.nio.file.Path dir;
+		try {
+			dir = java.nio.file.Files.createTempDirectory("selftest-verify");
+		} catch (java.io.IOException error) {
+			check("verification temp directory", false);
+			return;
+		}
+		try {
+			var engine = new dev.champions.core.exploit.ReproductionEngine(
+				dev.champions.core.catalog.AuditFolder.under(dir),
+				dev.champions.core.module.active.ActiveModuleRuntime.disabled());
+			var payload = new dev.champions.core.exploit.payload.ConsoleInjectionPayload();
+			var fixture = (dev.champions.core.exploit.fixture.ConsoleDispatchFixture)
+				dev.champions.core.exploit.fixture.FixtureRegistry.byId("console_dispatch");
+
+			// Planning is inert.
+			fixture.reset();
+			var plan = engine.plan("skript_console", payload,
+				dev.champions.core.exploit.GateRequest.ReproductionMode.FIXTURE, false, false, java.util.Map.of());
+			check("a verification plan is executable", plan.executable());
+			check("a plan has control, payload and repeat stages", plan.stages().size() == 3);
+			check("planning executes nothing", fixture.recorded().isEmpty());
+
+			// Execution needs the acknowledgement.
+			var refused = engine.verify("skript_console", payload,
+				dev.champions.core.exploit.GateRequest.ReproductionMode.FIXTURE, false, false, "", java.util.Map.of())
+				.toCompletableFuture().join();
+			check("verification without acknowledgement is blocked",
+				refused.verdict() == dev.champions.core.exploit.ReproductionState.BLOCKED_BY_GATE);
+			check("a blocked verification executes nothing", fixture.recorded().isEmpty());
+
+			// With it, the control and the payload decide the verdict.
+			var report = engine.verify("skript_console", payload,
+				dev.champions.core.exploit.GateRequest.ReproductionMode.FIXTURE, false, false,
+				dev.champions.core.exploit.ReproductionEngine.ACKNOWLEDGEMENT_PHRASE, java.util.Map.of())
+				.toCompletableFuture().join();
+			check("a discriminating reproduction is verified",
+				report.verdict() == dev.champions.core.exploit.ReproductionState.VERIFIED);
+			check("the verdict records that it discriminated", report.discriminative());
+			check("the control did not reach the sink",
+				!report.stage(dev.champions.core.exploit.VerificationStage.CONTROL).reached());
+			check("the payload reached the sink twice",
+				report.stage(dev.champions.core.exploit.VerificationStage.PAYLOAD).reached()
+					&& report.stage(dev.champions.core.exploit.VerificationStage.REPEAT).reached());
+			check("verification leaves the fixture clean", fixture.recorded().isEmpty());
+
+			// Every execution-capable payload can be verified: it declares a control.
+			boolean controlsPresent = dev.champions.core.exploit.ReproductionEngine.payloads().stream()
+				.filter(p -> p.describe().kind() == dev.champions.core.exploit.PayloadKind.EXECUTION_CAPABLE)
+				.allMatch(p -> p.control(java.util.Map.of()) != null);
+			check("every execution-capable payload declares a control", controlsPresent);
+
+			// An artifact is not a verification.
+			var artifactPlan = engine.plan("skript_console",
+				new dev.champions.core.exploit.payload.InertArtifactPayload(),
+				dev.champions.core.exploit.GateRequest.ReproductionMode.FIXTURE, false, false,
+				java.util.Map.of("MECHANISM", "skript_console"));
+			check("an artifact payload cannot produce a verification plan", !artifactPlan.executable());
+		} finally {
+			try (var files = java.nio.file.Files.walk(dir)) {
+				files.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+					try { java.nio.file.Files.deleteIfExists(path); } catch (java.io.IOException ignored) { }
+				});
+			} catch (java.io.IOException ignored) {
+				// best effort: the directory is a temp tree
+			}
+		}
 	}
 
 	private static void check(String label, boolean passed) {

@@ -4,6 +4,25 @@
 
 Nothing yet.
 
+## 0.2.0-beta.9 - 2026-10-26
+
+### Added
+- **Verification as a flow, separate from activation.** `run` now produces a
+  `VerificationPlan` and executes nothing; `ACTION VERIFY` with the `ACK` phrase
+  releases it. A plan names every stage, the material it would supply, and the gate's
+  verdict for each, without performing a write, a send or an invocation.
+- **Control stages, and the `INCONCLUSIVE` state.** A verification runs CONTROL,
+  PAYLOAD and REPEAT, each gated separately. The control carries the same shape with a
+  benign value and must not reach the sink. If it does, the verdict is `INCONCLUSIVE`
+  rather than `VERIFIED` — a mechanism that fires on everything is not a check. A
+  payload that reaches once and not twice is also `INCONCLUSIVE`, which is where a
+  race-condition bug surfaces.
+- `PayloadProvider.control(...)`: every execution-capable payload now declares a
+  control of the same shape, and a payload that declares none cannot be certified.
+- Every report carries a `claimCeiling` — what its verdict may be used to assert — so
+  a fixture result reads as "the mechanism is real", never as "your server is
+  vulnerable".
+
 ## 0.2.0-beta.8 - 2026-10-26
 
 ### Added
