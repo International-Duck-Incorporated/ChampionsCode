@@ -3,6 +3,7 @@ package dev.champions.core.mod;
 import dev.champions.core.module.EvidenceNode;
 import dev.champions.core.module.Finding;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -59,6 +60,8 @@ public final class ModPosture {
 	}
 
 	private static final int MAX_LISTED_MODS = 12;
+	/** How old a catalogue check may be before the report says so. */
+	private static final int STALE_AFTER_DAYS = 180;
 	private static final int MAX_LISTED_CHANNELS = 16;
 
 	private ModPosture() {}
@@ -89,7 +92,14 @@ public final class ModPosture {
 		}
 
 		// 2. Unpinned versions: a build from a working tree tells you nothing.
+		//    One exception, and it matters: several projects publish releases whose
+		//    version string ends in SNAPSHOT (Geyser, ViaVersion, ViaBackwards). If the
+		//    string is exactly the one the catalogue saw upstream, it is a release, not
+		//    a local build, whatever it is called.
 		List<String> unpinned = inventory.stream().filter(InstalledMod::unpinned)
+			.filter(mod -> ModVerification.seen(mod.id())
+				.map(seen -> !seen.version().equalsIgnoreCase(mod.version()))
+				.orElse(true))
 			.map(mod -> mod.id() + "@" + mod.version).sorted().toList();
 		if (!unpinned.isEmpty()) {
 			findings.add(new Finding(Finding.Severity.LOW, "Mods built from a working tree",
@@ -102,7 +112,7 @@ public final class ModPosture {
 		Map<ModCatalog.Role, List<String>> byRole = new LinkedHashMap<>();
 		List<String> unknown = new ArrayList<>();
 		for (InstalledMod mod : inventory) {
-			ModCatalog.Profile profile = ModCatalog.forMod(mod.id()).orElse(null);
+			ModCatalog.Profile profile = ModCatalog.canonical(mod.id()).orElse(null);
 			if (profile == null) { unknown.add(mod.id()); continue; }
 			byRole.computeIfAbsent(profile.role(), key -> new ArrayList<>())
 				.add(profile.name() + " " + mod.version() + " (" + mod.id() + ")");
@@ -113,7 +123,7 @@ public final class ModPosture {
 			if (entries == null || entries.isEmpty()) continue;
 			List<String> ids = entries.stream().map(entry -> entry.replaceAll("\\s*\\(.*\\)$", "")).toList();
 			List<String> reviews = inventory.stream()
-				.map(mod -> ModCatalog.forMod(mod.id()).orElse(null))
+				.map(mod -> ModCatalog.canonical(mod.id()).orElse(null))
 				.filter(profile -> profile != null && profile.role() == role)
 				.map(ModCatalog.Profile::review).distinct().toList();
 			findings.add(new Finding(role == ModCatalog.Role.SERVICE ? Finding.Severity.MEDIUM : Finding.Severity.INFO,
@@ -136,6 +146,79 @@ public final class ModPosture {
 				summarise(unknown.stream().sorted().toList(), MAX_LISTED_MODS),
 				"Unrecognised is not the same as unsafe. Record id and version from the inventory below and check "
 					+ "the mod's own release notes; a module cannot describe a mod it does not know."));
+		}
+
+		// 3b. The three questions that change what every other finding in this report
+		//     means. A voice port and a performance patch are both server-side mods, and
+		//     only one of them is worth a paragraph.
+		Map<ModCatalog.Focus, List<String>> byFocus = new LinkedHashMap<>();
+		for (InstalledMod mod : inventory) {
+			ModCatalog.Profile profile = ModCatalog.canonical(mod.id()).orElse(null);
+			if (profile == null) continue;
+			byFocus.computeIfAbsent(profile.focus(), key -> new ArrayList<>())
+				.add(profile.name() + " " + mod.version() + " (" + mod.id() + ")");
+		}
+		addFocusFinding(findings, byFocus, ModCatalog.Focus.AUTH, "Identity is decided by a mod",
+			"Who the server believes you are is now a property of how these are configured, not of the "
+				+ "account protocol. Any identity-dependent result is only as strong as that configuration.");
+		addFocusFinding(findings, byFocus, ModCatalog.Focus.CODE_EXECUTION, "Code execution is a permission here",
+			"These run code inside the process -- scripts on the server, scripts on this client, or both. "
+				+ "The question is who may load code and whose code it is.");
+		addFocusFinding(findings, byFocus, ModCatalog.Focus.CLIENT_INSPECTION,
+			"The server can inspect this client",
+			"Your mod list may be read by the other end. What it collects, where it is kept and what a "
+				+ "mismatch does to you are questions worth asking before connecting.");
+
+		List<String> otherQuestions = new ArrayList<>();
+		for (Map.Entry<ModCatalog.Focus, List<String>> entry : byFocus.entrySet()) {
+			ModCatalog.Focus focus = entry.getKey();
+			if (focus == ModCatalog.Focus.AUTH || focus == ModCatalog.Focus.CODE_EXECUTION
+				|| focus == ModCatalog.Focus.CLIENT_INSPECTION || focus == ModCatalog.Focus.SERVICE
+				|| focus == ModCatalog.Focus.NONE) continue;
+			otherQuestions.add(focus.question() + " -- " + String.join(", ", entry.getValue()));
+		}
+		if (!otherQuestions.isEmpty()) {
+			findings.add(new Finding(Finding.Severity.INFO, "Other questions this inventory raises",
+				clip(String.join(" | ", otherQuestions), 360),
+				"Each family carries a fuller review in the catalogue; this line is the short form. "
+					+ "Services are counted above rather than repeated here."));
+		}
+
+		// 3c. How this inventory compares with what upstream looked like on the day the
+		//     catalogue was checked. A difference is not a defect -- it can be newer --
+		//     but it is the difference between "current" and "assumed current".
+		List<String> drift = new ArrayList<>();
+		List<String> noBuild = new ArrayList<>();
+		ModVerification.Seen anySeen = null;
+		for (InstalledMod mod : inventory) {
+			ModVerification.Seen seen = ModVerification.seen(mod.id()).orElse(null);
+			if (seen == null) continue;
+			anySeen = seen;
+			if (!seen.forTarget()) noBuild.add(mod.id());
+			if (!seen.version().equalsIgnoreCase(mod.version())) {
+				drift.add(mod.id() + " " + mod.version() + " (catalogue saw " + seen.version()
+					+ " on " + seen.checkedOn() + ")");
+			}
+		}
+		if (!drift.isEmpty()) {
+			findings.add(new Finding(Finding.Severity.INFO, "Versions that differ from the catalogue check",
+				summarise(drift, MAX_LISTED_MODS),
+				"Not necessarily older and not a finding by itself. Compare the release notes before "
+					+ "reporting anything the catalogue dates."));
+		}
+		if (!noBuild.isEmpty()) {
+			findings.add(new Finding(Finding.Severity.INFO, "No build for this game version was seen",
+				summarise(noBuild.stream().sorted().toList(), MAX_LISTED_MODS)
+					+ " Upstream showed no 26.3 release when the catalogue was checked.",
+				"The family is still recognised; its review text may describe an older line than the "
+					+ "one installed."));
+		}
+		List<String> stale = ModVerification.staleAt(LocalDate.now(), STALE_AFTER_DAYS);
+		if (!stale.isEmpty()) {
+			findings.add(new Finding(Finding.Severity.LOW, "The mod catalogue has not been re-checked recently",
+				summarise(stale, MAX_LISTED_MODS) + " Last checked " + ModVerification.CHECKED_ON + ".",
+				"Treat the version column as history rather than as current. Re-run the catalogue check "
+					+ "against upstream before relying on it."));
 		}
 
 		// 4. Server-side inference from channel identifiers. This is the only part of
@@ -171,6 +254,9 @@ public final class ModPosture {
 			"Reported by the mod loader in this client."));
 		evidence.add(EvidenceNode.observed("Recognised families", Integer.toString(byRole.values().stream()
 			.mapToInt(List::size).sum()), "From the mod catalogue in this build."));
+		evidence.add(EvidenceNode.observed("Mod catalogue",
+			ModVerification.all().size() + " families, last checked " + ModVerification.CHECKED_ON,
+			"Modrinth project pages and the fabric.mod.json inside each published jar."));
 		evidence.add(EvidenceNode.advertised("Channels observed", Integer.toString(observed.size()),
 			"Channel identifiers only; payload bodies are never retained."));
 		evidence.add(EvidenceNode.advertised("Server brand", brand == null || brand.isBlank() ? "none" : brand,
@@ -185,6 +271,21 @@ public final class ModPosture {
 
 	public record Result(List<Finding> findings, List<EvidenceNode> evidence, String summary,
 			List<InstalledMod> inventory, Set<String> channels) {}
+
+	private static void addFocusFinding(List<Finding> findings, Map<ModCatalog.Focus, List<String>> byFocus,
+			ModCatalog.Focus focus, String title, String recommendation) {
+		List<String> entries = byFocus.get(focus);
+		if (entries == null || entries.isEmpty()) return;
+		List<String> unique = entries.stream().distinct().sorted().toList();
+		findings.add(new Finding(Finding.Severity.MEDIUM, title + ": " + unique.size(),
+			summarise(unique, MAX_LISTED_MODS) + " " + focus.question(), recommendation));
+	}
+
+	private static String clip(String value, int max) {
+		if (value == null) return "";
+		String cleaned = value.strip();
+		return cleaned.length() <= max ? cleaned : cleaned.substring(0, Math.max(0, max - 1)).stripTrailing() + ".";
+	}
 
 	private static String summarise(List<String> values, int max) {
 		if (values.isEmpty()) return "";

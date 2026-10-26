@@ -183,6 +183,20 @@ public final class SelfTest {
 			dev.champions.core.console.ExploitWarningPrompt.unavailable(), UpdateService.disabled(), () -> {});
 		console.submit("show modules");
 		check("console lists builtins", contains(console, "auxiliary/audit/plugin_surface"));
+		check("mod catalogue covers the audited families",
+			dev.champions.core.mod.ModCatalog.families().size() >= 45);
+		check("every catalogue family has a dated upstream check",
+			dev.champions.core.mod.ModCatalog.families().stream()
+				.allMatch(profile -> dev.champions.core.mod.ModVerification.all()
+					.get(profile.id()) != null
+					&& !dev.champions.core.mod.ModVerification.all().get(profile.id()).checkedOn().isBlank()));
+		check("catalogue ids are the ones the loader reports",
+			dev.champions.core.mod.ModCatalog.canonical("roughlyenoughitems").orElseThrow().id()
+				.equals("roughlyenoughitems")
+				&& dev.champions.core.mod.ModCatalog.canonical("xaerominimap").orElseThrow().id()
+					.equals("xaerominimap")
+				&& dev.champions.core.mod.ModCatalog.canonical("simple-voice-chat").orElseThrow().id()
+					.equals("voicechat"));
 		check("mod catalogue loads", dev.champions.core.mod.ModCatalog.knownIds().contains("cobblemon")
 			&& dev.champions.core.mod.ModCatalog.forMod("cobblemon-fabric").isPresent());
 		check("mod inventory analysis runs without a game",

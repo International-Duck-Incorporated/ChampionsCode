@@ -131,4 +131,108 @@ class ModPostureTest {
 		assertTrue(result.evidence().stream().anyMatch(node ->
 			node.label().equals("Commands sent") && node.value().equals("none")));
 	}
+
+	@Test void identityAndCodeExecutionAreRaisedAboveTheRest() {
+		ModPosture.Result result = ModPosture.analyse(List.of(
+			mod("floodgate", "2.2.7-SNAPSHOT"), mod("carpet", "26.3+v260915"), mod("sodium", "0.6.9")),
+			Set.of(), "fabric");
+
+		Finding identity = result.findings().stream()
+			.filter(finding -> finding.title().startsWith("Identity is decided by a mod"))
+			.findFirst().orElseThrow();
+		assertEquals(Finding.Severity.MEDIUM, identity.severity());
+		assertTrue(identity.detail().contains("floodgate"), identity.detail());
+		assertTrue(identity.detail().contains("Who does the server think you are"),
+			"the focus question is not in the finding");
+
+		Finding code = result.findings().stream()
+			.filter(finding -> finding.title().startsWith("Code execution is a permission"))
+			.findFirst().orElseThrow();
+		assertEquals(Finding.Severity.MEDIUM, code.severity());
+		assertTrue(code.detail().contains("carpet"));
+		assertFalse(code.detail().contains("sodium"), "a rendering mod is not code execution");
+	}
+
+	@Test void aServerThatInspectsTheClientIsReportedAsAPrivacyBoundary() {
+		ModPosture.Result result = ModPosture.analyse(List.of(mod("trustedclients", "0.7.0")), Set.of(), "fabric");
+		Finding finding = result.findings().stream()
+			.filter(entry -> entry.title().startsWith("The server can inspect this client"))
+			.findFirst().orElseThrow();
+		assertEquals(Finding.Severity.MEDIUM, finding.severity());
+		assertTrue(finding.detail().contains("trustedclients"));
+	}
+
+	@Test void aVersionThatDiffersFromTheCatalogueIsNotedWithoutBeingCalledOld() {
+		ModPosture.Result result = ModPosture.analyse(List.of(mod("bluemap", "5.20")), Set.of(), "fabric");
+		Finding drift = result.findings().stream()
+			.filter(finding -> finding.title().startsWith("Versions that differ"))
+			.findFirst().orElseThrow();
+		assertTrue(drift.detail().contains("5.20"), drift.detail());
+		assertTrue(drift.detail().contains("5.29"), "the catalogue version is not named: " + drift.detail());
+		assertTrue(drift.detail().contains(ModVerification.CHECKED_ON));
+		assertFalse(drift.recommendation().toLowerCase(java.util.Locale.ROOT).contains("outdated"),
+			"drift is not proof of being outdated");
+	}
+
+	@Test void aMatchingVersionRaisesNoDriftFinding() {
+		ModPosture.Result result = ModPosture.analyse(List.of(mod("bluemap", "5.29")), Set.of(), "fabric");
+		assertTrue(titles(result).stream().noneMatch(title -> title.startsWith("Versions that differ")));
+	}
+
+	@Test void aFamilyWithNoBuildForThisGameVersionIsSaidSo() {
+		ModPosture.Result result = ModPosture.analyse(List.of(mod("cobblemon", "1.8.3F")), Set.of(), "fabric");
+		Finding finding = result.findings().stream()
+			.filter(entry -> entry.title().startsWith("No build for this game version"))
+			.findFirst().orElseThrow();
+		assertTrue(finding.detail().contains("cobblemon"), finding.detail());
+		assertTrue(finding.detail().contains("26.3"), finding.detail());
+	}
+
+	@Test void theReportDatesItsOwnCatalogue() {
+		ModPosture.Result result = ModPosture.analyse(List.of(mod("bluemap", "5.29")), Set.of(), "fabric");
+		assertTrue(result.evidence().stream().anyMatch(node ->
+				node.label().equals("Mod catalogue") && node.value().contains(ModVerification.CHECKED_ON)),
+			"the report does not say when its catalogue was checked");
+	}
+
+	@Test void aPublishedSnapshotIsNotCalledAWorkingTreeBuild() {
+		// Geyser, ViaVersion and ViaBackwards ship releases that are named SNAPSHOT.
+		// The catalogue saw exactly this string, so it is an upstream release.
+		ModPosture.Result result = ModPosture.analyse(List.of(
+			mod("floodgate", "2.2.7-SNAPSHOT"), mod("viaversion", "5.12.2-SNAPSHOT")), Set.of(), "fabric");
+		assertTrue(titles(result).stream().noneMatch(title -> title.contains("working tree")),
+			"a published SNAPSHOT release was reported as a local build");
+	}
+
+	@Test void aLocalBuildOfTheSameModIsStillFlagged() {
+		ModPosture.Result result = ModPosture.analyse(
+			List.of(mod("viaversion", "5.12.2-SNAPSHOT+git.77fc1a2")), Set.of(), "fabric");
+		Finding unpinned = result.findings().stream()
+			.filter(finding -> finding.title().contains("working tree"))
+			.findFirst().orElseThrow();
+		assertTrue(unpinned.detail().contains("git.77fc1a2"), unpinned.detail());
+	}
+
+	@Test void floodgateIsAnIdentityDecisionNotAService() {
+		// Floodgate opens no port; Geyser does. Counting it as a service would put the
+		// wrong question in front of the operator.
+		ModPosture.Result result = ModPosture.analyse(List.of(
+			mod("floodgate", "2.2.7-SNAPSHOT"), mod("bluemap", "5.29")), Set.of(), "fabric");
+		Finding services = result.findings().stream()
+			.filter(finding -> finding.title().startsWith("Services reachable"))
+			.findFirst().orElseThrow();
+		assertTrue(services.detail().contains("bluemap"), services.detail());
+		assertFalse(services.detail().contains("floodgate"), "floodgate is not a network service");
+		assertTrue(titles(result).stream().anyMatch(title -> title.startsWith("Changes what the server accepts")));
+	}
+
+	@Test void aServiceQuestionIsNotRepeatedInTheOtherQuestionsLine() {
+		ModPosture.Result result = ModPosture.analyse(List.of(
+			mod("bluemap", "5.29"), mod("cobblemon", "1.8.3F")), Set.of(), "fabric");
+		Finding others = result.findings().stream()
+			.filter(finding -> finding.title().startsWith("Other questions"))
+			.findFirst().orElseThrow();
+		assertFalse(others.detail().contains("Which port is open beside the game"), others.detail());
+		assertTrue(others.detail().contains("What does a default player get"), others.detail());
+	}
 }

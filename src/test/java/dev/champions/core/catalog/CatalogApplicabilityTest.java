@@ -128,4 +128,11 @@ class CatalogApplicabilityTest {
 			assertNotNull(ExploitCatalog.byId(id).orElse(null), id + " is listed as stale but does not exist");
 		}
 	}
+
+	@Test void theWorldEditEntryCarriesTheReleaseThatWasActuallyCurrent() {
+		// Re-checking this means editing the table and this assertion together, which is
+		// the point: a stale "latest seen" should be a failing test, not a surprise.
+		var verdict = CatalogApplicability.forEntry("worldedit_schematic").orElseThrow();
+		assertEquals("7.4.6", verdict.latestSeen());
+	}
 }

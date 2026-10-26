@@ -118,9 +118,9 @@ public final class CatalogApplicability {
 				+ "allowlist; advisory lists affected <= 2.9.2, patched 2.9.3 (TextureUrlChecker)."));
 
 		map.put("worldedit_schematic", new Applicability(Status.OBSOLETE,
-			"< 7.4.4", "7.4.4", "7.4.5", "2026-10-26",
-			"WorldEdit 7.4.4 and later confine //schematic names to the configured folder; 7.4.5 is current. "
-				+ "Kept as knowledge only, with no artifact."));
+			"< 7.4.4", "7.4.4", "7.4.6", "2026-10-26",
+			"WorldEdit 7.4.4 and later confine //schematic names to the configured folder; 7.4.6 is the "
+				+ "current release (Modrinth, 2026-10-15). Kept as knowledge only, with no artifact."));
 
 		// -- design classes: no version boundary to name -------------------------
 

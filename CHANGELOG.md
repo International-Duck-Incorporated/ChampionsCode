@@ -4,6 +4,47 @@
 
 Nothing yet.
 
+## 0.2.0-beta.18 - 2026-10-26
+
+### Added
+- **The mod catalogue grew from 24 profiles to 45 families**, and every one of them is
+  dated against upstream. The new families are the ones that change an audit rather
+  than decorate it:
+  - identity: `floodgate`, `fabricproxy-lite`, `easyauth`;
+  - protocol: `viabackwards`, `viafabricplus`;
+  - services beside the game port: `bluemap`, `squaremap`, `journeymap_webmap`, `e4mc`,
+    `plasmovoice`;
+  - code execution: `carpet` (Scarpet), `computercraft` (HTTP API), `minescript`;
+  - client inspection: `trustedclients`;
+  - permissions and claims: `openpartiesandclaims`, `fabric-permissions-api-v0`, `worldedit`;
+  - logging: `ledger`, `fastback`;
+  - what the client tells other people: `nochatreports`, `essential-container`,
+    `customskinloader-bootstrap`, `no-telemetry`, plus `chunky`.
+- **`ModVerification`**: one dated upstream check per family -- the project page, the
+  version the loader reports, whether a build exists for 26.3, and the date. The report
+  prints the date, and says so once the table is more than six months old.
+- **`ModCatalog.Focus`**: the question an audit asks about a mod, separate from where it
+  runs. Identity, code execution and client inspection are raised to MEDIUM because they
+  change the meaning of every other finding; the rest are summarised as questions.
+- 24 tests and 3 self-test checks: id coverage, alias resolution, dated checks, the
+  staleness rule with an injected date, and a guard that `docs/mod-catalogue.md` lists
+  every family.
+
+### Changed
+- **Three ids in the catalogue could never have matched an installed mod.** The loader
+  reports `roughlyenoughitems` (not `rei`), `xaerominimap` (not `xaeros-minimap`) and
+  `voicechat` (not `simple-voice-chat`). Every id is now read out of the published jar's
+  `fabric.mod.json`; the old names stay as aliases so nothing that used to resolve stops
+  resolving.
+- **A published `-SNAPSHOT` release is no longer called a working-tree build.** Geyser,
+  ViaVersion and ViaBackwards ship releases named that way. A version string equal to the
+  one the catalogue saw upstream is a release; anything with git metadata still is not.
+- Version drift is reported, not judged: an installed version that differs from the
+  catalogue check is listed with both strings and the date, and never described as
+  outdated.
+- The WorldEdit entry in `CatalogApplicability` now records 7.4.6 as the newest release
+  seen (it was 7.4.5), verified on Modrinth today.
+
 ## 0.2.0-beta.17 - 2026-10-26
 
 ### Added

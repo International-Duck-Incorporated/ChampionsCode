@@ -134,7 +134,7 @@ Included modules:
 | `auxiliary/scanner/plugin_fingerprint` | Names the plugin families the advertised command surface points at, matches them against the review profiles and the exploit catalogue, and hashes the surface so two scans can be compared. |
 | `auxiliary/audit/admin_command_exposure` | Classifies the command tree the server offered this account into capability groups (authority, code, moderation, world, player, disclosure) and names which were in it. Sends nothing. |
 | `auxiliary/audit/alias_shadowing` | Reports bare command names claimed by more than one provider, vanilla names a plugin now answers, and duplicate subcommand literals. It cannot see registration order, and says so. |
-| `auxiliary/audit/mod_posture` | Inventories the mods loaded in this client, names the ones that change what a server accepts or open a service, flags working-tree builds and duplicate jars, and reports which mod channels the connection carries. |
+| `auxiliary/audit/mod_posture` | Inventories the mods loaded in this client against a catalogue of 45 families, raises the three that change what the audit means (who decides identity, who can run code, who inspects this client), names the services reachable beside the game port, flags working-tree builds and duplicate jars, compares installed versions with a dated upstream check, and reports which mod channels the connection carries. See [docs/mod-catalogue.md](docs/mod-catalogue.md). |
 | `auxiliary/audit/client_trust_posture` | Summarises authentication, platform, protocol and resource-pack facts the server already shared, and what each does and does not establish. |
 
 ### Game log viewer
