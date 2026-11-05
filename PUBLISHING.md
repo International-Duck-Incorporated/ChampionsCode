@@ -30,7 +30,8 @@ git tag v<version>
 git push origin main v<version>
 ```
 
-For the current beta this reads `0.2.0-beta.1` and `v0.2.0-beta.1`.
+For example, version `0.2.0-beta.18` uses tag `v0.2.0-beta.18`. Always check
+`gradle.properties` for the version being released.
 
 4. CI validates that the tag matches `gradle.properties`, verifies the
    configured Fabric 26.3 dependency versions, runs the clean build and test

@@ -7,7 +7,7 @@ msfconsole-inspired workflow for authorized, defensive server/plugin research,
 plus hash-gated runtime Java addons and external Java research modules that can
 be dropped into a config folder outside `src/`.
 
-> **Status:** `0.1.0-beta.3` - third beta (re-release of beta.2 with fixed release publishing). The project builds, tests,
+> **Status:** `0.2.0-beta.18` - beta. The project builds, tests,
 > and produces an installable Fabric JAR. It includes packet-flow, metadata
 > replay, inventory-integrity, passive transaction-flow, client-resilience,
 > passive motion, bounded older-project ports, a separately warned
@@ -26,9 +26,12 @@ The mod JAR is also the desktop application:
 ```
 java -jar champions-mod-<version>.jar                    # standalone, no game needed
 java -jar champions-mod-<version>.jar --demo             # simulated target, safe to try
-java -jar champions-mod-<version>.jar --connect <port> --token <t>   # started by the game
+java -jar champions-mod-<version>.jar --connect <port>   # game launch sets CHAMPIONS_DESKTOP_TOKEN
 java -jar champions-mod-<version>.jar --ui-scale 1.5                 # force a UI scale
 ```
+
+For a manual connection, set `CHAMPIONS_DESKTOP_TOKEN` or pass `--token <token>`;
+the latter may be visible in process listings.
 
 The app is DPI-aware and uses a real monospace family (Consolas / Cascadia Mono /
 JetBrains Mono / DejaVu Sans Mono, in that order), so text stays sharp on a scaled
@@ -585,4 +588,6 @@ notes, planned work, and PowerShell publishing steps.
 ## License
 
 All Rights Reserved. See [`LICENSE.md`](LICENSE.md) for the governing licence,
-[`NOTICE.md`](NOTICE.md) for attribution of ported material.
+[`NOTICE.md`](NOTICE.md) for attribution of ported material, and
+[`PORTING-LICENSE.md`](PORTING-LICENSE.md) for the agreement under which the port was
+made.

@@ -54,27 +54,39 @@ public final class RemoteConsolePort implements ConsolePort {
 	/** Connects, performs the handshake, and starts the reader thread. */
 	public static RemoteConsolePort connect(String host, int port, String token, String appVersion) throws IOException {
 		Socket socket = new Socket();
-		socket.connect(new InetSocketAddress(InetAddress.getByName(host), port), 5_000);
-		socket.setSoTimeout(10_000);
-		RemoteConsolePort client = new RemoteConsolePort(socket);
-		client.send(Protocol.encodeHello(token, appVersion));
-		String line = client.reader.readLine();
-		if (line == null) throw new IOException("The game closed the connection during the handshake.");
-		Map<String, Object> frame = Protocol.decode(line);
-		if (Protocol.ERROR.equals(Protocol.type(frame))) {
-			throw new IOException("Bridge refused the handshake: " + Protocol.str(frame, "message", "unknown reason"));
+		boolean attached = false;
+		try {
+			socket.connect(new InetSocketAddress(InetAddress.getByName(host), port), 5_000);
+			socket.setSoTimeout(10_000);
+			RemoteConsolePort client = new RemoteConsolePort(socket);
+			client.send(Protocol.encodeHello(token, appVersion));
+			String line = client.reader.readLine();
+			if (line == null) throw new IOException("The game closed the connection during the handshake.");
+			Map<String, Object> frame = Protocol.decode(line);
+			if (Protocol.ERROR.equals(Protocol.type(frame))) {
+				throw new IOException("Bridge refused the handshake: " + Protocol.str(frame, "message", "unknown reason"));
+			}
+			if (!Protocol.HELLO_OK.equals(Protocol.type(frame))) {
+				throw new IOException("Unexpected handshake reply: " + Protocol.type(frame));
+			}
+			client.modVersion = Protocol.str(frame, "mod", "unknown");
+			client.status = new Status(true, Protocol.str(frame, "target", "unknown"), "unknown", "unknown",
+				Protocol.bool(frame, "authorized", false), true, "", "attached to the game");
+			socket.setSoTimeout(0);
+			Thread readerThread = new Thread(client::readLoop, "champions-desktop-reader");
+			readerThread.setDaemon(true);
+			readerThread.start();
+			attached = true;
+			return client;
+		} finally {
+			if (!attached) {
+				try {
+					socket.close();
+				} catch (IOException ignored) {
+					// Preserve the original connection or handshake failure.
+				}
+			}
 		}
-		if (!Protocol.HELLO_OK.equals(Protocol.type(frame))) {
-			throw new IOException("Unexpected handshake reply: " + Protocol.type(frame));
-		}
-		client.modVersion = Protocol.str(frame, "mod", "unknown");
-		client.status = new Status(true, Protocol.str(frame, "target", "unknown"), "unknown", "unknown",
-			Protocol.bool(frame, "authorized", false), true, "", "attached to the game");
-		socket.setSoTimeout(0);
-		Thread readerThread = new Thread(client::readLoop, "champions-desktop-reader");
-		readerThread.setDaemon(true);
-		readerThread.start();
-		return client;
 	}
 
 	public String modVersion() {

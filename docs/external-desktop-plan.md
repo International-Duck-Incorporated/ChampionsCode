@@ -186,16 +186,17 @@ Ctrl+C, search) stays identical while the look stays native to each toolkit.
 ### 5.3 IPC bridge — 1.5 days
 
 **Transport.** `ServerSocket` bound to `127.0.0.1` port 0 in the game process. Startup
-writes `config/champions-mod/desktop/session.json` (`{"port":…,"pid":…,"token":…,
-"started":…}`), mode `0600`, and passes port + token through the child's environment
-(`CHAMPIONS_DESKTOP_PORT`, `CHAMPIONS_DESKTOP_TOKEN`) so the token never shows up in a
-process listing. The app answers with one `hello` frame containing the token; **no other
-frame is honoured before the handshake**, peer address must be loopback, one client at a
-time, new client replaces the old only after a valid handshake.
+writes `config/champions-mod/desktop-session.json` (`{"protocol":…, "port":…, "pid":…,
+"token":…}`), with mode `0600` on POSIX filesystems and inherited ACLs elsewhere.
+Automatic launch passes the port as an argument and the token in the child's environment
+(`CHAMPIONS_DESKTOP_TOKEN`), rather than placing the token in the process arguments. The
+app answers with one `hello` frame containing the token; **no other frame is honoured
+before the handshake**, peer address must be loopback, one client at a time, and a new
+client replaces the old only after a valid handshake.
 
-**Framing.** Line-delimited JSON, UTF-8, 8 KiB per frame, `{"t":"<type>","id":<n>,…}`.
-Parsing reuses `core/update/MiniJson`; a small `JsonWriter` is added next to it (no
-dependency).
+**Framing.** Line-delimited JSON, UTF-8, with inbound frames limited to 8 KiB,
+`{"t":"<type>","id":<n>,…}`. Outbound snapshots can be larger. Parsing reuses
+`core/update/MiniJson`; the writer is in `net/ipc/Json` (no dependency).
 
 | Type | Direction | Payload |
 |---|---|---|
@@ -219,14 +220,15 @@ game's main-thread executor; the IPC reader only enqueues. `ModuleContext` is sa
 the client tick into a volatile snapshot and pushed from the network thread, so the bridge
 never touches Minecraft state off-thread.
 
-**Backpressure.** Per-connection bounded outbound queue (1 MiB). When full: coalesce
-`state.push`, drop the oldest `console.lines` delta and send one `console.notice`
-("N lines dropped"). Inbound is rate-limited (100 msg/s) and oversized frames close the
-connection.
+**Backpressure.** Inbound authenticated frames are rate-limited (100 frames/s), and
+oversized frames close the connection. A bounded outbound queue is still planned, not
+implemented: writes are synchronous, so a slow client can block a producer. The proposed
+queue would coalesce `state.push` and report dropped `console.lines` deltas.
 
-**Failure behaviour.** If the game process dies, the app switches to standalone mode and
-says so in the status bar. Reconnects are explicit (button), not silent, because the mod
-issues a new token on every launch.
+**Failure behaviour.** If the game process dies, an attached app reports `DETACHED`;
+it does not automatically replace its remote console with a local one. An initial
+connection failure falls back to standalone mode. A reconnect button remains planned;
+the mod issues a new token on every launch.
 
 ### 5.4 Routing, settings, launch — 1 day
 
@@ -248,16 +250,15 @@ issues a new token on every launch.
 * **Launcher.** Find a Java 25 binary in this order: `ProcessHandle.current().info().command()`
   (the exact JRE the game runs on, guaranteed 25+) → `java.home/bin/java` →
   `JAVA_HOME` → `PATH` (`java -version` parse). Then
-  `<java> -jar <this jar> --connect <port> --token <token>`; the JAR path comes from
-  `ChampionsClient.class`'s code source. If the mod is running from a dev/`run/` classpath
+  `<java> -jar <this jar> --connect <port>`, with the token in
+  `CHAMPIONS_DESKTOP_TOKEN` rather than the process arguments; the JAR path comes from
+  the mod's code source. If the mod is running from a dev/`run/` classpath
   it appends the classes dir instead of a jar.
-* **AV / corporate policy.** Spawning a child process can be flagged. Mitigations: it is
-  opt-in in `settings.json`, the console prints the exact command it will run, and
-  `desktop command` prints a copy-pasteable command for users who must start it themselves.
-  If a process cannot be spawned, the mod falls back to `mode: in-game` for that session
-  and logs why — the game never becomes unusable.
-* First run writes `desktop/launch.cmd` and `desktop/launch.sh` (same command, absolute
-  paths) so a desktop shortcut is one right-click away.
+* **AV / corporate policy.** Spawning a child process can be flagged. `desktop command`
+  prints a manual launch command with a token placeholder. In the current build, an
+  external-only selection logs a launch/attachment failure but does not automatically
+  open the in-game window; use `interfaces in-game` or `interfaces both` to switch back.
+* First-run `desktop/launch.cmd` and `desktop/launch.sh` shortcuts remain planned.
 
 **As built (0.2.0).** The JSON sketch above became a flat properties file,
 `config/champions-mod/desktop.properties`, because it has to be editable by a player
@@ -315,9 +316,10 @@ plus the last tab), written on close and ignored if it would land off-screen.
    audited (`acknowledged` / `cancelled`), stale requests rejected by `requestId`, and the
    existing "module changed while the dialog was open" guard is preserved by re-checking
    `activeModule` in `approveExploitRun` afterwards.
-4. **IPC hardening.** Loopback bind + peer check, 256-bit token via env (not argv, not
-   world-readable file), constant-time compare, handshake-before-anything, single client,
-   frame/size/rate caps, no arbitrary command execution in the message set (the only
+4. **IPC hardening.** Loopback bind + peer check, 256-bit token via env for automatic
+   launches (not argv), owner-only session file on POSIX, constant-time compare,
+   handshake-before-anything, single client, inbound frame/size/rate caps, no arbitrary
+   command execution in the message set (the only
    "execute" verbs are the bounded `java.*` module operations that already exist), and the
    session file is deleted on shutdown.
 5. **Code space is not a new privilege.** It edits the folder the runtime already compiles;

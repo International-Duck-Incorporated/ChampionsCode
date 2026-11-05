@@ -1,8 +1,10 @@
 package dev.champions.client.desktop;
 
+import dev.champions.desktop.DesktopMain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,12 +17,12 @@ import java.util.Optional;
  *
  * <p>The app is this same mod JAR executed as a program, so no second download,
  * install or dependency exists. It is launched with the JVM that is already
- * running Minecraft (guaranteed to be the required Java version) and receives
- * the bridge port and token through the environment and arguments; the token
- * is never written to a log.</p>
+ * running Minecraft (guaranteed to be the required Java version). The bridge
+ * port is passed as an argument and the token through the child's environment,
+ * not in the process arguments or logs.</p>
  *
- * <p>Every failure is non-fatal: the caller falls back to the in-game windows
- * and logs one clear reason.</p>
+ * <p>Every failure is non-fatal and is logged so the caller can keep using
+ * the in-game windows.</p>
  */
 public final class DesktopLauncher {
 	private static final Logger LOG = LoggerFactory.getLogger("champions-desktop");
@@ -37,12 +39,15 @@ public final class DesktopLauncher {
 		return current != null && current.isAlive();
 	}
 
-	/** The exact command the app would be started with, with the token redacted. */
+	/** A command for manual launch, with a placeholder for the token. */
 	public List<String> commandPreview(int port) {
 		List<String> command = new ArrayList<>();
 		command.add(javaBinary());
 		command.addAll(renderingFlags());
-		command.addAll(launchArguments(port, "<token>"));
+		command.addAll(launchArguments(port));
+		// A manual command can still use --token; the automatic process never does.
+		command.add("--token");
+		command.add("<token>");
 		return List.copyOf(command);
 	}
 
@@ -62,7 +67,7 @@ public final class DesktopLauncher {
 		List<String> command = new ArrayList<>();
 		command.add(javaBinary());
 		command.addAll(renderingFlags());
-		command.addAll(launchArguments(port, token));
+		command.addAll(launchArguments(port));
 		if (configDirectory != null && !configDirectory.isBlank()) {
 			command.add("--config");
 			command.add(configDirectory);
@@ -99,14 +104,20 @@ public final class DesktopLauncher {
 		);
 	}
 
-	/** {@code -jar <this mod jar> --connect <port> --token <token>} (or the dev classes dir). */
-	private List<String> launchArguments(int port, String token) {
+	/** {@code -jar <this mod jar> --connect <port>} (or the dev classes dir). */
+	private List<String> launchArguments(int port) {
 		List<String> arguments = new ArrayList<>();
 		Path archive = ownArchive().orElse(null);
 		if (archive != null && Files.isDirectory(archive)) {
+			// Loom keeps the client and common source sets in different output
+			// directories; the launcher directory alone does not contain the app.
+			Path mainArchive = codeSource(DesktopMain.class).orElse(archive);
+			String classpath = mainArchive.toAbsolutePath() + File.pathSeparator + archive.toAbsolutePath();
+			String inherited = System.getProperty("java.class.path", "");
+			if (!inherited.isBlank()) classpath += File.pathSeparator + inherited;
 			arguments.add("-cp");
-			arguments.add(archive.toAbsolutePath().toString());
-			arguments.add("dev.champions.desktop.DesktopMain");
+			arguments.add(classpath);
+			arguments.add(DesktopMain.class.getName());
 		} else if (archive != null) {
 			arguments.add("-jar");
 			arguments.add(archive.toAbsolutePath().toString());
@@ -117,8 +128,6 @@ public final class DesktopLauncher {
 		}
 		arguments.add("--connect");
 		arguments.add(Integer.toString(port));
-		arguments.add("--token");
-		arguments.add(token);
 		return arguments;
 	}
 
@@ -133,8 +142,12 @@ public final class DesktopLauncher {
 
 	/** The file or directory this class was loaded from. */
 	private static Optional<Path> ownArchive() {
+		return codeSource(DesktopLauncher.class);
+	}
+
+	private static Optional<Path> codeSource(Class<?> type) {
 		try {
-			var source = DesktopLauncher.class.getProtectionDomain().getCodeSource();
+			var source = type.getProtectionDomain().getCodeSource();
 			if (source == null || source.getLocation() == null) return Optional.empty();
 			return Optional.of(Path.of(source.getLocation().toURI()));
 		} catch (Exception unavailable) {

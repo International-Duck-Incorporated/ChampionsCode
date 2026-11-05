@@ -7,24 +7,28 @@ import dev.champions.core.console.ConsoleLine;
 import dev.champions.core.console.ExploitWarningPrompt;
 import dev.champions.core.module.ModuleContext;
 import dev.champions.core.module.ModuleOption;
-import dev.champions.core.update.MiniJson;
 import dev.champions.net.ipc.Json;
 import dev.champions.net.ipc.Protocol;
 
 
-import java.io.BufferedReader;
+import java.io.BufferedInputStream;
 import java.io.BufferedWriter;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.InputStream;
 import java.io.OutputStreamWriter;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.ArrayList;
@@ -52,16 +56,17 @@ import java.util.function.Supplier;
  * and the append-only audit log all still execute inside the game process.</p>
  *
  * <p>Security properties: loopback bind only, peer address re-checked, a fresh
- * 256-bit token per launch delivered through the child's environment (never
- * argv), constant-time token comparison, nothing but {@code hello} is honoured
- * before a successful handshake, a single attached client, and hard frame and
- * rate limits.</p>
+ * 256-bit token per launch passed to automatically launched children through
+ * their environment rather than argv, constant-time token comparison, nothing
+ * but {@code hello} honoured before a successful handshake, a single attached
+ * client, and inbound frame and rate limits.</p>
  *
  * <p>This class is deliberately free of Minecraft and Fabric imports so it can
  * be compiled, unit-tested, and exercised headlessly.</p>
  */
 public final class DesktopBridge implements AutoCloseable {
 	public static final int MAX_FRAME_BYTES = 8 * 1024;
+	private static final int MAX_FRAMES_PER_SECOND = 100;
 	private static final long STATE_PUSH_MILLIS = 1_000L;
 	private static final long CONSOLE_POLL_MILLIS = 50L;
 	private static final long EXPLOIT_PROMPT_TIMEOUT_MILLIS = 60_000L;
@@ -82,13 +87,14 @@ public final class DesktopBridge implements AutoCloseable {
 
 	private volatile Connection attached;
 	private volatile ModuleContext cachedContext;
-	private volatile long nextConsoleSequence;
 	private volatile boolean closed;
+	private volatile boolean sessionPublished;
 
 	/** One attached desktop session. */
 	private static final class Connection {
 		final Socket socket;
 		final BufferedWriter writer;
+		volatile long nextConsoleSequence;
 
 		Connection(Socket socket, BufferedWriter writer) {
 			this.socket = socket;
@@ -111,7 +117,9 @@ public final class DesktopBridge implements AutoCloseable {
 		this.sessionFile = sessionDirectory.resolve(Protocol.SESSION_FILE);
 		this.server = new ServerSocket();
 		this.server.setReuseAddress(false);
-		this.server.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+		// The desktop client connects to 127.0.0.1 explicitly. getLoopbackAddress()
+		// may instead return ::1 when IPv6 is preferred, making attachment fail.
+		this.server.bind(new InetSocketAddress("127.0.0.1", 0));
 		this.acceptor = new Thread(this::acceptLoop, "champions-desktop-acceptor");
 		this.acceptor.setDaemon(true);
 		this.scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -139,12 +147,17 @@ public final class DesktopBridge implements AutoCloseable {
 	}
 
 	public void start() throws IOException {
-		writeSessionFile();
-		acceptor.start();
-		scheduler.scheduleWithFixedDelay(this::pushStateSafely, 200, STATE_PUSH_MILLIS, TimeUnit.MILLISECONDS);
-		scheduler.scheduleWithFixedDelay(this::pushConsoleSafely, 200, CONSOLE_POLL_MILLIS, TimeUnit.MILLISECONDS);
-		scheduler.scheduleWithFixedDelay(this::expirePrompts, EXPLOIT_PROMPT_TIMEOUT_MILLIS, EXPLOIT_PROMPT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
-		Log.info("desktop bridge listening on 127.0.0.1:{} (token in {})", port(), sessionFile);
+		try {
+			writeSessionFile();
+			acceptor.start();
+			scheduler.scheduleWithFixedDelay(this::pushStateSafely, 200, STATE_PUSH_MILLIS, TimeUnit.MILLISECONDS);
+			scheduler.scheduleWithFixedDelay(this::pushConsoleSafely, 200, CONSOLE_POLL_MILLIS, TimeUnit.MILLISECONDS);
+			scheduler.scheduleWithFixedDelay(this::expirePrompts, EXPLOIT_PROMPT_TIMEOUT_MILLIS, EXPLOIT_PROMPT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+			Log.info("desktop bridge listening on 127.0.0.1:{} (token in {})", port(), sessionFile);
+		} catch (IOException | RuntimeException failure) {
+			close();
+			throw failure;
+		}
 	}
 
 	/** Asks the attached app to raise one of its windows. */
@@ -193,14 +206,16 @@ public final class DesktopBridge implements AutoCloseable {
 
 	private void handle(Socket socket) {
 		try (socket;
-			 BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+			 BufferedInputStream reader = new BufferedInputStream(socket.getInputStream());
 			 BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
-			String first = reader.readLine();
-			if (first == null) return;
-			if (first.length() > MAX_FRAME_BYTES) {
+			String first;
+			try {
+				first = readFrame(reader);
+			} catch (FrameTooLargeException oversized) {
 				reply(writer, Protocol.encodeError("frame too large"));
 				return;
 			}
+			if (first == null) return;
 			Map<String, Object> hello = Protocol.decode(first);
 			if (!Protocol.HELLO.equals(Protocol.type(hello))) {
 				reply(writer, Protocol.encodeError("handshake required"));
@@ -216,35 +231,57 @@ public final class DesktopBridge implements AutoCloseable {
 				return;
 			}
 
-			Connection previous = attached;
 			Connection connection = new Connection(socket, writer);
-			attached = connection;
-			if (previous != null) closeQuietly(previous.socket);
-
+			// Do not expose this connection to the scheduler until hello.ok and the
+			// initial snapshot have been sent, or a state push can beat the handshake.
 			ModuleContext context = cachedContext;
 			reply(writer, Protocol.encodeHelloOk(versionSupplier.get(),
 				context == null ? "unknown" : context.serverAddress(), console.currentTargetView().authorized()));
-			sendTo(connection, Protocol.encodeConsoleSnapshot(console.lines(), console.prompt()));
-			nextConsoleSequence = console.lineSequence();
+			List<ConsoleLine> initialLines;
+			String initialPrompt;
+			long initialSequence;
+			synchronized (console) {
+				initialLines = console.lines();
+				initialPrompt = console.prompt();
+				initialSequence = console.lineSequence();
+			}
+			if (!sendTo(connection, Protocol.encodeConsoleSnapshot(initialLines, initialPrompt))) return;
 			socket.setSoTimeout(0);
+			Connection previous;
+			synchronized (this) {
+				if (closed) return;
+				previous = attached;
+				connection.nextConsoleSequence = initialSequence;
+				attached = connection;
+			}
+			if (previous != null) closeQuietly(previous.socket);
 			Log.info("desktop app attached ({}), protocol {}", Protocol.str(hello, "app", "?"), Protocol.VERSION);
 
-			String frame;
-			while (!closed && (frame = reader.readLine()) != null) {
-				if (frame.isBlank()) continue;
-				if (frame.length() > MAX_FRAME_BYTES) {
+			FrameRateLimiter rate = new FrameRateLimiter();
+			while (!closed) {
+				String frame;
+				try {
+					frame = readFrame(reader);
+				} catch (FrameTooLargeException oversized) {
 					sendTo(connection, Protocol.encodeError("frame too large"));
 					break;
 				}
-				dispatch(frame);
+				if (frame == null) break;
+				// Count blank frames as well, otherwise they bypass the rate bound.
+				if (!rate.allow(System.nanoTime())) {
+					sendTo(connection, Protocol.encodeError("frame rate limit exceeded"));
+					break;
+				}
+				if (!frame.isBlank()) dispatch(frame);
 			}
 		} catch (IOException error) {
 			Log.debug("desktop session ended: {}", error.getMessage());
 		} catch (RuntimeException error) {
 			Log.warn("desktop session failed: {}", error.toString());
 		} finally {
-			Connection connection = attached;
-			if (connection != null && connection.socket.isClosed()) attached = null;
+			synchronized (this) {
+				if (attached != null && attached.socket == socket) attached = null;
+			}
 		}
 	}
 
@@ -398,25 +435,68 @@ public final class DesktopBridge implements AutoCloseable {
 	}
 
 	private void pushConsole() {
-		if (!isAttached()) return;
-		long total = console.lineSequence();
-		List<ConsoleLine> lines = console.lines();
+		Connection connection = attached;
+		if (connection == null || connection.socket.isClosed()) return;
+		long total;
+		List<ConsoleLine> lines;
+		String prompt;
+		synchronized (console) {
+			total = console.lineSequence();
+			lines = console.lines();
+			prompt = console.prompt();
+		}
 		long firstSequence = total - lines.size();
-		long cursor = nextConsoleSequence;
+		long cursor = connection.nextConsoleSequence;
 		if (cursor > total) cursor = firstSequence;
 		if (cursor < firstSequence) {
-			send(Protocol.encodeConsoleSnapshot(lines, console.prompt()));
-			nextConsoleSequence = total;
+			if (sendTo(connection, Protocol.encodeConsoleSnapshot(lines, prompt))) connection.nextConsoleSequence = total;
 			return;
 		}
 		int fromIndex = (int) (cursor - firstSequence);
 		if (fromIndex >= lines.size()) return;
 		List<ConsoleLine> delta = lines.subList(fromIndex, lines.size());
-		send(Protocol.encodeConsoleLines(fromIndex, delta));
-		nextConsoleSequence = total;
+		if (sendTo(connection, Protocol.encodeConsoleLines(fromIndex, delta))) connection.nextConsoleSequence = total;
 	}
 
 	// ---- plumbing --------------------------------------------------------
+
+	/** Reads an NDJSON frame with a byte limit, before allocating an unbounded line. */
+	private static String readFrame(InputStream input) throws IOException {
+		byte[] bytes = new byte[MAX_FRAME_BYTES + 1];
+		int length = 0;
+		while (true) {
+			int next = input.read();
+			if (next < 0) {
+				if (length == 0) return null;
+				break;
+			}
+			if (next == '\n') break;
+			// Leave room for the CR in a CRLF terminator after a maximum-size frame.
+			if (length >= bytes.length || (length == MAX_FRAME_BYTES && next != '\r')) {
+				throw new FrameTooLargeException();
+			}
+			bytes[length++] = (byte) next;
+		}
+		if (length > 0 && bytes[length - 1] == '\r') length--;
+		return new String(bytes, 0, length, StandardCharsets.UTF_8);
+	}
+
+	private static final class FrameTooLargeException extends IOException {}
+
+	/** Sliding one-second window, confined to one connection's reader thread. */
+	private static final class FrameRateLimiter {
+		private final long[] recent = new long[MAX_FRAMES_PER_SECOND];
+		private int count;
+		private int next;
+
+		boolean allow(long now) {
+			if (count == recent.length && now - recent[next] < TimeUnit.SECONDS.toNanos(1)) return false;
+			recent[next] = now;
+			next = (next + 1) % recent.length;
+			if (count < recent.length) count++;
+			return true;
+		}
+	}
 
 	private void onMainThreadQuietly(Runnable action) {
 		try {
@@ -447,7 +527,9 @@ public final class DesktopBridge implements AutoCloseable {
 				return true;
 			} catch (IOException gone) {
 				closeQuietly(connection.socket);
-				if (attached == connection) attached = null;
+				synchronized (this) {
+					if (attached == connection) attached = null;
+				}
 				return false;
 			}
 		}
@@ -479,12 +561,25 @@ public final class DesktopBridge implements AutoCloseable {
 	private void writeSessionFile() throws IOException {
 		String json = Json.obj("protocol", Protocol.VERSION, "port", port(), "pid",
 			ProcessHandle.current().pid(), "token", token);
-		Files.writeString(sessionFile, json, StandardCharsets.UTF_8);
+		Path temporary;
 		try {
-			Files.setPosixFilePermissions(sessionFile, Set.of(
-				PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+			temporary = Files.createTempFile(sessionFile.getParent(), ".desktop-session-", ".tmp",
+				PosixFilePermissions.asFileAttribute(Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)));
 		} catch (UnsupportedOperationException windows) {
-			// Windows has no POSIX modes; the file already lives in the user's profile.
+			// On filesystems without POSIX modes, use the directory's inherited ACLs.
+			temporary = Files.createTempFile(sessionFile.getParent(), ".desktop-session-", ".tmp");
+		}
+		try {
+			Files.writeString(temporary, json, StandardCharsets.UTF_8,
+				StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING, LinkOption.NOFOLLOW_LINKS);
+			try {
+				Files.move(temporary, sessionFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+			} catch (AtomicMoveNotSupportedException | FileAlreadyExistsException unavailable) {
+				Files.move(temporary, sessionFile, StandardCopyOption.REPLACE_EXISTING);
+			}
+			sessionPublished = true;
+		} finally {
+			Files.deleteIfExists(temporary);
 		}
 	}
 
@@ -513,10 +608,13 @@ public final class DesktopBridge implements AutoCloseable {
 		} catch (IOException ignored) {
 			// already closed
 		}
-		try {
-			Files.deleteIfExists(sessionFile);
-		} catch (IOException ignored) {
-			// the file is stale either way; the token changes on the next launch
+		if (sessionPublished) {
+			try {
+				Files.deleteIfExists(sessionFile);
+			} catch (IOException ignored) {
+				// the file is stale either way; the token changes on the next launch
+			}
+			sessionPublished = false;
 		}
 		for (PendingPrompt prompt : prompts.values()) onMainThread(prompt.request()::cancel);
 		prompts.clear();

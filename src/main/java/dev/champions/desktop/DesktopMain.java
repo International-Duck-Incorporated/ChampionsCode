@@ -27,8 +27,9 @@ import java.util.function.Supplier;
 /**
  * Entry point of the external ChampionsCode desktop app.
  *
- * <p>Launched by the mod ({@code --connect <port> --token <token>}) it attaches
- * to the running game over loopback; launched on its own it runs the same
+ * <p>Launched by the mod ({@code --connect <port>} and a token in the
+ * {@code CHAMPIONS_DESKTOP_TOKEN} environment variable), it attaches to the
+ * running game over loopback; launched on its own it runs the same
  * console against the local configuration, where every passive module still
  * works and nothing can be authorized because there is no connection.</p>
  *
@@ -70,7 +71,9 @@ public final class DesktopMain {
 		try {
 			if (options.containsKey("connect")) {
 				int portNumber = Integer.parseInt(options.get("connect"));
-				String token = options.getOrDefault("token", "");
+				// Automatic launches use the environment so the token is not exposed in
+				// process arguments. Keep --token for existing manual launch commands.
+				String token = options.getOrDefault("token", System.getenv().getOrDefault("CHAMPIONS_DESKTOP_TOKEN", ""));
 				port = RemoteConsolePort.connect("127.0.0.1", portNumber, token, APP_VERSION);
 				System.out.println("Attached to the game on 127.0.0.1:" + portNumber);
 			} else {

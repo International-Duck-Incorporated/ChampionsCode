@@ -31,16 +31,11 @@ Schedule A and §11 of the porting licence let a rights holder withdraw permissi
 that happens, the affected material is removed or rewritten on request; the disposition
 record is kept so the removal is auditable.
 
-## The MIT notice in this repository
+## Earlier releases
 
-[`LICENSE-MIT-historical.txt`](LICENSE-MIT-historical.txt) (MIT) is retained verbatim and
-is **not** the licence of this project. It is the notice that covered the upstream project
-and the releases up to and including `0.2.0-beta.11`, and MIT requires that notice to
-travel with the code it covered. Recipients of those earlier releases keep the rights they
-were granted.
-
-From `0.2.0-beta.12` onward the published jar declares `All Rights Reserved` in its
-`fabric.mod.json`, and the All Rights Reserved licence governs.
+Releases up to and including `0.2.0-beta.11` were published under MIT; recipients of
+those releases retain the rights they were granted. From `0.2.0-beta.12` onward the
+published jar declares `All Rights Reserved` in its `fabric.mod.json`.
 
 ## Dependencies
 

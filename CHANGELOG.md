@@ -208,11 +208,10 @@ says so in the finding that would otherwise read as a clean bill of health.
   `--self-test` checks fail the build if a row disappears, a disposition is invented, a
   reference dangles, or a catalogue entry has no source module behind it.
 
-### Kept deliberately
-- The MIT notice stays, verbatim and scoped, as `LICENSE-MIT-historical.txt`. It covered the upstream project and
-  every release up to `0.2.0-beta.11`; MIT requires the notice to travel with that code,
-  and recipients of those releases keep the rights they were granted. `NOTICE.md` says so
-  explicitly so the two files cannot be mistaken for each other.
+### Kept at the time
+- The earlier MIT notice was retained separately in this release. It covered the upstream
+  project and releases up to `0.2.0-beta.11`; recipients of those releases retain the
+  rights they were granted.
 
 ## 0.2.0-beta.11 - 2026-10-26
 
